@@ -2351,6 +2351,7 @@
     "geographic": "ジオグラフィック",
     "geography": "ジオグラフィー",
     "george": "ジョージ",
+    "georgette": "ジョージェット",
     "georgia": "ジョージア",
     "german": "ジャーマン",
     "germany": "ジャーマニー",
@@ -6077,6 +6078,6 @@
 
   return {
     words: words,
-    count: 6055,
+    count: 6056,
   };
 });

@@ -90,6 +90,8 @@ test("常见歌词词都能「确定地」读出纯片假名（不许掉进猜�
     "mr", "mrs", "ms", "dr", "prof", "jr", "sr",
     // Ave（拉丁语的"万福"）：不能被当成 avenue 的缩写展开
     "ave",
+    // Georgette：专有名词，规则拼不出来（用户报的 ゲオーゲターテ）
+    "georgette",
   ];
   const bad = [];
   for (const w of must) {
