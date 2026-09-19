@@ -58,6 +58,25 @@ function makeCorrector(ctx, opts) {
   return { corrector, calls, updates };
 }
 
+test("isWaiting：排队/请求中为 true，回来或失败后为 false", async () => {
+  const ctx = loadCore();
+  const { corrector } = makeCorrector(ctx, { reply: () => dictResponse(["クローバー"]) });
+
+  assert.strictEqual(corrector.isWaiting("clover"), false, "还没问过：不是等待中（上层会先看规则）");
+  corrector.lookup("clover");
+  assert.strictEqual(corrector.isWaiting("clover"), true, "排了队 = 在等结果");
+  await sleep(1600);
+  assert.strictEqual(corrector.isWaiting("clover"), false, "拿到结果了就不用等");
+  assert.strictEqual(corrector.lookup("clover"), "クローバー");
+
+  // 失败：记成"查过、没有"，也不该再让上层等（断网时规则要能顶上）
+  const down = makeCorrector(ctx, { reply: () => new Error("offline") });
+  down.corrector.lookup("clover");
+  assert.strictEqual(down.corrector.isWaiting("clover"), true);
+  await sleep(1600);
+  assert.strictEqual(down.corrector.isWaiting("clover"), false, "失败了就别等");
+});
+
 test("纯片假名的结果被接受（clover -> クローバー）", async () => {
   const ctx = loadCore();
   const { corrector } = makeCorrector(ctx, { reply: () => dictResponse(["クローバー"]) });

@@ -23,9 +23,11 @@ function makeClient(ctx, opts) {
   const calls = [];
   ctx.window.fetch = function (url, init) {
     const body = JSON.parse(init.body);
-    const words = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
-    calls.push({ url: url, model: body.model, words: words, auth: init.headers.Authorization });
-    const reply = typeof opts.reply === "function" ? opts.reply(words) : opts.reply || {};
+    // 现在提示词里的条目是 [{i, w, line}]：w 是要注音的词，line 是它所在的整句歌词
+    const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+    const words = items.map((it) => (it && typeof it === "object" ? it.w : it));
+    calls.push({ url: url, model: body.model, words: words, items: items, auth: init.headers.Authorization });
+    const reply = typeof opts.reply === "function" ? opts.reply(words, items) : opts.reply || {};
     if (reply instanceof Error) return Promise.reject(reply);
     return Promise.resolve({
       ok: true,
@@ -376,6 +378,106 @@ test("stats 返回的是快照，改它不影响内部状态", async () => {
   const s = client.stats();
   s.hits = 999;
   assert.notStrictEqual(client.stats().hits, 999);
+});
+
+// ============================================================ 上下文
+
+test("请求里带上整句歌词：同一个词在不同句子里分别问、分别记", async () => {
+  const ctx = loadCore();
+  const { client, calls } = makeClient(ctx, {
+    // 按**下标**回答（提示词要求的形状），模拟"看语境判断"
+    reply: (words, items) => {
+      const out = {};
+      items.forEach((it, idx) => {
+        out[String(idx + 1)] = it.line.indexOf("yesterday") >= 0 ? "レッド" : "リード";
+      });
+      return out;
+    },
+  });
+
+  assert.strictEqual(client.lookup("read", "I read a book every day"), null);
+  assert.strictEqual(client.lookup("read", "I read it yesterday"), null);
+  await client.flush();
+
+  assert.strictEqual(calls.length, 1, "两句里的同一个词合成一次请求");
+  assert.strictEqual(calls[0].items.length, 2);
+  assert.deepStrictEqual(
+    calls[0].items.map((it) => it.line),
+    ["I read a book every day", "I read it yesterday"],
+    "每一条都要带上它所在的整句歌词"
+  );
+  assert.strictEqual(client.lookup("read", "I read a book every day"), "リード");
+  assert.strictEqual(client.lookup("read", "I read it yesterday"), "レッド", "同一个词、不同语境 = 不同读音");
+});
+
+test("同一句里的同一个词只问一次（语境相同就命中缓存）", async () => {
+  const ctx = loadCore();
+  const { client, calls } = makeClient(ctx, { reply: () => ({ "1": "リード" }) });
+  const line = "I read a book every day";
+  client.lookup("read", line);
+  client.lookup("read", line); // 同一句 → 队列里只有一条
+  client.lookup("read", "  I   read a book every day  "); // 空白差别不影响（折叠过）
+  await client.flush();
+  assert.strictEqual(calls[0].items.length, 1, "同一句里的同一个词只算一条：" + JSON.stringify(calls[0].items));
+  assert.strictEqual(client.lookup("read", line), "リード");
+  assert.strictEqual(client.lookup("read", line), "リード");
+  assert.strictEqual(client.stats().cacheHits, 2);
+});
+
+test("不带语境也能用（退化成只看这个词，行为与以前一致）", async () => {
+  const ctx = loadCore();
+  const { client, calls } = makeClient(ctx, { reply: () => ({ "1": "ハロー" }) });
+  assert.strictEqual(client.lookup("hello"), null);
+  await client.flush();
+  assert.deepStrictEqual(calls[0].items, [{ i: 1, w: "hello", line: "hello" }], "没有语境时 line 用词本身顶上");
+  assert.strictEqual(client.lookup("hello"), "ハロー");
+});
+
+test("模型不按下标回答时，按词兜底也能收（老形状兼容）", async () => {
+  const ctx = loadCore();
+  const { client } = makeClient(ctx, { reply: () => ({ hello: "ハロー" }) });
+  client.lookup("hello", "say hello to me");
+  await client.flush();
+  assert.strictEqual(client.lookup("hello", "say hello to me"), "ハロー");
+});
+
+test("语境过长会截断，不会把整本歌词塞进提示词", async () => {
+  const ctx = loadCore();
+  const { client, calls } = makeClient(ctx, { reply: () => ({ "1": "ハロー" }) });
+  client.lookup("hello", "あ".repeat(500));
+  await client.flush();
+  assert.ok(calls[0].items[0].line.length <= 160, "长度 " + calls[0].items[0].line.length);
+});
+
+// ============================================================ isWaiting
+
+test("isWaiting：等待期间 true；有结论/退避/没配 key 时 false", async () => {
+  const ctx = loadCore();
+  const { client } = makeClient(ctx, { reply: () => ({ "1": "ハロー" }) });
+
+  // 还没有结论 -> 上层应该"先不标规则猜的读音"
+  assert.strictEqual(client.isWaiting("hello", "say hello to me"), true);
+  client.lookup("hello", "say hello to me");
+  assert.strictEqual(client.isWaiting("hello", "say hello to me"), true, "排了队还是等待中");
+  await client.flush();
+  assert.strictEqual(client.isWaiting("hello", "say hello to me"), false, "拿到结果了就不用等");
+  assert.strictEqual(client.lookup("hello", "say hello to me"), "ハロー");
+
+  // 模型给不出（终态 miss）-> 不用等，让规则兜底
+  const miss = makeClient(ctx, { reply: () => ({}) });
+  miss.client.lookup("zzz", "zzz");
+  await miss.client.flush();
+  assert.strictEqual(miss.client.isWaiting("zzz", "zzz"), false, "问过没有就别等了");
+
+  // 请求失败进退避 -> 不用等（断网时规则要能立刻顶上）
+  const down = makeClient(ctx, { reply: () => new Error("network down") });
+  down.client.lookup("hello", "say hello");
+  await down.client.flush();
+  assert.strictEqual(down.client.isWaiting("hello", "say hello"), false, "退避期间不等");
+
+  // 没配 key -> 整层不工作，也不该让上层等
+  const noKey = makeClient(ctx, { key: "" });
+  assert.strictEqual(noKey.client.isWaiting("hello", "say hello"), false);
 });
 
 // ============================================================ 接口地址纠正

@@ -38,6 +38,8 @@
   var COOLDOWN_MS = 60000; // 失败后的退避起点
   var COOLDOWN_MAX_MS = 10 * 60 * 1000;
   var MAX_WORD_LEN = 24;
+  /** 上下文（整句歌词）最长留多少字符 —— 只是为了避免把整个歌词本塞进提示词 */
+  var MAX_CONTEXT_LEN = 160;
 
   var DEFAULT_ENDPOINT = "https://api.deepseek.com/chat/completions";
   var DEFAULT_MODEL = "deepseek-chat";
@@ -73,17 +75,45 @@
     return url;
   }
 
-  function promptFor(words) {
+  /**
+   * 提示词：**带上下文**。
+   *
+   * 为什么要上下文：孤立地问一个词，有些词根本定不下来 ——
+   * read 是 リード 还是 レッド、live 是 ライブ 还是 リブ、
+   * 「Love」是歌里的词还是人名。把**它所在的那句歌词**一起给它，
+   * 判断依据就完全不同了（这也是用户提的要求）。
+   *
+   * 条目按**下标**编号（`items` 是 [{i, w, line}]），响应也用下标当键：
+   * 同一个词在两句里出现时不会互相覆盖。
+   */
+  function promptFor(items) {
+    var rows = [];
+    for (var i = 0; i < items.length; i++) {
+      rows.push({ i: items[i].i, w: items[i].w, line: items[i].line || items[i].w });
+    }
     return (
-      "你是日语歌词注音助手。下面这些拉丁字母词要唱进日语歌里，请给出日语里最自然的片假名读音。\n" +
+      "你是日语歌词注音助手。下面是日语歌里出现的拉丁字母词，每一项带它所在的**整句歌词**" +
+      "（line 字段，可能混着日文；如果 line 和词一样，说明只有这一个词）。\n" +
+      "请结合整句的语境，给出这个词在日语里最自然的片假名读音。\n" +
       "要求：\n" +
       "1. 只写片假名（允许长音符 ー 和小写的 ャュョッ），不要汉字、不要平假名、不要英文、不要解释；\n" +
       "2. 用日语外来语的通行写法（love → ラブ、hello → ハロー、question → クエスチョン）；\n" +
       "3. 虚词按唱出来的音写（the → ザ、of → オブ、and → アンド）；\n" +
-      "4. 严格输出一个 JSON 对象，键是原词（小写），值是片假名读音，不要多余字段。\n" +
-      "词表：" +
-      JSON.stringify(words)
+      "4. **同一个词在不同句子里读音不同时，按该句语境分别判断**" +
+      "（read 在 “read a book” 里是 リード、在 “I read it yesterday” 里是 レッド）；\n" +
+      "5. 人名/地名/乐队名按日语里的通行音译（Beatles → ビートルズ）；" +
+      "字母串记号（D/N/A）按字母名念（ディーエヌエー）；\n" +
+      "6. 严格输出一个 JSON 对象，**键是 i 字段的值**（数字，写成字符串也行），值是片假名，不要多余字段。\n" +
+      "条目：" +
+      JSON.stringify(rows)
     );
+  }
+
+  /** 上下文规范化：折叠空白、去掉过长内容（只用来判"是不是同一句"和喂给模型） */
+  function contextKey(line) {
+    var s = String(line == null ? "" : line).replace(/\s+/g, " ").trim();
+    if (s.length > MAX_CONTEXT_LEN) s = s.slice(0, MAX_CONTEXT_LEN);
+    return s;
   }
 
   /** 取出响应里第一段 JSON 对象（模型偶尔会包一层 ```json 或加一句解释） */
@@ -155,7 +185,13 @@
       batchSize: options.batchSize || BATCH_SIZE,
     };
 
-    var mem = new Map(); // word -> { k: kana } 表示命中，{ miss: true } 表示问过但没有
+    var mem = new Map(); // key(词+语境) -> { k: kana } 命中，{ miss: true } 问过但没有
+    /*
+     * 词 -> 最近一次拿到的读音（不区分语境）。
+     * 只给控制台/排障用（`LK.display('词')` 不带句子时要有东西可看），
+     * **不参与**页面注音的判定 —— 页面必须严格按当前这句的语境取读音。
+     */
+    var byWord = {};
     var persisted = loadCache();
     var queue = []; // 待问的词（数组，保持入队顺序）
     var queued = new Set(); // 去重
@@ -170,7 +206,12 @@
     var stats = { hits: 0, cacheHits: 0, misses: 0, requests: 0, failures: 0, words: 0 };
 
     for (var k in persisted) {
-      if (Object.prototype.hasOwnProperty.call(persisted, k)) mem.set(k, persisted[k]);
+      if (!Object.prototype.hasOwnProperty.call(persisted, k)) continue;
+      mem.set(k, persisted[k]);
+      // 重建"词 -> 读音"索引：键是「词\0语境」，取 \0 前面那截
+      if (persisted[k] && typeof persisted[k].k === "string") {
+        byWord[k.split("\u0000")[0]] = persisted[k].k;
+      }
     }
 
     // ------------------------------------------------------------ 缓存
@@ -265,6 +306,20 @@
       return w;
     }
 
+    /**
+     * 缓存/队列的键：**词 + 它所在的那句话**。
+     *
+     * 为什么带上语境：`read` 在 “read a book” 里是 リード、在 “I read it” 里是 レッド；
+     * 只按词缓存的话，先遇到哪句就把哪个读音钉死一辈子。
+     * 带上整句之后，同一句里的同一个词仍然只问一次（每轮扫描都会命中缓存），
+     * 换一句才会再问一次 —— 请求量还是很小的（一首歌的词典外词本来就不多）。
+     */
+    function cacheKeyOf(word, line) {
+      var w = keyOf(word);
+      if (!w) return "";
+      return w + "\u0000" + contextKey(line);
+    }
+
     function canAsk() {
       if (!cfg.enabled) return false;
       if (!cfg.key || !cfg.endpoint) return false;
@@ -316,8 +371,14 @@
       }
 
       var batch = queue.splice(0, cfg.batchSize);
-      for (var i = 0; i < batch.length; i++) queued.delete(batch[i]);
+      for (var i = 0; i < batch.length; i++) queued.delete(batch[i].key);
       if (!batch.length) return Promise.resolve(null);
+
+      // 提示词里的条目：下标 i 用来对齐响应（同一个词在两句里不会互相覆盖）
+      var items = [];
+      for (var j = 0; j < batch.length; j++) {
+        items.push({ i: j + 1, w: batch[j].word, line: batch[j].context });
+      }
 
       inflight = true;
       requestTimes.push(Date.now());
@@ -340,7 +401,7 @@
             temperature: 0,
             max_tokens: 2000,
             response_format: { type: "json_object" },
-            messages: [{ role: "user", content: promptFor(batch) }],
+            messages: [{ role: "user", content: promptFor(items) }],
           }),
           signal: ctrl ? ctrl.signal : undefined,
         });
@@ -383,25 +444,36 @@
     function applyBatch(batch, obj) {
       var hits = 0;
       var missed = 0;
-      // 模型的键可能有大小写差异，统一折一遍
-      var lower = {};
+      /*
+       * 响应可能有两种形状，都认：
+       *   1. 按条目下标：{"1":"リード","2":"レッド"}（提示词要求的，能区分同词不同句）；
+       *   2. 按词：{"read":"リード"}（模型没照做时的兜底）。
+       */
+      var byIndex = {};
+      // 注意名字：**不能**叫 byWord —— 外层那个 byWord 是"词 -> 最近读音"的索引，
+      // 同名局部变量会把它遮住，peek() 就永远读到空（这个坑真踩过）
+      var byWordKey = {};
       for (var rawKey in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, rawKey)) {
-          lower[String(rawKey).toLowerCase().replace(/[^a-z]/g, "")] = obj[rawKey];
-        }
+        if (!Object.prototype.hasOwnProperty.call(obj, rawKey)) continue;
+        var v = obj[rawKey];
+        var k = String(rawKey).trim();
+        if (/^\d+$/.test(k)) byIndex[k] = v;
+        else byWordKey[k.toLowerCase().replace(/[^a-z]/g, "")] = v;
       }
       for (var i = 0; i < batch.length; i++) {
-        var w = batch[i];
-        var v = lower[w];
-        var kana = typeof v === "string" ? v.replace(/\s+/g, "").trim() : "";
+        var item = batch[i];
+        var v2 = byIndex[String(i + 1)];
+        if (v2 === undefined) v2 = byWordKey[item.word];
+        var kana = typeof v2 === "string" ? v2.replace(/\s+/g, "").trim() : "";
         if (kana && RE_KATAKANA.test(kana) && kana.length <= 14) {
-          mem.set(w, { k: kana });
+          mem.set(item.key, { k: kana });
+          byWord[item.word] = kana; // 外层索引：给 peek()/控制台用
           stats.hits++;
           stats.words++;
           hits++;
         } else {
-          // 模型明说给不出的，记成终态 miss；下一轮不会再发这个词
-          mem.set(w, { miss: true });
+          // 模型明说给不出的，记成终态 miss；下一轮不会再发这个词（这一句里的）
+          mem.set(item.key, { miss: true });
           stats.misses++;
           missed++;
         }
@@ -422,11 +494,11 @@
       cooldownUntil = Date.now() + cooldownMs;
       cooldownMs = Math.min(cooldownMs * 2, COOLDOWN_MAX_MS);
       for (var i = 0; i < batch.length; i++) {
-        var w = batch[i];
-        if (mem.has(w)) continue; // 已经有结论的不用重问
-        if (!queued.has(w)) {
-          queued.add(w);
-          queue.push(w);
+        var item = batch[i];
+        if (mem.has(item.key)) continue; // 已经有结论的不用重问
+        if (!queued.has(item.key)) {
+          queued.add(item.key);
+          queue.push(item);
         }
       }
       log("大模型请求失败（" + lastError + "），" + Math.round(cooldownMs / 1000) + "s 后再试");
@@ -441,23 +513,57 @@
      *   - 缓存里有 -> 立刻返回片假名字符串
      *   - 没问过 -> 入队并返回 null（结果回来后会通过 onUpdate 通知上层重扫）
      *   - 已知模型给不出 / 这一层没开 -> 返回 null
+     *
+     * @param {string} word  要注音的词（原样，可以带大小写/变音符号）
+     * @param {string} [line] 它所在的整句歌词 —— **语境**，用来消歧
+     *                        （read リード/レッド、人名地名、D/N/A 这类记号）。
+     *                        不传就退化成"只看这个词"，行为与以前一致。
      */
-    function lookup(word) {
-      var w = keyOf(word);
-      if (!w) return null;
-      var rec = mem.get(w);
+    function lookup(word, line) {
+      var key = cacheKeyOf(word, line);
+      if (!key) return null;
+      var rec = mem.get(key);
       if (rec) {
         if (rec.miss === true) return null;
         stats.cacheHits++;
         return rec.k;
       }
       if (!canAsk()) return null;
-      if (!queued.has(w)) {
-        queued.add(w);
-        queue.push(w);
+      if (!queued.has(key)) {
+        queued.add(key);
+        queue.push({ key: key, word: keyOf(word), context: contextKey(line) });
       }
       schedule(queue.length >= cfg.batchSize ? 0 : FLUSH_DELAY_MS);
       return null;
+    }
+
+    /**
+     * 这个词现在是不是"还在等结果"？
+     *
+     * 上层靠它决定要不要先拿**英文音译规则**的结果顶上：
+     * 用户要的顺序是「大模型 -> 免费接口 -> 规则」，所以等待期间**先不标**，
+     * 等准确读音回来再补 —— 但这一层挂了/没配/在退避时，必须立刻放行让规则兜底，
+     * 否则断网就等于一个字都不标。
+     */
+    function isWaiting(word, line) {
+      if (!canAsk()) return false; // 没开 / 没配 key / 正在退避 -> 不等
+      var key = cacheKeyOf(word, line);
+      if (!key) return false;
+      return !mem.has(key); // 已经有结论（命中或"给不出"）就不用等
+    }
+
+    /**
+     * 只按词取"最近一次拿到的读音"，**不看语境**。
+     *
+     * 给控制台排障用（`LK.display('kaleidoscope')` 不带句子时总得有东西看），
+     * 也用于"这个词我到底问过没有"的判断。页面注音不要用它 ——
+     * 页面必须走 lookup(word, line)，否则会把上一句的读音套到这一句上。
+     */
+    function peek(word) {
+      var w = keyOf(word);
+      if (!w) return null;
+      var k = byWord[w];
+      return typeof k === "string" ? k : null;
     }
 
     /** 立刻把队列里的词发出去（不等攒批窗口） */
@@ -490,7 +596,9 @@
               temperature: 0,
               max_tokens: 100,
               response_format: { type: "json_object" },
-              messages: [{ role: "user", content: promptFor(["clover"]) }],
+              messages: [
+                { role: "user", content: promptFor([{ i: 1, w: "clover", line: "きらめく clover の歌" }]) },
+              ],
             }),
             signal: ctrl ? ctrl.signal : undefined,
           });
@@ -505,7 +613,9 @@
           var content =
             data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
           var obj = pickJson(content);
-          var kana = obj && typeof obj.clover === "string" ? obj.clover : "";
+          // 响应按条目下标（现在）或词（老形状）都可能
+          var kana = obj ? (typeof obj["1"] === "string" ? obj["1"] : obj.clover) : "";
+          kana = typeof kana === "string" ? kana.replace(/\s+/g, "").trim() : "";
           if (!kana) return { ok: false, message: "接口通了，但没解析出读音：" + String(content).slice(0, 80) };
           if (!RE_KATAKANA.test(kana)) return { ok: false, message: "接口通了，但返回的不是纯片假名：" + kana };
           return { ok: true, message: "接口正常（" + cfg.endpoint + "，clover -> " + kana + "）" };
@@ -521,6 +631,8 @@
 
     return {
       lookup: lookup,
+      peek: peek,
+      isWaiting: isWaiting,
       flush: flush,
       test: test,
       clearCache: clearCache,

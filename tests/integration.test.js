@@ -294,10 +294,14 @@ test("大模型层：规则读歪的词，结果回来之后注音会被换上�
       // 这里一并当"离线"拒掉，免得它把下面的 JSON.parse 搞炸（测试噪音）
       if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
       const body = JSON.parse(init.body);
-      const words = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
-      requests.push({ url: url, words: words, auth: init.headers.Authorization });
+      // 提示词里的条目是 [{i, w, line}]：w 是词，line 是整句歌词（语境）
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      const words = items.map((it) => it.w);
+      requests.push({ url: url, words: words, items: items, auth: init.headers.Authorization });
       const out = {};
-      for (const w of words) out[w] = w === "kaleidoscope" ? "カレイドスコープ" : "ダミー";
+      items.forEach((it, i) => {
+        out[String(i + 1)] = it.w === "kaleidoscope" ? "カレイドスコープ" : "ダミー";
+      });
       return Promise.resolve({
         ok: true,
         status: 200,
@@ -312,6 +316,11 @@ test("大模型层：规则读歪的词，结果回来之后注音会被换上�
   assert.strictEqual(requests[0].auth, "Bearer sk-test", "key 要按 Bearer 发出去");
   assert.ok(requests[0].words.indexOf("kaleidoscope") >= 0, "词典里没有的词要进队列：" + requests[0].words.join(","));
   assert.ok(requests[0].words.indexOf("light") < 0, "词典命中的词不该浪费请求：" + requests[0].words.join(","));
+  // 语境要一起发过去：line 是那一整句歌词
+  assert.ok(
+    requests[0].items[0].line.indexOf("kaleidoscope") >= 0,
+    "请求里要带上整句歌词当语境：" + JSON.stringify(requests[0].items)
+  );
 
   const s = env.api.stats().llm;
   assert.ok(s && s.hasKey === true && s.requests >= 1 && s.hits >= 1, JSON.stringify(s));
@@ -416,9 +425,11 @@ test("控制台诊断：LK.display() 给的是页面上实际用的读音（可�
     fetch: function (url, init) {
       if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
       const body = JSON.parse(init.body);
-      const words = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
       const out = {};
-      for (const w of words) out[w] = w === "kaleidoscope" ? "カレイドスコープ" : "ダミー";
+      items.forEach((it, i) => {
+        out[String(i + 1)] = it.w === "kaleidoscope" ? "カレイドスコープ" : "ダミー";
+      });
       return Promise.resolve({
         ok: true,
         status: 200,
@@ -483,6 +494,50 @@ test("用户报的缩写：Mr. / Dr. 念整个词，LDK 这类缩写逐字母读
     ["LDK", "エルディーケー"],
   ]);
   assert.strictEqual(baseText(p), "Mr. Brown と Dr. K、それから LDK の部屋", "原文（含句点）一字不改");
+});
+
+test("层序：规则的结果要等在线那层 —— 等待期间先不标，失败后立刻回落", async () => {
+  // 用户要的顺序：大模型 -> 免费接口 -> 英文音译规则。
+  // 所以有在线可用时，规则猜出来的读音**先不显示**（等准确的那个），
+  // 但接口失败之后必须马上回落，不能一直空着。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>きらめく kaleidoscope の夜</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+  // 默认桩：所有请求都失败（离线）
+  const env = bootPlugin(HTML);
+  await env.runLoad();
+
+  await sleep(300);
+  const p = env.document.querySelector("ul.lyric li p");
+  assert.strictEqual(rubyCount(p), 0, "在线那层还没回来：先不标规则猜的读音");
+  assert.strictEqual(p.textContent, "きらめく kaleidoscope の夜", "底字当然不动");
+
+  // 免费接口的攒批窗口 1.2s + 请求失败 -> 之后必须回落到规则
+  await sleep(2600);
+  assert.strictEqual(rubyCount(p), 1, "接口失败后要用规则兜底，不能一直空着：" + p.innerHTML);
+});
+
+test("层序：完全离线设置（关掉联网）时规则立刻生效，不等任何请求", async () => {
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>きらめく kaleidoscope の夜</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(300);
+  const p = env.document.querySelector("ul.lyric li p");
+  assert.strictEqual(rubyCount(p), 1, "没有在线可用时不该等：" + p.innerHTML);
 });
 
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {

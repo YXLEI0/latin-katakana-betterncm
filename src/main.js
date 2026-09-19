@@ -173,32 +173,52 @@
   /*
    * 取一个词的显示读音。层序（越靠前越优先）：
    *
-   *   1. 词典（人工核过的外来语写法）—— 不等请求，也不让联网结果覆盖；
+   *   1. 词典（人工核过的外来语写法 / 缩写 / 字母名）—— 确定，直接返回；
    *   2. 罗马音（歌词本来就是罗马音的，切出来是确定的）；
-   *   3. **大模型校正**：只对"规则猜出来的"词生效。命中缓存就立刻用，
-   *      没命中就入队（lookup 返回 null），结果异步回来时通过 onUpdate 重扫换上；
-   *   4. Google 校正：没配大模型 key 时才轮到它，且只对"没把握"的词；
-   *   5. 规则结果。
+   *   3. **大模型校正**（配了 key 时）—— 优先于拼写规则；
+   *   4. **免费接口**（没配大模型时）—— 同样优先于拼写规则；
+   *   5. 英文音译规则（兜底，拼写猜测）。
    *
-   * 为什么规则结果可以被大模型盖掉：规则是拼写音译，hello 会读成 ヘッラオ、
-   * question 会读成 クワエサション —— 那不是人唱的音。词典之外没有更可靠的来源。
+   * 用户明确要的顺序是「大模型 -> 免费接口 -> 规则」：规则是拼写音译，
+   * hello 会读成 ヘッラオ、question 会读成 クワエサション，那不叫人唱的音。
+   * 所以**在线那层还能给出结果时，这一轮先不标**（返回 null），等它回来再补 ——
+   * 先标一个错的再改，不如晚半秒标一个对的。
+   *
+   * 但这一条有个必须守住的底线：**在线那层挂了/没配/在退避时立刻放行**，
+   * 让规则兜底，否则断网就等于一个字都不标。
    */
-  function readForDisplay(word) {
+  function readForDisplay(word, line) {
     if (!state.reader) return null;
     var r = state.reader.read(word);
     if (!r || !r.kana) return null;
 
-    // 词典与罗马音的结果是确定的，不该被覆盖，也没必要发请求
-    if (r.source === "rule") {
-      if (state.llm) {
-        var llm = state.llm.lookup(word);
-        if (llm) return llm;
+    // 词典 / 罗马音 / 字母名 / 记号：确定的答案，直接返回，不发请求也不等
+    if (r.source !== "rule") return r.kana;
+
+    /*
+     * ③ 大模型。配了 key 就**只**走它，不再同时问免费接口 —— 两个都问是白花一次请求，
+     * 而且两边的答案还可能打架。它挂了/在退避（isWaiting 为 false）时用规则兜底。
+     */
+    var llmOn = !!(state.llm && state.llm.config && state.llm.config().enabled && state.llm.config().hasKey);
+    if (llmOn) {
+      if (line === undefined || line === null) {
+        // 控制台 LK.display('词') 这种没有句子的情况：取这个词最近一次的读音
+        var seen = state.llm.peek(word);
+        return seen || r.kana;
       }
-      if (config.online && state.corrector && !r.confident) {
-        var fixed = state.corrector.lookup(word);
-        if (fixed) return fixed;
-      }
+      var llm = state.llm.lookup(word, line);
+      if (llm) return llm;
+      return state.llm.isWaiting(word, line) ? null : r.kana; // 等准确读音；等待不了就用规则
     }
+
+    // ④ 免费接口（没配大模型时才轮到它）
+    if (config.online && state.corrector) {
+      var fixed = state.corrector.lookup(word);
+      if (fixed) return fixed;
+      if (state.corrector.isWaiting && state.corrector.isWaiting(word)) return null;
+    }
+
+    // ⑤ 规则兜底
     return r.kana;
   }
 
@@ -714,8 +734,8 @@
         });
       }
       state.annotator = LKAnnotate.createAnnotator({
-        lookup: function (word) {
-          return readForDisplay(word);
+        lookup: function (word, line) {
+          return readForDisplay(word, line);
         },
         annotateAll: config.annotateAll !== false,
         log: function () {

@@ -535,8 +535,12 @@
            * 折过的形式会把连字符吃掉，于是 `D/N/A`（记号，逐字母读）和
            * `x-ray`（普通词）在读音层就分不出来了 —— 见 reading.js 的
            * notationToKatakana()。查表那几层自己会折，传原文不损失什么。
+           *
+           * 第二个参数是**整句原文**：大模型那一层靠它消歧
+           * （read リード/レッド、人名地名、记号）。同一个词在不同句子里
+           * 读音不同，所以语境要跟着词一起传下去。
            */
-          g = lookup(tokens[i].text);
+          g = lookup(tokens[i].text, text);
           if (!g) missing.push(tokens[i].norm);
         }
         glosses.push(g);

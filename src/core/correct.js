@@ -160,6 +160,19 @@
       return null;
     }
 
+    /**
+     * 这个词是不是"还在等在线结果"（排了队或正在请求）。
+     *
+     * 上层靠它决定要不要先用**英文音译规则**的结果顶上：用户要的顺序是
+     * 「大模型 -> 免费接口 -> 规则」，所以等待期间先不标；接口失败/关掉之后
+     * （fail 时会把词记成"查过、没有"并清出队列）这里立刻变 false，让规则兜底 ——
+     * 断网也照标。
+     */
+    function isWaiting(word) {
+      if (!word) return false;
+      return queue.has(word) || inflight.has(word);
+    }
+
     // ------------------------------------------------------------ 在线请求
 
     function scheduleFlush() {
@@ -242,6 +255,11 @@
           log("在线校正失败：", lastError);
           // 失败后不再自动重排队，避免接口挂了以后疯狂重试。
           // 用户改设置或手动 rescan 时会重新排队。
+          //
+          // 但**必须叫一次 onUpdate**：现在层序是「大模型/免费接口 -> 规则」，
+          // 在线的结果没回来之前那一轮是"先不标"的 —— 失败了不重扫，
+          // 那些词就会一直空着（页面看着像坏了）。重扫之后规则层立刻兜底。
+          onUpdate();
         }
       );
     }
@@ -363,6 +381,7 @@
 
     return {
       lookup: lookup,
+      isWaiting: isWaiting,
       clearCache: clearCache,
       flushCache: function () {
         flushCache(true);
