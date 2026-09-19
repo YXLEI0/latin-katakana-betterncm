@@ -379,9 +379,12 @@ tools/
   build.js / check.js / read-trace.js / verify-install.js
   build-dict.js       生成离线读音词典
   seed-words.js       种子词表（唯一数据源）
-  make-preview.js     生成 src/preview.png（零依赖手写 PNG 编码器）
   patch-jp-furigana*.js  jp-furigana 共存补丁（和片假名终结者仓库里的同一份，必须保持一致）
 ```
+
+`src/preview.png` 是**真机截图**（网易云歌词页，《快晴》那句
+「I know this sky loves you.」上面标着 アイ ノウ ディス スカイ ラブズ ユー），
+不是画出来的示意图 —— 不要用占位图覆盖它。
 
 ## 许可
 
