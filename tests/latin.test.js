@@ -99,6 +99,32 @@ test("looksReadable：单字母默认不标，但 a / I 是真词要标", () => 
   assert.strictEqual(by["you"], true);
 });
 
+test("记号整体算一个词：D/N/A / N/A / A.B.C / R&B / X-Y", () => {
+  // 用户报的：`だって D/N/Aじゃ 騙れない`。记号不该被切成三个单字母，
+  // 而是整体逐字母读（reading.js 的 notationToKatakana）。
+  const cases = [
+    ["D/N/A", "d/n/a"],
+    ["N/A", "n/a"],
+    ["A.B.C", "a.b.c"],
+    ["R&B", "r&b"],
+    ["X-Y", "xy"], // 连字符会在 normalize 里被吃掉 —— 所以读音层要拿**原始写法**
+  ];
+  for (const [raw, norm] of cases) {
+    const toks = latin.scan(raw);
+    assert.strictEqual(toks.length, 1, raw + " 应该是一个词，实际 " + toks.length + " 个");
+    assert.strictEqual(toks[0].text, raw);
+    assert.strictEqual(toks[0].notation, true, raw + " 应该被标成记号");
+    assert.strictEqual(latin.looksReadable(toks[0]), true, raw + " 要标（逐字母读音）");
+    if (norm) assert.strictEqual(toks[0].norm, norm);
+  }
+  // 反例：连字符词的每段不止一个字母，就不是记号，按普通词读
+  const mail = latin.scan("e-mail")[0];
+  assert.strictEqual(mail.notation, false, "e-mail 是普通词");
+  const xray = latin.scan("X-ray")[0];
+  assert.strictEqual(xray.notation, false, "X-ray 是普通词（不能逐字母念）");
+  assert.strictEqual(xray.text, "X-ray");
+});
+
 test("粘在分隔符上的单字母不算词（D/N/A 里的 A 被注成 ア 是错的）", () => {
   // 用户报的：`だって D/N/Aじゃ 騙れない` 里那个 A 被注音了。
   // 它是标题记号的零件，不是英文冠词。

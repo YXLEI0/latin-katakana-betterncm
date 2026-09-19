@@ -424,7 +424,9 @@
       var got = 0;
       for (var i = 0; i < tokens.length; i++) {
         var tk = tokens[i];
-        var r = LKMatcher.looksReadable(tk) ? state.reader.read(tk.norm) : null;
+        // 和 annotate.js 一样传**原始写法**：折过的形式会把连字符吃掉，
+        // 记号（D/N/A）和普通词（x-ray）就分不出来了
+        var r = LKMatcher.looksReadable(tk) ? state.reader.read(tk.text) : null;
         if (tk.start > pos) frag.appendChild(document.createTextNode(demo.slice(pos, tk.start)));
         if (r && r.kana) {
           var ruby = document.createElement("ruby");

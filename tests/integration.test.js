@@ -365,7 +365,7 @@ test("用户报的那行：Tell me a story 里的 a 也要注音", async () => {
   assert.strictEqual(baseText(p), "Tell me a story tell me a story 叶うなら", "底字一字不改");
 });
 
-test("用户报的那行：D/N/A 是记号不是冠词，一个字母都不许注", async () => {
+test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 ア", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">
   <div class="m-lyric">
@@ -380,8 +380,11 @@ test("用户报的那行：D/N/A 是记号不是冠词，一个字母都不许�
   await sleep(600);
 
   const p = env.document.querySelector("ul.lyric li p");
-  assert.strictEqual(rubyCount(p), 0, "D/N/A 里的 A 不该被注成 ア：" + p.innerHTML);
-  assert.strictEqual(p.textContent, "だって D/N/Aじゃ 騙れない", "原文一字不改");
+  // 记号整体一个 ruby，读音是字母名；不是把 A 单独读成 ア
+  assert.deepStrictEqual(PAIRS(p), [["D/N/A", "ディーエヌエー"]]);
+  assert.strictEqual(baseText(p), "だって D/N/Aじゃ 騙れない", "原文一字不改");
+  const stats = env.api.stats();
+  assert.ok(stats.reading.letterHits >= 1, "应该记在 letters 这一类上：" + JSON.stringify(stats.reading));
 });
 
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {

@@ -318,6 +318,50 @@ test("英文：confident:false 的判定条件", () => {
   assert.strictEqual(LK.englishToKatakana("world").confident, true);
 });
 
+// ============================================================ 记号逐字母
+
+test("记号：逐字母读（字母名），分隔符不发音、& 读 アンド", () => {
+  const r = LK.createReader({ dict: {} });
+  const cases = [
+    ["D/N/A", "ディーエヌエー"],
+    ["N/A", "エヌエー"],
+    ["A.B.C", "エービーシー"],
+    ["R&B", "アールアンドビー"],
+    ["X-Y", "エックスワイ"],
+    ["U.S.A", "ユーエスエー"],
+  ];
+  for (const [word, want] of cases) {
+    const got = r.read(word);
+    assert.ok(got, word + " 应该有读音");
+    assert.strictEqual(got.kana, want, word);
+    assert.strictEqual(got.source, "letters", word + " 的来源应该是 letters");
+    assert.strictEqual(got.confident, true, word + " 逐字母是确定的");
+  }
+});
+
+test("记号优先于词典：N/A 不能因为 na 在词典里就读成 ナ", () => {
+  const r = LK.createReader({ dict: { na: "ナ", xy: "クスィ" } });
+  const na = r.read("N/A");
+  assert.strictEqual(na.kana, "エヌエー", "N/A 不能读成 ナ");
+  assert.strictEqual(na.source, "letters");
+  assert.strictEqual(r.read("X-Y").kana, "エックスワイ", "X-Y 不能读成 クスィ");
+  // 普通词照旧走词典
+  assert.strictEqual(r.read("na").kana, "ナ");
+  assert.strictEqual(r.read("na").source, "dict");
+});
+
+test("不是记号的连字符词照旧按单词读（x-ray 不能逐字母念）", () => {
+  const r = LK.createReader({ dict: {} });
+  const x = r.read("x-ray");
+  assert.notStrictEqual(x.source, "letters", "x-ray 是词不是记号");
+  assert.notStrictEqual(x.kana, "エックスアールエーワイ");
+  // 字母名表本身也要齐全、边界要挡住
+  assert.strictEqual(LK.lettersToKatakana("abc"), "エービーシー");
+  assert.strictEqual(LK.lettersToKatakana("a"), null, "单字母不走这条");
+  assert.strictEqual(LK.lettersToKatakana("&"), null, "只有 & 不算");
+  assert.strictEqual(LK.lettersToKatakana("abcdefghijklm"), null, "太长的不当记号");
+});
+
 // ============================================================ createReader
 
 test("reader：dict 命中优先于罗马音和规则", () => {
@@ -562,6 +606,7 @@ test("边界：stats 初值都是 0", () => {
   const r = LK.createReader({ dict: {} });
   assert.deepStrictEqual(r.stats(), {
     dictHits: 0,
+    letterHits: 0,
     romajiHits: 0,
     ruleHits: 0,
     onlineHits: 0,

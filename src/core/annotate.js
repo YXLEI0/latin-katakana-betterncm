@@ -530,7 +530,13 @@
       for (var i = 0; i < tokens.length; i++) {
         var g = null;
         if (matcher.looksReadable(tokens[i])) {
-          g = lookup(tokens[i].norm);
+          /*
+           * 传**原始写法**（tk.text）而不是 tk.norm：
+           * 折过的形式会把连字符吃掉，于是 `D/N/A`（记号，逐字母读）和
+           * `x-ray`（普通词）在读音层就分不出来了 —— 见 reading.js 的
+           * notationToKatakana()。查表那几层自己会折，传原文不损失什么。
+           */
+          g = lookup(tokens[i].text);
           if (!g) missing.push(tokens[i].norm);
         }
         glosses.push(g);

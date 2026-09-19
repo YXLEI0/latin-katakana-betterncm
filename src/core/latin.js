@@ -14,8 +14,20 @@
   /*
    * 一个"词"：字母开头结尾，中间允许撇号和连字符（don't / e-mail / rock'n'roll）。
    * 撇号用 ASCII 的和全角的都收 —— 歌词里两种都见过。
+   *
+   * 另一种要先认出来的是**记号**：`D/N/A`、`N/A`、`A.B.C`、`R&B`、`X-Y` ——
+   * 单个字母被分隔符串起来（用户报的 `だって D/N/Aじゃ 騙れない` 就是这种）。
+   * 它整体算一个词，读音是**逐字母**的字母名（ディーエヌエー），见 reading.js。
+   * 必须排在普通词前面：否则 `D/N/A` 会被切成三个单字母，或者 `X-Y` 被
+   * 当成一个普通的连字符词读成"xy"。
    */
-  var RE_WORD = /[A-Za-z](?:[A-Za-z]|['\u2019-](?=[A-Za-z]))*/g;
+  var RE_NOTATION = /[A-Za-z](?:[\/\\|_.&#*~+=\u30FB\uFF0F\uFF3C-][A-Za-z])+/g;
+
+  /** 整串就是一个记号（`D/N/A`、`N/A`、`A.B.C`、`R&B`、`X-Y`） */
+  var RE_NOTATION_WHOLE = /^[A-Za-z](?:[\/\\|_.&#*~+=\u30FB\uFF0F\uFF3C-][A-Za-z])+$/;
+
+  /** 普通词（含撇号/连字符） */
+  var RE_PLAIN = /[A-Za-z](?:[A-Za-z]|['\u2019-](?=[A-Za-z]))*/g;
 
   /** 这段文字里有没有拉丁字母 */
   function hasLatin(text) {
@@ -45,32 +57,60 @@
   }
 
   /**
-   * 切成一个个词，返回 [{ text, start, end, norm, glued }]。
+   * 切成一个个词，返回 [{ text, start, end, norm, glued, notation }]。
    *
    * norm 是拿去查读音的形式：小写、去掉撇号连字符。查表、音译都用它 ——
    * 保留原始 text 是为了原样把底字写回 DOM（底字必须是歌词原文，一个字符不改）。
-   * glued 只对单字母有意义：它粘在分隔符上，是记号的一截，不是词。
+   * glued 只对单字母有意义：它粘在分隔符上。notation 是"记号"整体（D/N/A）。
+   *
+   * 扫描顺序：先记号、再普通词 —— 两个正则都在同一个位置试，取先匹配上的。
    */
   function scan(text) {
     var out = [];
     if (!text) return out;
-    RE_WORD.lastIndex = 0;
-    var m;
-    while ((m = RE_WORD.exec(text)) !== null) {
-      var raw = m[0];
-      var start = m.index;
-      var end = m.index + raw.length;
+    var i = 0;
+    var len = text.length;
+    while (i < len) {
+      var ch = text.charAt(i);
+      if (!/[A-Za-z]/.test(ch)) {
+        i++;
+        continue;
+      }
+      /*
+       * 先试记号：`D/N/A` 要整体认出来。
+       * 但记号后面**不能再跟字母** —— 否则 `e-mail` 会被切成 `e-m` + `ail`
+       * （两个单字母被连字符串起来，正好长得像记号）。那种情况退回普通词。
+       */
+      var raw = null;
+      var nota = matchAt(RE_NOTATION, text, i);
+      if (nota && !/[A-Za-z]/.test(text.charAt(i + nota.length))) raw = nota;
+      if (!raw) raw = matchAt(RE_PLAIN, text, i);
+      if (!raw) {
+        i++;
+        continue;
+      }
+      var start = i;
+      var end = i + raw.length;
       out.push({
         text: raw,
         start: start,
         end: end,
         norm: normalize(raw),
+        // 单字母且粘着分隔符 —— 只有在它**没有**组成记号时才会走到
+        // （例如句尾那个孤零零的 `A.`），那种不标
         glued: raw.length === 1 ? isGluedLetter(text, start, end) : false,
+        notation: raw.length > 1 && RE_NOTATION_WHOLE.test(raw),
       });
-      // 零宽匹配保护：正常不会发生，但正则改坏了不能让浏览器卡死
-      if (m.index === RE_WORD.lastIndex) RE_WORD.lastIndex++;
+      i = end;
     }
     return out;
+  }
+
+  /** 在 i 处锚定匹配一个正则（不带 g，靠 ^ 与切片避免 lastIndex 的坑） */
+  function matchAt(re, text, i) {
+    re.lastIndex = 0;
+    var m = re.exec(text.slice(i));
+    return m && m.index === 0 ? m[0] : null;
   }
 
   /** 查表/音译用的规范形式：小写、去掉撇号与连字符 */
@@ -93,8 +133,9 @@
    * 但 RNP 的罗马音层本来就被整层跳过，纯罗马音行里的单字母也极少，
    * 而英文歌部分里 "I" 远比裸的 "i" 常见，所以选这一侧。
    *
-   * 粘在分隔符上的单字母不算词（`D/N/A` 的 A、`N/A`、`A.B.C`）——
-   * 那是记号的零件，按英文冠词读成 ア 是错的（用户报过）。见 isGluedLetter()。
+   * 记号（`D/N/A`、`N/A`、`A.B.C`、`R&B`）整体算一个词，读音是逐字母的字母名，
+   * 所以这里照常放行（norm 长度 >= 2）。孤零零粘着分隔符的单字母（`A.`）
+   * 不标 —— 那是记号的零件或排版噪声。
    *
    * 注意**不做**"常见词不标"的白名单：用户要的就是歌词里的拉丁词都标上读音，
    * the / and 这类也照标 —— 否则一行里漏一半，看着更奇怪。
@@ -103,6 +144,8 @@
 
   function looksReadable(token) {
     if (!token || !token.norm) return false;
+    // 记号：整体逐字母读（D/N/A -> ディーエヌエー）
+    if (token.notation === true) return token.norm.replace(/[^a-z]/g, "").length >= 2;
     if (token.norm.length >= 2) return true;
     if (token.glued === true) return false; // 记号的零件（D/N/A 里的 A）
     return SINGLE_LETTER_WORDS[token.norm] === true;
@@ -121,6 +164,8 @@
     scan: scan,
     normalize: normalize,
     looksReadable: looksReadable,
-    RE_WORD: RE_WORD,
+    isNotation: function (s) {
+      return RE_NOTATION_WHOLE.test(String(s || ""));
+    },
   };
 });

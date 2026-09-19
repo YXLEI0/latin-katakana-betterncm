@@ -1453,6 +1453,93 @@
     return false;
   }
 
+  // ------------------------------------------------------------ 记号逐字母
+
+  /*
+   * 字母名（日语里的通行读法）。用于 `D/N/A`、`N/A`、`A.B.C`、`R&B` 这类**记号**：
+   * 它们不是单词，唱出来是一个字母一个字母念的。
+   *
+   * 全大小写都映射到同一张表（查之前会小写化）。
+   * G 用 ジー（不是 ジェー）、H 用 エイチ（不是 エッチ —— 那个词在日语里有别的意思）、
+   * Z 用 ゼット（JIS 的通行读法；ゼッド 是另一种）。
+   */
+  var LETTER_KANA = {
+    a: "\u30A8\u30FC", // エー
+    b: "\u30D3\u30FC", // ビー
+    c: "\u30B7\u30FC", // シー
+    d: "\u30C7\u30A3\u30FC", // ディー
+    e: "\u30A4\u30FC", // イー
+    f: "\u30A8\u30D5", // エフ
+    g: "\u30B8\u30FC", // ジー
+    h: "\u30A8\u30A4\u30C1", // エイチ
+    i: "\u30A2\u30A4", // アイ
+    j: "\u30B8\u30A7\u30FC", // ジェー
+    k: "\u30B1\u30FC", // ケー
+    l: "\u30A8\u30EB", // エル
+    m: "\u30A8\u30E0", // エム
+    n: "\u30A8\u30CC", // エヌ
+    o: "\u30AA\u30FC", // オー
+    p: "\u30D4\u30FC", // ピー
+    q: "\u30AD\u30E5\u30FC", // キュー
+    r: "\u30A2\u30FC\u30EB", // アール
+    s: "\u30A8\u30B9", // エス
+    t: "\u30C6\u30A3\u30FC", // ティー
+    u: "\u30E6\u30FC", // ユー
+    v: "\u30D6\u30A4", // ブイ
+    w: "\u30C0\u30D6\u30EA\u30E5\u30FC", // ダブリュー
+    x: "\u30A8\u30C3\u30AF\u30B9", // エックス
+    y: "\u30EF\u30A4", // ワイ
+    z: "\u30BC\u30C3\u30C8", // ゼット
+  };
+
+  /** `&` 在记号里是要念出来的（R&B -> アールアンドビー） */
+  var LETTER_AMP = "\u30A2\u30F3\u30C9"; // アンド
+
+  /*
+   * 整串就是一个记号：`D/N/A`、`N/A`、`A.B.C`、`R&B`、`X-Y` ——
+   * 字母被分隔符一个一个串起来。和 matcher 的 RE_NOTATION_WHOLE 同一口径。
+   *
+   * 为什么判据必须是"**每个**分段都是单个字母"：`X-Y` 是记号（エックスワイ），
+   * 而 `x-ray` 是普通词（エックスレイ）—— 只看"有没有连字符"会把后者也逐字母念。
+   */
+  var RE_NOTATION_RAW = /^[A-Za-z](?:[\/\\|_.&#*~+=\u30FB\uFF0F\uFF3C-][A-Za-z])+$/;
+
+  /**
+   * 一串「只有字母/`&`」的记号 -> 逐字母读音。不是记号就返回 null。
+   *
+   * 长度上限 12：太长的串不是记号，是数据（URL、ID）混进了歌词。
+   */
+  function lettersToKatakana(word) {
+    if (typeof word !== "string") return null;
+    var w = word.toLowerCase();
+    if (!w || w.length < 2 || w.length > 12) return null;
+    if (!/^[a-z&]+$/.test(w)) return null;
+    // 不允许首尾是 &：`&A&` 这种是排版噪声
+    if (w.charAt(0) === "&" || w.charAt(w.length - 1) === "&") return null;
+    var letters = w.replace(/&/g, "");
+    if (letters.length < 2) return null;
+
+    var out = "";
+    for (var i = 0; i < w.length; i++) {
+      var ch = w.charAt(i);
+      if (ch === "&") {
+        out += LETTER_AMP;
+        continue;
+      }
+      if (LETTER_KANA[ch] === undefined) return null;
+      out += LETTER_KANA[ch];
+    }
+    return out || null;
+  }
+
+  /** 原始写法 -> 逐字母读音（不是记号返回 null）。分隔符不发音，`&` 读 アンド。 */
+  function notationToKatakana(raw) {
+    if (typeof raw !== "string") return null;
+    var s = raw.trim();
+    if (!RE_NOTATION_RAW.test(s)) return null;
+    return lettersToKatakana(s.toLowerCase().replace(/[^a-z&]/g, ""));
+  }
+
   // ------------------------------------------------------------ 规范化
 
   /**
@@ -1487,7 +1574,7 @@
     var online = {};
     var log = typeof options.log === "function" ? options.log : null;
 
-    var stat = { dictHits: 0, romajiHits: 0, ruleHits: 0, onlineHits: 0, missed: 0 };
+    var stat = { dictHits: 0, letterHits: 0, romajiHits: 0, ruleHits: 0, onlineHits: 0, missed: 0 };
 
     /** 只在这里打日志，方便上层开开关排查 */
     function trace(msg) {
@@ -1510,6 +1597,7 @@
     /**
      * 一次查找的完整判定顺序：
      *   ① dict：原样 -> 小写 -> 去掉非字母
+     *   ①.5 记号逐字母读（D/N/A -> ディーエヌエー）
      *   ② romajiToKatakana（切不干净会返回 null，自然落到 ③）
      *   ③ englishToKatakana
      * 查不到返回 null（输入为空、或规范化后没有拉丁字母，也走这条路）。
@@ -1522,11 +1610,26 @@
       var shown = normalize(raw);
       if (!shown || !RE_LATIN.test(shown)) return null;
 
+      /*
+       * ① 记号：原始写法就是「字母 分隔符 字母」的，逐字母读
+       *    （D/N/A -> ディーエヌエー、R&B -> アールアンドビー）。
+       *
+       * 必须排在词典**前面**：记号的字母串去掉分隔符之后可能正好是个词条
+       * （dna / abc 就在词典里），那会读成单词音而不是字母名。
+       * 判据用**原始串**（raw）而不是折过的 shown —— 折的时候连字符会被去掉，
+       * 那样 `X-Y` 和 `x-ray` 就分不出来了（前者是记号，后者是词）。
+       */
+      var spelled = notationToKatakana(raw);
+      if (spelled) {
+        trace("letters 命中：" + raw + " -> " + spelled);
+        return { kana: spelled, source: "letters", confident: true };
+      }
+
       var keys = keysFor(raw, shown);
       var i;
       var key;
 
-      // ① 词典
+      // ② 词典
       for (i = 0; i < keys.length; i++) {
         key = keys[i];
         if (dict[key] !== undefined && dict[key]) {
@@ -1544,7 +1647,7 @@
         }
       }
 
-      // ② 罗马音。这里用 shown（已小写、去了首尾标点）而不是 stripNonLetters，
+      // ③ 罗马音。这里用 shown（已小写、去了首尾标点）而不是 stripNonLetters，
       //    因为 "saka-" 词尾的连字符是长音符，不能被吃掉。
       var kana = romajiToKatakana(shown);
       if (kana) {
@@ -1552,7 +1655,7 @@
         return { kana: kana, source: "romaji", confident: true };
       }
 
-      // ③ 英文规则。永远有结果（最差也是个不 confident 的读音）。
+      // ④ 英文规则。永远有结果（最差也是个不 confident 的读音）。
       var res = englishToKatakana(shown);
       trace("rule 命中：" + shown + " -> " + res.kana + "（confident=" + res.confident + "）");
       return { kana: res.kana, source: "rule", confident: res.confident };
@@ -1568,6 +1671,7 @@
       if (res.source === "dict") stat.dictHits++;
       else if (res.source === "romaji") stat.romajiHits++;
       else if (res.source === "online") stat.onlineHits++;
+      else if (res.source === "letters") stat.letterHits++;
       else stat.ruleHits++;
       return res;
     }
@@ -1600,6 +1704,7 @@
     function stats() {
       return {
         dictHits: stat.dictHits,
+        letterHits: stat.letterHits,
         romajiHits: stat.romajiHits,
         ruleHits: stat.ruleHits,
         onlineHits: stat.onlineHits,
@@ -1613,10 +1718,13 @@
   return {
     romajiToKatakana: romajiToKatakana,
     englishToKatakana: englishToKatakana,
+    lettersToKatakana: lettersToKatakana,
+    notationToKatakana: notationToKatakana,
     createReader: createReader,
     normalize: normalize,
     // 下面这些是给上层/测试翻表用的，不在任务要求的四个 API 里，但不多余
     ENGLISH_EXCEPTIONS: ENGLISH_EXCEPTIONS,
+    LETTER_KANA: LETTER_KANA,
     RE_KATAKANA: RE_KATAKANA,
   };
 });
