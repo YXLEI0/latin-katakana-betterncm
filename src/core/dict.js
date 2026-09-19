@@ -4,7 +4,7 @@
  * 两份数据源，由 tools/build-dict.js 合并（跑 npm run build:dict 重新生成）：
  *   1. tools/seed-words.js      —— 人工核过（其中大部分是从 katakana-terminator 的
  *      离线词典反转来的真实外来语写法，那份本来就是"片假名外来语 -> 英文原词"）；
- *   2. tools/seed-words-llm.js  —— 大模型按英文词频批量生成的读音（5553 条），
+ *   2. tools/seed-words-llm.js  —— 大模型按英文词频批量生成的读音（5550 条），
  *      由 tools/expand-dict-llm.js 生成，人工词表优先。
  *
  * 读音查找顺序见 core/reading.js：本词典 -> 罗马音切分 -> 英文音译规则
@@ -456,10 +456,9 @@
     "availability": "アベイラビリティ",
     "available": "アベイラブル",
     "avatar": "アバター",
-    "ave": "アベニュー",
+    "ave": "アヴェ",
     "avenue": "アベニュー",
     "average": "アベレージ",
-    "avg": "アベレージ",
     "aviation": "アビエーション",
     "avoid": "アボイド",
     "award": "アワード",
@@ -639,7 +638,6 @@
     "blue": "ブルー",
     "blues": "ブルース",
     "bluetooth": "ブルートゥース",
-    "blvd": "ブールバード",
     "bmw": "ビーエムダブリュー",
     "board": "ボード",
     "boards": "ボーズ",
@@ -6079,6 +6077,6 @@
 
   return {
     words: words,
-    count: 6057,
+    count: 6055,
   };
 });

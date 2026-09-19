@@ -597,6 +597,29 @@ test("用户报的 tick：不许是 カチカチ（拟声词）；没在线可�
   assert.strictEqual(baseText(p), "時計の tick が カチカチ と鳴る", "原文一字不改");
 });
 
+test("用户报的一行：Ave Mujica 不能被展开成 アベニュー", async () => {
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>Ave Mujica の 世界へ</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+
+  const p = env.document.querySelector("ul.lyric li p");
+  // Ave 是拉丁语的"万福"（Ave Maria = アヴェ・マリア），不是 avenue 的缩写
+  assert.deepStrictEqual(PAIRS(p), [
+    ["Ave", "アヴェ"],
+    ["Mujica", "ムジカ"],
+  ]);
+  assert.strictEqual(baseText(p), "Ave Mujica の 世界へ", "原文一字不改");
+});
+
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {
   // 真机上两个插件都会插注音。共存补丁重建完一行只调一个全局钩子，
   // 谁后加载谁就得**链上去**，直接覆盖会让另一个插件立刻开始闪。

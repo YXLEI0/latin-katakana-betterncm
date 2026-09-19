@@ -79,6 +79,11 @@ if (fs.existsSync(LLM_SEED)) {
 let llmProblems = 0;
 let llmAdded = 0;
 let llmSkipped = 0;
+let llmBlocked = 0;
+/*
+ * 生成词表里"读错义项"的黑名单 —— 见 tools/dict-blocklist.js（和测试共用一份）。
+ */
+const BLOCK_LLM = require(path.join(__dirname, "dict-blocklist.js"));
 for (const en of Object.keys(llmWords).sort()) {
   const kana = String(llmWords[en] || "").trim();
   if (!RE_EN.test(en) || !RE_KANA.test(kana)) {
@@ -87,6 +92,10 @@ for (const en of Object.keys(llmWords).sort()) {
   }
   if (words[en] !== undefined) {
     llmSkipped++; // 人工词表里有，保留人工的
+    continue;
+  }
+  if (BLOCK_LLM[en]) {
+    llmBlocked++;
     continue;
   }
   words[en] = kana;
@@ -133,4 +142,5 @@ ${body}
 
 fs.writeFileSync(OUT, out);
 console.log("已生成 " + path.relative(ROOT, OUT) + "：" + keys.length + " 条" +
-  "（人工 " + handCount + " 条 + 大模型 " + llmAdded + " 条，生成物里被人工覆盖 " + llmSkipped + " 条）");
+  "（人工 " + handCount + " 条 + 大模型 " + llmAdded + " 条，生成物里被人工覆盖 " + llmSkipped + " 条" +
+  (llmBlocked ? "，黑名单拦下 " + llmBlocked + " 条" : "") + "）");

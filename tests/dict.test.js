@@ -61,7 +61,9 @@ test("生成词表和词典同步：忘了跑 build:dict 会在这里露馅", ()
   assert.ok(fs.existsSync(seedLlm), "生成词表不存在");
   const mod = require(seedLlm);
   const words = (mod && mod.words) || {};
-  const missing = Object.keys(words).filter((w) => DICT[w] === undefined);
+  // 黑名单里的词是**故意**不进词典的（大模型把缩写展开成了整词，见 tools/dict-blocklist.js）
+  const blocked = require(path.join(ROOT, "tools", "dict-blocklist.js"));
+  const missing = Object.keys(words).filter((w) => DICT[w] === undefined && blocked[w] === undefined);
   assert.deepStrictEqual(
     missing.slice(0, 10),
     [],
@@ -86,6 +88,8 @@ test("常见歌词词都能「确定地」读出纯片假名（不许掉进猜�
     "a", "i",
     // 常见缩写（用户报的 Mr. / Dr.）：日语里念整个词，不是字母名
     "mr", "mrs", "ms", "dr", "prof", "jr", "sr",
+    // Ave（拉丁语的"万福"）：不能被当成 avenue 的缩写展开
+    "ave",
   ];
   const bad = [];
   for (const w of must) {
