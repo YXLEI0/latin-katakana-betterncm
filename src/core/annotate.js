@@ -44,8 +44,17 @@
     return { createAnnotator: function () { throw new Error("LKMatcher 未加载"); } };
   }
 
-  /** 歌手/制作信息行不标（「作詞: アニメ太郎」这类注了没意义还碍眼） */
-  var RE_CREDIT = /^\s*(作[词詞曲編编][:：\s]|Lyric|Music|Arrang|Compos|混音|录音|録音|母带|制作人|Produced|Written|Guitar|Bass|Drum|Piano|Vocal|Mixing|Mastering)/i;
+  /*
+   * 制作信息行不标（「作詞: アニメ太郎」「编曲 : Kenji」这类注了没意义还碍眼）。
+   *
+   * 两处真机反馈：
+   *   1. 用户报「编曲也会被注上」—— 老版本只列了 `作[词詞曲編编]`（作词/作曲），
+   *      **`编曲` 根本不在名单里**，所以「编曲 : Kenji」里的 Kenji 照标。这次补齐。
+   *   2. 「Arranged by Kenji」这类英文credit本来靠前缀匹配，但英文歌词行也可能以
+   *      Music/Words 开头（"Music by the lake"），所以英文那一支要求后面跟
+   *      分隔符或 by；中文那一支要求冒号（中文歌词行不会以「编曲：」开头）。
+   */
+  var RE_CREDIT = /^\s*(?:作[词詞曲編编]|编曲|編曲|混音|录音|録音|母带|母帶|制作人|製作人|出品|监制|監製|吉他|贝斯|貝斯|鼓手|键盘|鍵盤|弦乐|弦樂|和声|和聲|合声|合聲|(?:Lyric|Music|Melody|Arrang|Compos|Produc|Written|Words|Guitar|Bass|Drum|Piano|Keyboard|Vocal|Mixing|Mastering|Recorded|Engineer|Strings|Synthesizer|Programming|Chorus)[a-z]*)\s*(?:[:：]|by\b|-)/i;
 
   // ---------------------------------------------------------------- 注入
 
@@ -394,13 +403,25 @@
     };
 
     // 歌词区域选择器（NCM 3.x 实测 + 2.x + 常见第三方歌词插件）
+    /*
+     * 顺序有意义：**越细的行选择器要排越前**。
+     *
+     * 网易云默认歌词页（3.1.36 实测，来自 jp-furigana 源码注释 + 我们自己的真机轨迹）
+     * 是 `ul#mod_pc_lyric_record.lyric > li.line > p × 2` —— 一个 <li> 里两个 <p>：
+     * 第一个是原文，第二个是**中文翻译**。老版本先命中 `ul.lyric > li` 把整个 <li>
+     * 当区域，于是翻译层跟着原文一起被注了音（用户报的「翻译也会被注上」）。
+     * 现在先按 <p> 取区域，再用 pickLineSibling() 把同一个 <li> 里的第二个块踢掉。
+     */
     var LYRIC_SELECTORS = [
-      "ul.lyric > li",
+      "ul.lyric > li > p",
       "ul.lyric li p",
+      "ul.lyric > li",
+      "div.lyric ul li p",
       ".lyric-line",
       ".lyric-next-p",
       'div[class^="rnp-lyrics-line"]',
       'div[class^="lyric-bar-inner"] div[class^="rnp-lyrics-line"]',
+      'div[class^="rnp-lyrics-overview-line"]',
       'div[class^="lyricMainLine"]',
       'div[class*="lyric-line"]',
     ];
@@ -412,13 +433,27 @@
      *   -translated 中文翻译层，跟日语读音无关
      * 所以后两层直接跳过。用 className 而不是选择器，是因为这几层的 class
      * 在不同版本里前缀/后缀不完全一样。
+     *
+     * 第一支来自 RNP 3.0.2 的 bundle（把 main.js 里的标识符全捞出来核对过）：
+     * 除了 -romaji / -translated，还有 -overview-line-romaji / -overview-line-translation
+     * / -placeholder 这些变体 —— 老正则只认 `rnp-lyrics-line-`，总览页的翻译层就漏掉了。
+     * 后两支是给别家歌词插件兜底：翻译/罗马音层的 class 里基本都会出现
+     * trans / translated / romaji 这种整词（AMLL 那类叫 lyricSubLine）。
      */
-    var SKIP_REGION_CLASS = /rnp-lyrics-line-(romaji|translated)/i;
+    var SKIP_REGION_CLASS = new RegExp(
+      "rnp-lyrics-(?:overview-)?line-(?:romaji|translated|translation|placeholder)" +
+        "|(^|[\\s_-])(?:romaji|romanized|translated|translation|trans|transLine|transText)([\\s_-]|$)" +
+        "|lyricSubLine|lyricSubText|lyricTrans",
+      "i"
+    );
 
     function isSkippedRegion(el) {
       var cn = el && typeof el.className === "string" ? el.className : "";
       return SKIP_REGION_CLASS.test(cn);
     }
+
+    /** 有假名 = 更像日文原文；中文翻译层一个假名都没有（拣行判据见 collectBySelectors） */
+    var RE_KANA = /[\u3041-\u309F\u30A0-\u30FF\uFF66-\uFF9F]/;
 
     /*
      * 标题/歌手等「顺带标注」的容器白名单。
@@ -1188,11 +1223,17 @@
     /**
      * 按一组选择器收集元素，去掉互相包含的重复项。
      * 选择器写错不会抛异常（用户自定义选择器可能非法）。
+     *
+     * lyricCount：前 N 个选择器是「歌词行」，只有它们套用下面两条歌词专属规则
+     * （同一 <li> 只取第一块、别再收已经被更细的行覆盖的祖先）。标题白名单那组
+     * 不套用 —— 那边是「名字 + 歌手」的结构，套用会把歌手那一块丢掉。
      */
-    function collectBySelectors(selectors) {
+    function collectBySelectors(selectors, lyricCount) {
       var regions = [];
       var seen = [];
+      if (typeof lyricCount !== "number") lyricCount = 0;
       for (var i = 0; i < selectors.length; i++) {
+        var isLyric = i < lyricCount;
         var found;
         try {
           found = doc.querySelectorAll(selectors[i]);
@@ -1212,6 +1253,47 @@
             }
           }
           if (covered) continue;
+          if (isLyric && el.parentElement && el.parentElement.tagName === "LI") {
+            /*
+             * 同一个 <li> 里只留一块 —— 网易云默认页是 `li.line > p × 2`：
+             * 第一个 <p> 原文，第二个 <p> 是中文翻译（3.1.36 实测）。
+             *
+             * 判据用**假名**而不是 class：那两层通常没有可用的 class，而
+             * 日文原文必有假名、中文翻译一定没有。所以同一个 <li> 里
+             * 「已经有带假名的一块」就扔掉后来者；如果前一块没假名而这一块有，
+             * 说明前一块是翻译层，把它换掉。两块都没假名（纯英文原文 + 中文翻译）
+             * 时留**第一个** —— 网易云原文在前。
+             */
+            var sib = -1;
+            for (var q = 0; q < regions.length; q++) {
+              if (regions[q].parentElement === el.parentElement) {
+                sib = q;
+                break;
+              }
+            }
+            if (sib >= 0) {
+              var prevKana = RE_KANA.test(visibleText(regions[sib]));
+              var curKana = RE_KANA.test(visibleText(el));
+              if (prevKana || !curKana) continue; // 这一块是翻译/罗马音层
+              regions.splice(sib, 1); // 前一块才是翻译层，换掉它
+              seen.splice(sib, 1);
+            }
+          }
+          if (isLyric) {
+            /*
+             * 更细的行已经收下了，就别再收它的祖先。
+             * 否则 `ul.lyric > li` 会把这个 <li> 整个再收一遍，
+             * 上面刚踢掉的翻译层又跟着父区域回来了。
+             */
+            var wraps = false;
+            for (var w = 0; w < seen.length; w++) {
+              if (el !== seen[w] && el.contains(seen[w])) {
+                wraps = true;
+                break;
+              }
+            }
+            if (wraps) continue;
+          }
           seen.push(el);
           regions.push(el);
         }
@@ -1231,9 +1313,11 @@
      */
     function findRegions(mode) {
       if (!doc || !doc.body) return [];
-      if (mode === "titles") return collectBySelectors(TARGET_SELECTORS);
-      if (mode === "safe") return collectBySelectors(LYRIC_SELECTORS.concat(TARGET_SELECTORS));
-      return collectBySelectors(LYRIC_SELECTORS);
+      if (mode === "titles") return collectBySelectors(TARGET_SELECTORS, 0);
+      if (mode === "safe") {
+        return collectBySelectors(LYRIC_SELECTORS.concat(TARGET_SELECTORS), LYRIC_SELECTORS.length);
+      }
+      return collectBySelectors(LYRIC_SELECTORS, LYRIC_SELECTORS.length);
     }
 
     // 用户传来的 CSS 选择器可能非法，非法时返回空数组而不是抛异常

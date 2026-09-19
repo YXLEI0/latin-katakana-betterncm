@@ -234,3 +234,152 @@ test("RNP 的罗马音层和中文翻译层要跳过", () => {
   assert.strictEqual(romaji.querySelectorAll("ruby.lt-ruby").length, 0, "罗马音层要跳过");
   assert.strictEqual(translated.querySelectorAll("ruby.lt-ruby").length, 0, "翻译层要跳过");
 });
+
+test("RNP 总览页的翻译层 / 罗马音层也要跳过", () => {
+  // RNP 3.0.2 的 bundle 里实际存在的 class（把标识符全捞出来核对过）：
+  // rnp-lyrics-overview-line-romaji / -translation / -placeholder。
+  // 老正则只认 `rnp-lyrics-line-`，这两种变体是漏的。
+  const ctx = newCtx(`<!doctype html><html><body>
+<div class="rnp-lyrics-overview-line">
+  <div class="rnp-lyrics-overview-line-original">きらめく light</div>
+  <div class="rnp-lyrics-overview-line-romaji">ki ra me ku ra i to</div>
+  <div class="rnp-lyrics-overview-line-translation">闪耀的 light</div>
+</div>
+</body></html>`);
+  forceRubyLayout(ctx, true);
+  const ann = makeAnnotator(ctx);
+  ann.pass();
+
+  const orig = ctx.document.querySelector(".rnp-lyrics-overview-line-original");
+  const romaji = ctx.document.querySelector(".rnp-lyrics-overview-line-romaji");
+  const trans = ctx.document.querySelector(".rnp-lyrics-overview-line-translation");
+  assert.strictEqual(orig.querySelectorAll("ruby.lt-ruby").length, 1, "总览页原文要标");
+  assert.strictEqual(romaji.querySelectorAll("ruby.lt-ruby").length, 0, "总览页罗马音层要跳过");
+  assert.strictEqual(trans.querySelectorAll("ruby.lt-ruby").length, 0, "总览页翻译层要跳过");
+});
+
+test("网易云默认歌词页：同一个 <li> 里的第二个 <p>（翻译）不许注音", () => {
+  // 用户报的：「网易云默认歌词页的翻译和编曲也会被注上」。
+  // 默认页结构（3.1.36 实测，见 LYRIC_SELECTORS 注释）是
+  // `ul#mod_pc_lyric_record.lyric > li.line > p × 2`：p1 原文、p2 中文翻译。
+  // 老版本先命中 `ul.lyric > li` 把整个 <li> 当区域，翻译那一块跟着被注了音。
+  const ctx = newCtx(`<!doctype html><html><body>
+<ul id="mod_pc_lyric_record" class="lyric">
+  <li class="line"><p>きらめく light と clover</p><p>闪耀的 light 与 clover</p></li>
+  <li class="line"><p>夢の dream を見て</p><p>看着梦里的 dream</p></li>
+</ul>
+</body></html>`);
+  forceRubyLayout(ctx, true);
+  const ann = makeAnnotator(ctx);
+  ann.pass();
+
+  const ps = ctx.document.querySelectorAll("ul.lyric li p");
+  const first = [...ps[0].querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue);
+  const second = [...ps[1].querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue);
+  const third = [...ps[2].querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue);
+  assert.deepStrictEqual(first, ["light", "clover"], "原文行要标");
+  assert.deepStrictEqual(second, [], "翻译行一个字都不许标");
+  assert.deepStrictEqual(third, ["dream"], "第二行的原文也要标");
+  assert.strictEqual(ps[1].textContent, "闪耀的 light 与 clover", "翻译行必须原样不动");
+});
+
+test("网易云默认歌词页：原文是纯英文时，翻译仍然要跳过", () => {
+  // 假名判据的兜底分支：两块都没假名（纯英文原文 + 中文翻译）时留第一个。
+  const ctx = newCtx(`<!doctype html><html><body>
+<ul class="lyric">
+  <li class="line"><p>light and clover</p><p>光与三叶草</p></li>
+</ul>
+</body></html>`);
+  forceRubyLayout(ctx, true);
+  const ann = makeAnnotator(ctx);
+  ann.pass();
+
+  const ps = ctx.document.querySelectorAll("ul.lyric li p");
+  assert.deepStrictEqual(
+    [...ps[0].querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    ["light", "and", "clover"],
+    "纯英文原文行要标（用户专门要求的行为）"
+  );
+  assert.strictEqual(ps[1].querySelectorAll("ruby.lt-ruby").length, 0, "翻译行不许标");
+});
+
+test("网易云默认歌词页：前一块是空的/没假名时，带假名的那一块要接上", () => {
+  // 换行/占位行残留（p1 空）时的兜底：不能因为「第一块是空的」就把原文漏掉。
+  const ctx = newCtx(`<!doctype html><html><body>
+<ul class="lyric">
+  <li class="line"><p></p><p>きらめく light</p></li>
+</ul>
+</body></html>`);
+  forceRubyLayout(ctx, true);
+  const ann = makeAnnotator(ctx);
+  ann.pass();
+
+  const ps = ctx.document.querySelectorAll("ul.lyric li p");
+  assert.strictEqual(ps[0].querySelectorAll("ruby.lt-ruby").length, 0, "空的占位块不标");
+  assert.deepStrictEqual(
+    [...ps[1].querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    ["light"],
+    "原文那一块要标上"
+  );
+});
+
+test("制作信息行不注音：编曲 / 作词 / Arranged by", () => {
+  // 用户报的「编曲也会被注上」：老正则里只有「作[词詞曲編编]」，
+  // **`编曲` 根本不在名单里**，所以「编曲 : Kenji」的 Kenji 照标。
+  const ctx = newCtx(`<!doctype html><html><body>
+<ul class="lyric">
+  <li class="line"><p>编曲 : Kenji</p></li>
+  <li class="line"><p>作詞 : Yuki</p></li>
+  <li class="line"><p>Arranged by Kenji</p></li>
+  <li class="line"><p>Lyrics by Yuki</p></li>
+  <li class="line"><p>きらめく light</p></li>
+</ul>
+</body></html>`);
+  forceRubyLayout(ctx, true);
+  const ann = makeAnnotator(ctx);
+  ann.pass();
+
+  const ps = ctx.document.querySelectorAll("ul.lyric li p");
+  for (let i = 0; i < 4; i++) {
+    assert.strictEqual(ps[i].querySelectorAll("ruby.lt-ruby").length, 0, "制作信息行不标：" + ps[i].textContent);
+    assert.strictEqual(baseText(ps[i]), ps[i].textContent, "制作信息行原样不动");
+  }
+  assert.strictEqual(ps[4].querySelectorAll("ruby.lt-ruby").length, 1, "歌词行照标");
+});
+
+test("制作信息行：标签和名字分在两个 <p> 里时，名字也不许注音", () => {
+  // 真机上「编曲」这两个字常常单独占一个元素，名字在下一个兄弟块里。
+  // 行内正则只看得到「编曲 : 」，名字那一块得靠「同一个 <li> 只取第一块」拦住。
+  const ctx = newCtx(`<!doctype html><html><body>
+<ul class="lyric">
+  <li class="line"><p>编曲 : </p><p>Kenji</p></li>
+  <li class="line"><p>きらめく light</p></li>
+</ul>
+</body></html>`);
+  forceRubyLayout(ctx, true);
+  const ann = makeAnnotator(ctx);
+  ann.pass();
+
+  const ps = ctx.document.querySelectorAll("ul.lyric li p");
+  assert.strictEqual(ps[0].querySelectorAll("ruby.lt-ruby").length, 0, "标签块不标");
+  assert.strictEqual(ps[1].querySelectorAll("ruby.lt-ruby").length, 0, "名字块也不许标");
+  assert.strictEqual(ps[1].textContent, "Kenji", "名字块原样不动");
+  assert.strictEqual(ps[2].querySelectorAll("ruby.lt-ruby").length, 1, "歌词行不受影响");
+});
+
+test("歌词行里带「Music」之类词头但不带分隔符的，照标", () => {
+  // 英文字符支要求后面跟 `:` / `by` / `-`，否则 "Music" 开头的歌词行会被误杀。
+  const ctx = newCtx(`<!doctype html><html><body>
+<ul class="lyric">
+  <li class="line"><p>Music と light の 中</p></li>
+</ul>
+</body></html>`);
+  forceRubyLayout(ctx, true);
+  const ann = makeAnnotator(ctx);
+  ann.pass();
+  assert.deepStrictEqual(
+    [...ctx.document.querySelectorAll("ul.lyric li p ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    ["Music", "light"],
+    "「Music」后面没有分隔符，是歌词不是制作信息"
+  );
+});
