@@ -778,7 +778,16 @@
         return config[key];
       },
       read: function (word) {
+        // 本地那几层的读音（不含大模型/联网校正）—— 看 source 就知道是谁给的
         return state.reader ? state.reader.read(word) : null;
+      },
+      display: function (word) {
+        /*
+         * **页面上实际用的**那个读音：词典 -> 罗马音 -> 大模型 -> Google -> 规则。
+         * 判断"某个词到底是谁给的读音"就用它：和 LK.read() 比一下，
+         * 不一样就说明被大模型（或联网）换过了。
+         */
+        return readForDisplay(word);
       },
       dict: function () {
         return typeof LKDict !== "undefined" ? LKDict.words : {};
@@ -793,6 +802,37 @@
       llm: {
         stats: function () {
           return state.llm ? state.llm.stats() : null;
+        },
+        /*
+         * 「大模型到底生效了没有」——一句话回答。
+         * 用户最常问的就是这个，而裸 stats() 的数字要自己解读：
+         * requests=0 既可能是"没配 key"，也可能是"歌词里的词全在词典里、这层没活干"。
+         * 这里把两种都分开说清楚。
+         */
+        check: function () {
+          if (!state.llm) return "大模型层没加载（core/llm.js 没注入？）";
+          var s = state.llm.stats();
+          var lines = [];
+          lines.push("启用：" + (s.enabled ? "是" : "否"));
+          lines.push("API Key：" + (s.hasKey ? "已填" : "没填"));
+          lines.push("接口：" + s.endpoint + "　模型：" + s.model);
+          lines.push(
+            "请求 " + s.requests + " 次，命中 " + s.hits + "，模型没给 " + s.misses + "，失败 " + s.failures
+          );
+          lines.push("缓存 " + s.cached + " 条，队列 " + s.pending + " 个词" + (s.inflight ? "（正在请求）" : ""));
+          if (s.cooldownMs > 0) lines.push("退避中：还要等 " + Math.round(s.cooldownMs / 1000) + " 秒");
+          if (s.lastError) lines.push("最后一次错误：" + s.lastError);
+          if (!s.enabled) lines.push("→ 设置面板里把「用大模型校正」打开");
+          else if (!s.hasKey) lines.push("→ 设置面板里填 API Key，然后点「测试连接」");
+          else if (s.failures > 0 && s.hits === 0) lines.push("→ 请求都没成功，照上面的错误信息排查");
+          else if (s.hits > 0) lines.push("→ 已经生效 ✓（想看某个词是谁给的：LK.display('词') 对比 LK.read('词')）");
+          else if (s.requests > 0) lines.push("→ 请求发出去了但一个都没命中，看上面「模型没给 / 失败」的数字");
+          else
+            lines.push(
+              "→ 还没问过任何词：说明到目前为止歌词里的拉丁词**全在离线词典里**（6046 条），这一层没活干。" +
+                "想立刻验证：点设置里的「测试连接」，或找一首带生僻词/英文人名的歌"
+            );
+          return lines.join("\n");
         },
         test: function () {
           return state.llm ? state.llm.test() : Promise.resolve({ ok: false, message: "核心模块未加载" });
@@ -838,10 +878,18 @@
       },
     };
 
+    /*
+     * 短别名 `LK`：日志、README、排障文档里写的都是 LK.xxx，
+     * 以前只挂了 window.LatinKatakana，照着敲会 "LK is not defined"。
+     * 两个名字都留着（长名给不认识这个插件的人看，短名给控制台用）。
+     */
+    window.LK = window.LatinKatakana;
+
     log(
       "已加载" +
         (DEV ? "（开发模式）" : "") +
-        "，控制台可用 LK.stats() 看统计、LK.read('light') 查单个词、LK.scan('light と clover') 看分词"
+        "，控制台可用 LK.stats() 看统计、LK.llm.check() 看大模型有没有生效、" +
+        "LK.display('light') 看某个词实际用的读音、LK.scan('light と clover') 看分词"
     );
     notifyConfigUI();
   });

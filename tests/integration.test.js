@@ -290,6 +290,9 @@ test("大模型层：规则读歪的词，结果回来之后注音会被换上�
   const env = bootPlugin(LLM_HTML, {
     config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions" },
     fetch: function (url, init) {
+      // 免费那层（core/correct.js）也会调 fetch，而且是 GET、没有 body ——
+      // 这里一并当"离线"拒掉，免得它把下面的 JSON.parse 搞炸（测试噪音）
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
       const body = JSON.parse(init.body);
       const words = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
       requests.push({ url: url, words: words, auth: init.headers.Authorization });
@@ -385,6 +388,55 @@ test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 �
   assert.strictEqual(baseText(p), "だって D/N/Aじゃ 騙れない", "原文一字不改");
   const stats = env.api.stats();
   assert.ok(stats.reading.letterHits >= 1, "应该记在 letters 这一类上：" + JSON.stringify(stats.reading));
+});
+
+test("控制台诊断：LK 短别名存在，llm.check() 能一句话回答「生效了没有」", async () => {
+  const env = bootPlugin();
+  await env.runLoad();
+
+  assert.strictEqual(typeof env.window.LK, "object", "文档里写的是 LK.xxx，别名必须挂上");
+  assert.strictEqual(env.window.LK, env.window.LatinKatakana, "两个名字应该是同一个对象");
+  assert.strictEqual(typeof env.window.LK.llm.check, "function");
+
+  // 没填 key：check() 要说清是"没填 key"，而不是含糊的"没生效"
+  const noKey = env.window.LK.llm.check();
+  assert.ok(noKey.indexOf("API Key：没填") >= 0, noKey);
+  assert.ok(noKey.indexOf("填 API Key") >= 0, noKey);
+
+  // 填了 key 但还没问过任何词（歌词里的词全在词典里）：要解释"这层没活干"，而不是让人以为坏了
+  env.window.LK.state.llm.configure({ key: "sk-test", enabled: true });
+  const idle = env.window.LK.llm.check();
+  assert.ok(idle.indexOf("请求 0 次") >= 0, idle);
+  assert.ok(idle.indexOf("全在离线词典里") >= 0, idle);
+});
+
+test("控制台诊断：LK.display() 给的是页面上实际用的读音（可能是大模型换过的）", async () => {
+  const env = bootPlugin(LLM_HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions" },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const body = JSON.parse(init.body);
+      const words = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      const out = {};
+      for (const w of words) out[w] = w === "kaleidoscope" ? "カレイドスコープ" : "ダミー";
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1400);
+
+  // 本地规则给的是一个拼出来的读音，display() 应该是大模型换上的那个
+  const local = env.window.LK.read("kaleidoscope");
+  assert.strictEqual(local.source, "rule", "前提：词典里没有这个词：" + JSON.stringify(local));
+  assert.strictEqual(env.window.LK.display("kaleidoscope"), "カレイドスコープ");
+  assert.notStrictEqual(env.window.LK.display("kaleidoscope"), local.kana, "display 和 read 应该不一样");
+
+  const verdict = env.window.LK.llm.check();
+  assert.ok(verdict.indexOf("已经生效") >= 0, verdict);
 });
 
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {
