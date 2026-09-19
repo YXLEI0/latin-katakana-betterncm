@@ -109,6 +109,53 @@ test("单字母：a / I 要标，其它单字母不标", () => {
   ], "a / I 要标，x 不标");
 });
 
+test("换歌：框架复用同一行只换文字时，上一首的注音必须撤掉、旧歌词不许写回来", () => {
+  // 用户报的：「下一首歌会出现上一首歌的歌词」。
+  // 网易云的歌词列表会复用同一批 <li>/<p>/**同一个文本节点**，换歌时只把
+  // nodeValue 换成新歌词。我们手里还攥着上一首的 rec.plain，两个坑：
+  //   1. 只判"注音还在"就跳过 -> 上一首的注音留在新歌的行里；
+  //   2. 还原时照着 rec.plain 写回 -> 把上一首的歌词写进新歌的行里。
+  const ctx = newCtx();
+  const ann = makeAnnotator(ctx);
+  ann.pass();
+  const p = ctx.document.querySelector("p");
+  assert.strictEqual(baseText(p), "きらめく light と clover", "前提：先注上音");
+
+  // 模拟换歌：复用第一个文本节点，只换值
+  let firstText = null;
+  for (const n of p.childNodes) if (n.nodeType === 3) { firstText = n; break; }
+  assert.ok(firstText, "前提：宿主里有我们的原文本节点");
+  firstText.nodeValue = "新しい歌の clover";
+
+  ann.pass();
+  assert.strictEqual(p.textContent, "新しい歌の cloverクローバー", "新歌那一行必须干净：旧注音撤掉、旧文字不许回来");
+  assert.strictEqual(p.textContent.indexOf("きらめく"), -1, "旧歌词不许被写回来");
+  assert.strictEqual(p.textContent.indexOf("light"), -1, "上一首的注音不该留在新歌的行里");
+  // 换完歌还要能继续正常工作：新歌里那个 clover 必须标上
+  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+    r.childNodes[0].nodeValue,
+    r.querySelector(".lt-rt").textContent,
+  ]);
+  assert.deepStrictEqual(pairs, [["clover", "クローバー"]], "换歌之后要能重新注音");
+  assert.strictEqual(ann.churnedCount(), 0, "换歌是正常重绘，不该被当成打架而认输");
+});
+
+test("换歌：禁用/重扫时的还原也不能把上一首的歌词写回去", () => {
+  const ctx = newCtx();
+  const ann = makeAnnotator(ctx);
+  ann.pass();
+  const p = ctx.document.querySelector("p");
+
+  let firstText = null;
+  for (const n of p.childNodes) if (n.nodeType === 3) { firstText = n; break; }
+  firstText.nodeValue = "新しい歌の メロディ";
+
+  // restoreAll 是禁用插件、改设置、大模型结果回来时都会走的路径
+  ann.restoreAll();
+  assert.strictEqual(p.textContent, "新しい歌の メロディ", "还原不许把 rec.plain 写回一个已经换过内容的节点");
+  assert.strictEqual(p.querySelectorAll("ruby.lt-ruby").length, 0, "注音要撤干净");
+});
+
 test("重复扫描稳定，不会反复重注", () => {
   const ctx = newCtx();
   const ann = makeAnnotator(ctx);

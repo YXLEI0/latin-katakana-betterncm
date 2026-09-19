@@ -596,6 +596,18 @@
       // （那样底字会渲染两遍）。这种情况直接移除原节点，注音从第 0 段开始排。
       var leadIsRuby = !!pieces[0].ruby;
       /*
+       * 记下**动 DOM 之前**宿主的可见原文。
+       *
+       * 为什么不能只用 rec.plain 来判断"这行变没变"：plain 是**这个文本节点**的原文，
+       * 而宿主里可能还有别人的内容（例如 katakana-terminator 的
+       * `<ruby class="kt-ruby">コーヒー<rt class="kt-rt">coffee</rt></ruby>`）。
+       * 拿"整个宿主的可见文本"去和"单个节点的原文"比，永远不会相等 ——
+       * 结果是每轮都判定失效、还原、重注（一直闪）。之前这条路径被
+       * 「注音还在就跳过」那道粗闸挡住了，闸一松就露出来。
+       * 所以这里存一份"注入当时宿主长什么样"，之后按它比。
+       */
+      var hostPlainBefore = visibleText(host);
+      /*
        * 插入位置必须在动 DOM **之前**取好。
        *
        * leadIsRuby 时下面会把原节点从 host 里摘掉，摘掉之后 `node.nextSibling`
@@ -642,6 +654,13 @@
         host: host,
         nodes: inserted,
         plain: text,
+        // 注入当时宿主的可见原文（不含任何注音）。判"这行变了没有"要用它，
+        // 不能用 plain —— 宿主里可能还有别人的注音底字（见上面 hostPlainBefore）。
+        hostPlain: hostPlainBefore,
+        // kept=true 时我们写在原节点上的那截文字（前缀）。框架换歌会把它的值
+        // 换成新歌词，那时就**绝对**不能照着 plain 写回去 —— 写回去就是把上一首
+        // 的歌词搬进新歌的行里。还原前拿它确认"这截还是我们写的"。
+        head: leadIsRuby ? null : pieces[0].text,
         region: region,
         kept: !leadIsRuby,
         index: origIndex,
@@ -726,26 +745,52 @@
       var host = rec.host;
       var i;
 
-      if (host && host.isConnected && node.parentNode === host) {
-        // 原节点还在 host 里（kept=true 的形态），把原文写回去
-        node.nodeValue = rec.plain;
-      } else if (host && host.isConnected && rec.kept) {
-        // kept=true 却找不到原节点：说明 React 把整棵子树重建过了，
-        // 原文已经在 DOM 里。这时绝对不能再把我们的旧节点插回去 ——
-        // 那会和 React 的新节点并存，同一句话渲染两遍。
-        // 只清掉我们插的节点，DOM 让 React 说了算。
-        removeInjected(rec);
-        records.delete(node);
-        untagIfClean(host, rec.region);
-        return;
-      } else if (host && host.isConnected && !rec.kept) {
-        // kept=false（文本以片假名开头，注入时移除了原节点）：
-        // 按注入前记下的下标把原节点插回去。
-        var ref = host.childNodes[rec.index] || null;
-        host.insertBefore(node, ref);
-        node.nodeValue = rec.plain;
-      } else {
-        node.nodeValue = rec.plain;
+      /*
+       * 换歌时最要紧的一条：**不许把 rec.plain 写回一个内容已经变了的节点**。
+       *
+       * 网易云的歌词列表会复用同一批 <li>/<p>/文本节点，换歌时只把 nodeValue
+       * 换成新歌词。我们手里那份 rec.plain 还是上一首的原文，照着写回去就等于
+       * 把上一首的歌词写进新歌的行里 —— 用户看到的就是"下一首歌出现上一首歌的歌词"，
+       * 而且框架认为这行没变，不会自己修回来。
+       *
+       * 判据是"这行还是不是我们注的那句话"：
+       *   kept=true  —— 原节点还在宿主里、值仍然是我们当时写下的那截前缀
+       *                （框架换歌时会把它的值换成新歌词，那就一个字都不许动）；
+       *   kept=false —— 原节点当初被摘掉了，宿主里只剩我们的注音节点，
+       *                所以看"注音还在不在"，并且宿主的可见原文没被换过。
+       * 不满足时**只摘掉我们插的节点**，DOM 里的文字一个字都不改。
+       */
+      var ours = false;
+      if (host && host.isConnected) {
+        if (rec.kept) {
+          ours = node.parentNode === host && (rec.head == null || node.nodeValue === rec.head);
+        } else {
+          ours =
+            annotationsIntact(rec) &&
+            (rec.hostPlain == null || visibleText(host) === rec.hostPlain);
+        }
+      }
+
+      if (ours) {
+        if (node.parentNode === host) {
+          // 原节点还在 host 里（kept=true 的形态），把原文写回去
+          node.nodeValue = rec.plain;
+        } else if (rec.kept) {
+          // kept=true 却找不到原节点：说明 React 把整棵子树重建过了，
+          // 原文已经在 DOM 里。这时绝对不能再把我们的旧节点插回去 ——
+          // 那会和 React 的新节点并存，同一句话渲染两遍。
+          // 只清掉我们插的节点，DOM 让 React 说了算。
+          removeInjected(rec);
+          records.delete(node);
+          untagIfClean(host, rec.region);
+          return;
+        } else {
+          // kept=false（文本以片假名开头，注入时移除了原节点）：
+          // 按注入前记下的下标把原节点插回去。
+          var ref = host.childNodes[rec.index] || null;
+          host.insertBefore(node, ref);
+          node.nodeValue = rec.plain;
+        }
       }
 
       removeInjected(rec);
@@ -957,7 +1002,11 @@
         return true;
       }
       var now = visibleText(host);
-      if (now !== rec.plain) {
+      // 比的是"注入当时宿主长什么样"，不是"这个节点的原文"：
+      // 宿主里可能还有别人的注音底字（kt-ruby 之类），拿单个节点的原文去比
+      // 永远不会相等，于是每轮都判失效。老记录没有 hostPlain 时退回 plain。
+      var want = rec.hostPlain != null ? rec.hostPlain : rec.plain;
+      if (now !== want) {
         // 记下失败现场：到底算出什么、原文是什么、DOM 长什么样。
         logStale(rec, "可见文本变了", now);
         return true;
@@ -1204,15 +1253,21 @@
            * 底字一模一样。以前只看文字就 continue，注音永远回不来
            * （默认页的クローバー、RNP 页的ジオラマ都是这个形态）。
            *
-           * 现在只保留一条判断：**注音还在**才算"不用管"。
-           * 注音没了就往下重新注音；要不要继续跟下去，统一交给 churn 计数器
+           * 但反过来"注音还在"也不等于"这行还是我们的"：**换歌**时框架复用同一行，
+           * 只把文本节点的值换成新歌词，我们的 ruby 还挂在原地 —— 只判"注音还在"
+           * 就会一直跳过，于是上一首的注音留在新歌的行里，正是用户报的
+           * 「下一首歌会出现上一首歌的歌词」。
+           *
+           * 所以判据要两条一起看，而且交给**记录**来说话：
+           *   注音还在（annotationsIntact）**且**底字没变（!isStale）
+           * 只满足一条就往下走，让还原/重注那条路接手。
+           * 要不要继续跟下去，统一交给 churn 计数器
            * （它按 age 区分"真死循环"和"正常重绘"，见 CHURN_FAST_MS）。
-           * 这里**不再**用 reAnnotated 额外挡一道 —— 两道闸叠起来的结果是
-           * "补两次就永久放弃、又进不了认输期"，用户看到的就是"偶尔闪一下"。
            */
-          if (hostHasOurRuby(hostEl)) {
+          var recHere = records.get(node);
+          if (recHere && !isStale(recHere, node) && annotationsIntact(recHere)) {
             skipped++;
-            continue; // 注音在位，一个字节都不动
+            continue; // 注音在位、底字也是我们注的那句 —— 一个字节都不动
           }
           noteChurn(
             visibleNow,
