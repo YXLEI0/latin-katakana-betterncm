@@ -492,7 +492,15 @@
       cooldownMs = COOLDOWN_MS;
       cooldownUntil = 0;
       log("大模型校正回来 " + batch.length + " 个词：命中 " + hits + "，没给 " + missed);
-      if (hits > 0) onUpdate();
+      /*
+       * **不管有没有命中都要通知上层重扫**。
+       *
+       * 以前写的是 `if (hits > 0) onUpdate()` —— 一批全是"给不出"时没人重扫，
+       * 而层序是「在线优先、规则垫底」：这些词在等待期间是**先不标**的，
+       * 没人重扫就等于一直空着（真机轨迹里 serendipity 空了 2.3 秒才补上）。
+       * miss 也是状态变化（isWaiting 从 true 变 false），规则层就该接手了。
+       */
+      onUpdate();
       onStatus("大模型：最近一批命中 " + hits + "/" + batch.length);
     }
 

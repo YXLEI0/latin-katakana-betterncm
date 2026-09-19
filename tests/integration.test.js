@@ -496,10 +496,10 @@ test("用户报的缩写：Mr. / Dr. 念整个词，LDK 这类缩写逐字母读
   assert.strictEqual(baseText(p), "Mr. Brown と Dr. K、それから LDK の部屋", "原文（含句点）一字不改");
 });
 
-test("层序：规则的结果要等在线那层 —— 等待期间先不标，失败后立刻回落", async () => {
-  // 用户要的顺序：大模型 -> 免费接口 -> 英文音译规则。
-  // 所以有在线可用时，规则猜出来的读音**先不显示**（等准确的那个），
-  // 但接口失败之后必须马上回落，不能一直空着。
+test("层序：在线那层还在问时先用暂定读音顶上（不空着），失败后转为确定值", async () => {
+  // 层序：大模型 -> 免费接口 -> 英文音译规则。等待期间不去"先不标"（那样整行会空着、
+  // 而且首词所在节点已有记录、后面也补不回来），而是先用规则读音当**暂定值**，
+  // 标注上会带一个淡一点的标记；接口失败/给不出之后它就是最终值。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">
   <div class="m-lyric">
@@ -509,18 +509,19 @@ test("层序：规则的结果要等在线那层 —— 等待期间先不标，
   </div>
 </div>
 </body></html>`;
-  // 默认桩：所有请求都失败（离线）
-  const env = bootPlugin(HTML);
+  const env = bootPlugin(HTML); // 默认桩：所有请求都失败（离线）
   await env.runLoad();
-
   await sleep(300);
-  const p = env.document.querySelector("ul.lyric li p");
-  assert.strictEqual(rubyCount(p), 0, "在线那层还没回来：先不标规则猜的读音");
-  assert.strictEqual(p.textContent, "きらめく kaleidoscope の夜", "底字当然不动");
 
-  // 免费接口的攒批窗口 1.2s + 请求失败 -> 之后必须回落到规则
+  const p = env.document.querySelector("ul.lyric li p");
+  assert.strictEqual(rubyCount(p), 1, "等待期间也要注上（暂定），不能空着");
+  assert.ok(p.querySelector("ruby.lt-ruby").classList.contains("lt-pending"), "要标成暂定");
+  assert.strictEqual(baseText(p), "きらめく kaleidoscope の夜", "底字不动");
+
+  // 免费接口的攒批窗口 1.2s + 请求失败 -> 之后转为确定（规则读音），但**不能消失**
   await sleep(2600);
-  assert.strictEqual(rubyCount(p), 1, "接口失败后要用规则兜底，不能一直空着：" + p.innerHTML);
+  assert.strictEqual(rubyCount(p), 1, "接口失败后注音不许消失：" + p.innerHTML);
+  assert.ok(!p.querySelector("ruby.lt-ruby").classList.contains("lt-pending"), "已经有结论了，不再是暂定");
 });
 
 test("层序：完全离线设置（关掉联网）时规则立刻生效，不等任何请求", async () => {
@@ -637,6 +638,77 @@ test("用户报的 Georgette：专有名词要注成 ジョージェット，不
   const p = env.document.querySelector("ul.lyric li p");
   assert.deepStrictEqual(PAIRS(p), [["Georgette", "ジョージェット"]]);
   assert.strictEqual(baseText(p), "Georgette の ドレスを着て", "原文一字不改");
+});
+
+test("全英文的一行：等待在线结果期间先用暂定读音顶上，拿到结果就地改写（不消失、不重建）", async () => {
+  /*
+   * 用户报的：全英文行"标注后有概率消失"。
+   *
+   * 机制有两层：
+   *   1. 层序是在线优先、规则垫底，等待期间原来写的是"先不标" —— 一行里只要有一个词在等，
+   *      这一行就空着；而这个词所在的原文本节点已经有记录了，后面拿到结果也不会再补注
+   *      （一行的**首个词**尤其明显）。
+   *   2. 在线结果回来时走的是 restoreAll + 重注，等于把整行先清空再补回来。
+   * 现在：等待期间用规则读音当**暂定值**（ruby 带 lt-pending，样式淡一点），
+   * 结果回来由 annotate.relabel() 就地改写，DOM 节点一个都不动。
+   */
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>kaleidoscope zephyr serendipity light</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+  const asked = [];
+  const env = bootPlugin(HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions" },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const body = JSON.parse(init.body);
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      asked.push(items.map((it) => it.w));
+      const out = {};
+      items.forEach((it, i) => {
+        if (it.w === "zephyr") out[String(i + 1)] = "ゼファー"; // 其余"给不出"
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(300);
+
+  const p = env.document.querySelector("ul.lyric li p");
+  // ① 一个词都不许空着：四个词全在，词典外的三个带"暂定"标记
+  assert.deepStrictEqual(
+    PAIRS(p).map((x) => x[0]),
+    ["kaleidoscope", "zephyr", "serendipity", "light"],
+    "等待期间也不许空着：" + p.innerHTML
+  );
+  const zephyrEl = [...p.querySelectorAll("ruby.lt-ruby")].find((r) => r.childNodes[0].nodeValue === "zephyr");
+  assert.ok(zephyrEl.classList.contains("lt-pending"), "词典外的词先标成暂定：" + zephyrEl.className);
+  const lightEl = [...p.querySelectorAll("ruby.lt-ruby")].find((r) => r.childNodes[0].nodeValue === "light");
+  assert.ok(!lightEl.classList.contains("lt-pending"), "词典命中的词不是暂定");
+
+  await sleep(600);
+  // ② 结果回来：读音就地改写、暂定标记去掉、**同一个节点对象**（没有拆了重建）
+  const zephyrAfter = [...p.querySelectorAll("ruby.lt-ruby")].find((r) => r.childNodes[0].nodeValue === "zephyr");
+  assert.strictEqual(zephyrAfter, zephyrEl, "不许把注音拆掉重建（那样就是一闪）");
+  assert.strictEqual(zephyrAfter.querySelector(".lt-rt").textContent, "ゼファー");
+  assert.ok(!zephyrAfter.classList.contains("lt-pending"), "有确定结果了就不是暂定");
+  // ③ 模型给不出的词保持规则读音（不再标暂定），light 一直在
+  const names = PAIRS(p).map((x) => x[0]);
+  assert.deepStrictEqual(names, ["kaleidoscope", "zephyr", "serendipity", "light"]);
+  assert.ok(PAIRS(p).some((x) => x[0] === "light" && x[1] === "ライト"));
+  // ④ 同一个「词 + 语境」不该被问第二遍
+  const flat = asked.flat();
+  assert.strictEqual(flat.length, new Set(flat).size, "同一个词被重复问了：" + JSON.stringify(asked));
+  assert.strictEqual(baseText(p), "kaleidoscope zephyr serendipity light", "底字一字不改");
 });
 
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {

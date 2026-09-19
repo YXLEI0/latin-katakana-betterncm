@@ -208,18 +208,51 @@
       }
       var llm = state.llm.lookup(word, line);
       if (llm) return llm;
-      return state.llm.isWaiting(word, line) ? null : r.kana; // 等准确读音；等待不了就用规则
+      /*
+       * 这句还没问到结果 —— **先用现成的顶上，绝不返回 null（不标）**：
+       *   1. 这个词在别的句子里拿到过读音 -> 用那个（peek）；
+       *   2. 否则用规则读音当**暂定**值（注音会标成 lt-pending，样式淡一点）。
+       *
+       * 为什么不"先不标"：全英文行里词典外的词最多，一行里只要有一个词在等，
+       * 那一行就会空着；而且这个词所在的原文本节点已经有记录了，后面拿到结果
+       * 也不会再补注（首词尤其明显）—— 用户看到的就是"标注后有概率消失"。
+       * 用暂定值顶上，等真结果回来由 annotate.relabel() **就地改写**，
+       * DOM 一个节点都不动。
+       */
+      var seenAnywhere = state.llm.peek(word);
+      return seenAnywhere || r.kana;
     }
 
     // ④ 免费接口（没配大模型时才轮到它）
     if (config.online && state.corrector) {
       var fixed = state.corrector.lookup(word);
       if (fixed) return fixed;
-      if (state.corrector.isWaiting && state.corrector.isWaiting(word)) return null;
+      // 同上：还在等免费接口时先用规则读音顶（标成暂定），别空着
+      return r.kana;
     }
 
     // ⑤ 规则兜底
     return r.kana;
+  }
+
+  /**
+   * 这个词的读音现在是不是"暂定"的（在线那层还在问，用的是规则结果顶）。
+   * 注音层靠它在 ruby 上加 `lt-pending` 类 —— 样式淡一点，提示"还不一定"。
+   */
+  function isProvisional(word, line) {
+    if (!word) return false;
+    // 词典 / 罗马音 / 字母名 / 记号是确定答案，永远不是"暂定"
+    // （不判这个的话，词典命中的词会一直被标成暂定 —— 因为它压根没入过队）
+    var local = state.reader ? state.reader.read(word) : null;
+    if (!local || local.source !== "rule") return false;
+    if (state.llm && state.llm.isWaiting) {
+      var llmOn = !!(state.llm.config && state.llm.config().enabled && state.llm.config().hasKey);
+      if (llmOn) return state.llm.isWaiting(word, line);
+    }
+    if (config.online && state.corrector && state.corrector.isWaiting) {
+      return state.corrector.isWaiting(word);
+    }
+    return false;
   }
 
   // ------------------------------------------------------------ 扫描调度
@@ -700,10 +733,16 @@
           notifyConfigUI();
         },
         onUpdate: function () {
-          // 校正回来了：把已有的注音撤掉重扫，新读音就能换上
+          /*
+           * 在线结果回来了 → **就地改写**已有注音，不要 restoreAll。
+           *
+           * restoreAll 会把所有注音先撤掉再重注，而重注时那些"还没拿到结果"的词
+           * 给不出读音（在线优先、规则垫底），于是整行会变空、过一会儿才补回来 ——
+           * 用户报的"全英文行标注后有概率消失"就是这个。
+           */
           if (!config.enabled) return;
-          if (state.annotator) state.annotator.restoreAll();
-          schedule(0);
+          if (state.annotator && state.annotator.relabel) state.annotator.relabel();
+          schedule(0); // 顺手把这一轮新拿到结果的词补上（已注的音一个都不动）
           notifyConfigUI();
         },
       });
@@ -715,8 +754,7 @@
       });
       // 大模型校正：没填 key 就整层不工作（lookup 一律返回 null），自动退回上面的 Google 路子
       if (typeof LKLLM !== "undefined") {
-        state.llm = LKLLM.createClient({
-          enabled: config.llmEnabled !== false,
+        state.llm = LKLLM.createClient({          enabled: config.llmEnabled !== false,
           endpoint: config.llmEndpoint,
           model: config.llmModel,
           key: config.llmKey,
@@ -733,9 +771,10 @@
             notifyConfigUI();
           },
           onUpdate: function () {
-            // 大模型的结果回来了：撤掉已有注音重扫，新的读音就能换上
+            // 大模型的结果回来了：就地改写已有注音（见上面正确器那段的说明），
+            // 再排一次扫描把新拿到结果的词补上
             if (!config.enabled) return;
-            if (state.annotator) state.annotator.restoreAll();
+            if (state.annotator && state.annotator.relabel) state.annotator.relabel();
             schedule(0);
             notifyConfigUI();
           },
@@ -744,6 +783,10 @@
       state.annotator = LKAnnotate.createAnnotator({
         lookup: function (word, line) {
           return readForDisplay(word, line);
+        },
+        // 暂定读音（在线那层还在问）会在注音上打一个淡一点的标记
+        pending: function (word, line) {
+          return isProvisional(word, line);
         },
         annotateAll: config.annotateAll !== false,
         log: function () {

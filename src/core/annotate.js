@@ -80,6 +80,12 @@
     var doc = options.document || (typeof document !== "undefined" ? document : null);
     var lookup = options.lookup;
     if (typeof lookup !== "function") throw new Error("createAnnotator 需要 lookup(word) 函数");
+    /*
+     * 可选：pending(word, line) -> 这个词的读音是不是"暂定"的
+     * （在线那层还在问，先用规则结果顶上）。暂定的注音加 `lt-pending` 类，
+     * 样式上淡一点，等真结果回来由 relabel() 改写并去掉类。
+     */
+    var pending = typeof options.pending === "function" ? options.pending : null;
 
     var annotateAll = options.annotateAll !== false; // false = 只标歌词
 
@@ -524,9 +530,20 @@
         return false;
       }
 
+      var hostMaybe = node.parentNode;
       var glosses = [];
       var any = false;
       var missing = [];
+      /*
+       * 语境：用**宿主里看得见的原文**（不含任何注音），不是这个文本节点自己的值。
+       *
+       * 为什么不能用节点自己的值：注音之后节点的值会被我们切短（只剩前半截），
+       * 同一个词在"注音前/注音后"就会算出两个不同的语境 —— 大模型那层按
+       * 「词 + 语境」缓存，于是同一个词会被反复问（真机轨迹里看得到重复请求）。
+       * 宿主的可见原文在注音前后**不变**（我们的注音不算底字），拿它当语境最稳，
+       * 而且对模型来说信息更全（整行而不是半截）。
+       */
+      var context = hostMaybe && hostMaybe.isConnected ? visibleText(hostMaybe) : text;
       for (var i = 0; i < tokens.length; i++) {
         var g = null;
         if (matcher.looksReadable(tokens[i])) {
@@ -540,7 +557,7 @@
            * （read リード/レッド、人名地名、记号）。同一个词在不同句子里
            * 读音不同，所以语境要跟着词一起传下去。
            */
-          g = lookup(tokens[i].text, text);
+          g = lookup(tokens[i].text, context);
           if (!g) missing.push(tokens[i].norm);
         }
         glosses.push(g);
@@ -584,7 +601,15 @@
         if (!glosses[j]) {
           pieces.push({ text: tk.text });
         } else {
-          var ruby = buildRuby(tk.text, glosses[j]);
+          var isPending = false;
+          if (pending) {
+            try {
+              isPending = !!pending(tk.text, context);
+            } catch (e) {
+              isPending = false;
+            }
+          }
+          var ruby = buildRuby(tk.text, glosses[j], isPending);
           pieces.push({ text: tk.text, ruby: ruby });
           inserted.push(ruby);
         }
@@ -723,10 +748,16 @@
       return true;
     }
 
-    /** 建 <ruby>カナ<rt>Kana</rt></ruby>；内核不支持时用 span 绝对定位 */
-    function buildRuby(base, gloss) {
+    /**
+     * 建 <ruby>カナ<rt>Kana</rt></ruby>；内核不支持时用 span 绝对定位。
+     *
+     * provisional=true 时加一个 `lt-pending` 类：这个读音还是"暂定"的
+     * （在线那层还在问，先拿规则结果顶上），样式上会淡一点，
+     * 等真结果回来由 relabel() 改写并把类去掉。
+     */
+    function buildRuby(base, gloss, provisional) {
       var ruby = doc.createElement("ruby");
-      ruby.className = "lt-ruby";
+      ruby.className = provisional ? "lt-ruby lt-pending" : "lt-ruby";
       ruby.appendChild(doc.createTextNode(base));
       if (hasRubyLayout(doc)) {
         var rt = doc.createElement("rt");
@@ -897,6 +928,69 @@
         var el = fallbacks[j];
         if (!el.querySelector("ruby.lt-ruby")) untagData(el, "data-lt-fallback");
       }
+    }
+
+    /**
+     * 就地改写已有注音的读音（不拆 DOM、不重注）。
+     *
+     * 为什么需要它：在线结果回来时会触发"补一次"，以前的做法是 restoreAll() ——
+     * 把**所有**注音先撤掉再重注。问题是重注时还要再问一遍读音，而那些
+     * "还没拿到结果"的词这时给不出读音（层序是在线优先、规则垫底，等待期间先不标），
+     * 于是已经被注好的整行会**变空**，过一会儿才陆续补回来 ——
+     * 用户看到的就是"全英文的行标注后有概率消失"（英语行词典外的词最多）。
+     *
+     * 现在只做一件事：把每条记录里 ruby 的读音按当前结果改写一遍，
+     * DOM 结构、节点对象统统不动。还没结果的词保持原样，等结果回来再改。
+     *
+     * @returns {number} 真正改写的注音数量
+     */
+    function relabel() {
+      var updated = 0;
+      records.forEach(function (rec, node) {
+        var host = rec.host;
+        if (!host || !host.isConnected) return;
+        for (var i = 0; i < rec.nodes.length; i++) {
+          var el = rec.nodes[i];
+          if (!el || el.nodeType !== 1 || !el.classList || !el.classList.contains("lt-ruby")) continue;
+          // ruby 的第一个子节点就是底字（原文），拿它当查读音的词
+          var baseNode = el.firstChild;
+          if (!baseNode || baseNode.nodeType !== 3) continue;
+          var word = baseNode.nodeValue;
+          if (!word) continue;
+          var gloss = null;
+          try {
+            /*
+             * 语境要和注音时用的一致（那次用的是宿主的可见原文）——
+             * 换别的东西当语境会让缓存键对不上、白白重问一次。
+             */
+            gloss = lookup(word, visibleText(host));
+          } catch (e) {
+            gloss = null;
+          }
+          if (!gloss) continue; // 还没结果：保持原样（这一条就是"不消失"的关键）
+          var rt = el.querySelector(".lt-rt");
+          if (rt && rt.textContent !== gloss) {
+            rt.textContent = gloss;
+            updated++;
+          }
+          /*
+           * 真结果回来了就把"暂定"标记去掉（样式上不再淡）。
+           * 判断依据交给上层：pending() 为假 = 这个词已经有确定结论。
+           */
+          if (el.classList.contains("lt-pending")) {
+            var stillPending = false;
+            if (pending) {
+              try {
+                stillPending = !!pending(word, visibleText(host));
+              } catch (e) {
+                stillPending = false;
+              }
+            }
+            if (!stillPending) el.classList.remove("lt-pending");
+          }
+        }
+      });
+      return updated;
     }
 
     /** 全量还原（禁用插件 / 设置变更时调用） */
@@ -1408,6 +1502,7 @@
     return {
       pass: pass,
       restoreAll: restoreAll,
+      relabel: relabel,
       findRegions: findRegions,
       customRegions: customRegions,
       injectedCount: injectedCount,
@@ -1458,6 +1553,12 @@
       // 这几条是为了对抗 RefinedNowPlaying 之类的逐字歌词插件：它给嵌套 span 打
       // opacity，嵌套相乘会把注音压得几乎看不见，所以对注音强制不透明。
       "ruby.lt-ruby, rt.lt-rt { opacity: 1 !important; }",
+      /*
+       * 「暂定读音」：在线那层还在问，先用规则结果顶上。
+       * 淡一点提示"这个还不一定"，真结果回来后 relabel() 会去掉这个类。
+       * 放在上面那条 !important 之后，靠类选择器 + 透明度再压一档。
+       */
+      "ruby.lt-ruby.lt-pending .lt-rt { opacity: .45 !important; }",
       focus ? "[data-lt-region] { outline: 1px dashed rgba(255,80,80,.5); }" : "",
     ]
       .filter(Boolean)
