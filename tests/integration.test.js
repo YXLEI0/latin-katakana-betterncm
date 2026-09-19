@@ -223,6 +223,47 @@ test("降级成 <span> 的别人注音，靠 class 也要认出来（不能给 d
   assert.deepStrictEqual(PAIRS(p), [["clover", "クローバー"]], "同一行里我们该标的照样标");
 });
 
+/*
+ * 三个插件同时开着时最要紧的一条：**反复扫描不能重注、不能进入认输期**。
+ * 上面两条用例只证明"别人的注音我们不碰"；这条证明"待在别人的注音旁边我们也不抖" ——
+ * 如果 visibleText() 把别人的注音算进底字，或者把对方的 <rt> 当成"底字变了"，
+ * 每一轮都会"还原 → 重注"，真机上就是一直在闪。
+ */
+const THREE_PLUGIN_HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p><span class="fg-line">きらめく <span class="kt-ruby">ドリーム<span class="kt-rt">dream</span></span> と <ruby class="fg-ruby">四葉<rt class="fg-rt">よつば</rt></ruby> の light</span></p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+
+test("和被注音过的行待在一起：反复扫描既不重注也不认输", async () => {
+  const env = bootPlugin(THREE_PLUGIN_HTML);
+  await env.runLoad();
+  await sleep(600);
+
+  const p = env.document.querySelector("ul.lyric li p");
+  // 只标我们该标的词。对方的注音节点里装的是 dream（拉丁词，正是我们要标的对象），
+  // 一旦我们走进去了，这里就会多出 ["dream", "ドリーム"]
+  assert.deepStrictEqual(PAIRS(p), [["light", "ライト"]], "只标我们该标的那个词：" + p.innerHTML);
+  const before = p.innerHTML;
+
+  // 不 await：五轮同步扫描中间不允许有别的东西插进来
+  for (let i = 0; i < 5; i++) {
+    env.api.pass();
+    const r = env.api.state.lastResult;
+    assert.strictEqual(r.changed, 0, `第 ${i + 1} 轮不该重注：${JSON.stringify(r)}`);
+    assert.strictEqual(r.restored, 0, `第 ${i + 1} 轮不该还原：${JSON.stringify(r)}`);
+    assert.strictEqual(r.unstable, 0, `第 ${i + 1} 轮不该出现失效判定：${JSON.stringify(r)}`);
+  }
+  assert.strictEqual(p.innerHTML, before, "DOM 必须原样");
+  assert.strictEqual(env.api.state.annotator.churnedCount(), 0, "不该有任何一行进入认输期");
+  assert.strictEqual(p.querySelector(".kt-rt").textContent, "dream");
+  assert.strictEqual(p.querySelector(".fg-rt").textContent, "よつば");
+});
+
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {
   // 真机上两个插件都会插注音。共存补丁重建完一行只调一个全局钩子，
   // 谁后加载谁就得**链上去**，直接覆盖会让另一个插件立刻开始闪。

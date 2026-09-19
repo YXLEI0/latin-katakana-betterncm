@@ -171,6 +171,8 @@ npm test              # 跑单元测试（node --test）
 npm run test:serial   # 逐个文件跑；受限环境里 node --test 起不了子进程时用这个
 npm run check         # 静态自检（语法 / manifest / 读音词典 / 密钥）
 npm run build         # 打包
+npm run install:plugin  # 复制到 C:\betterncm\plugins
+npm run verify:install  # 核对装上去的那个包和当前 src/ 是否逐字节一致
 ```
 
 ## 目录结构
@@ -186,9 +188,10 @@ src/
   core/annotate.js    DOM 注音注入与还原
 tests/                jsdom 单元测试
 tools/
-  build.js / check.js / read-trace.js
+  build.js / check.js / read-trace.js / verify-install.js
   build-dict.js       生成离线读音词典
   seed-words.js       种子词表（唯一数据源）
+  make-preview.js     生成 src/preview.png（零依赖手写 PNG 编码器）
   patch-jp-furigana*.js  jp-furigana 共存补丁（和片假名终结者仓库里的同一份，必须保持一致）
 ```
 
