@@ -4,6 +4,86 @@
 
 首个版本：给日语歌歌词里的**拉丁字母**标注**片假名读音**。
 
+### 读音准确率：加了大模型两层（本次）
+
+规则层再怎么修也只是**拼写音译**：`hello` → ヘッラオ、`question` → クワエサション ——
+那不是人唱的音。所以接了大模型，构建期一层、运行期一层：
+
+**一、构建期：离线词典 491 → 6046 条**（新增 `tools/expand-dict-llm.js`）
+
+- 取英文词频表前 6000，按 40 个一批问 `deepseek-chat`，**只收纯片假名**；
+  实测拦下 1 条非法（`portuguese → ポルトガル語` 混进汉字）；
+  总花费 8.1 万 tokens、约 4.5 分钟（几分钱）。
+- 人工表（`seed-words.js` + `reading.js` 里的例外表/小表共 628 词）**优先**，
+  生成物不许覆盖人工判断；产物 `tools/seed-words-llm.js`（5555 条）由
+  `npm run build:dict` 合并（新增 `npm run build:dict:llm` 重新生成）。
+- **质量交叉验证**：人工核过的 491 条抽 80 条再问一遍模型，**一致率 95%**；
+  4 条不一致里 2 条是人工那份更差（`cigarette` タバコ、`complaint` クレーム ——
+  那是意译不是音译），另 2 条是两可写法。
+
+**二、运行期：大模型校正层**（新增 `src/core/llm.js`，21 个单测）
+
+- 只对**规则读出来的**词生效：词典与罗马音的结果是确定的，不被覆盖也不发请求。
+- 命中缓存立刻用；没命中入队，攒 30 词或 400ms 发一次，结果回来时重扫换掉 ——
+  **先显示即时结果，不阻塞注音**。
+- 一个词只问一次：命中和"模型也给不出"都永久落 localStorage；
+  失败不写缓存、按退避冷却重试（60s 起翻倍到 10 分钟）；限流 20 请求/分钟、20s 超时。
+- **只接受纯片假名**（和 Google 那层同一判据）；任何异常都只是"这一层不工作"，
+  自动退回免费的 Google 接口。没填 key 时**一个请求都不发**。
+- key 只存本机 localStorage，设置面板里填、可点「测试连接」；
+  默认 `api.deepseek.com` + `deepseek-chat`，任何 OpenAI 兼容接口都行。
+- 真接口联调：16 个词典外的词一批问完 1.5 秒，16/16 命中且全是纯片假名。
+- 端到端测试（`tests/integration.test.js`）：boot → 规则先给即时读音 → 入队 →
+  一批问完 → `onUpdate` 重扫 → DOM 里的注音被换成大模型的写法。
+
+**三、顺手补的两处**
+
+- `tests/dict.test.js`（新增 5 个用例）：词典的数据纪律 + 一条不变量 ——
+  规则层对**词典里每个词**都必须吐出纯片假名。这条当场抓出规则层的调试残留
+  （`@@`、`undefined`），修完才让它常驻。
+- 规则层的 r 化元音「段」修正：`ur/ir/er` 配 ア段、`or` 配 オ段、`wor-` 配 ア段
+  （修正前 `turn → トゥーン`、`bird → ビード`、`river → リベー`；现在
+  ターン/バード/リバー，`fork → フォーク`、`form → フォーム` 也跟着修好了）。
+
+### 规则层重写：按 sljfaq 的约定
+
+英文音译规则（`src/core/reading.js` 的 `convertEnglish`）改成按
+sci.lang.japan FAQ 的
+[How do I write an English word in Japanese?](https://www.sljfaq.org/afaq/english-in-japanese.html)
+实现，代码里每条规则/每张表都注了 `参照 sljfaq：…`。改动要点：
+
+- **补齐了参考页点名的规则**：非重读 r（car/bird/horse/park）、
+  θ/ð（think/the/-ther）、`ti/di` → ティ/ディ、`dz` → ッズ、
+  `æ after k` → キャ、辅音 + 词尾 y → イー、`-Cle` → クル/プル/…、
+  m/n 在辅音前收 ン、单音节词词尾塞音促音、`-ture` → チャー、`-ous` → アス。
+- **v 从 ヴァ行改回 バ行**（参照 sljfaq：バ行是首选写法，love → ラブ、
+  vitamin → ビタミン）；ヴィ 只在日语实际那么写的词里保留（visual）。
+- **促音保守化**：参照页面的说明「多音节词只在重读音节促音」，
+  而重音光看拼写定不下来，所以只对单音节词的词尾塞音补 ッ，
+  多音节词交给 `confident: false`，不猜。
+- **删掉了「声门塞音式」的旧表**（`EN_UNSURE` 里的 th/wh/gh 一律标不放心）：
+  改成按拼写歧义清单（`EN_UNSURE_RE`）判断，
+  θ/ð 的**读音**照页面给（シ / ザ），只有「哪个词是 θ」拼不出时才标不放心。
+- **硬契约加严**：`englishToKatakana()` 的输出保证是纯片假名（ァ-ヶ + ー），
+  非法字符统一清理并置 `confident: false`；由 `tests/dict.test.js`
+  的不变量测试遍历全部词典词守住。
+- **小表/例外表扩充**：新增 phone / sugar / visual / violin / vitamin /
+  tourette / moon / moonlight / sunshine / destiny / goodbye / remember /
+  together / second / button / cotton / common / hamburger 等
+  规则拿不准但歌词高频的词。
+
+**验证**：`npm run test:serial` 全部通过（latin 11 / reading 54 /
+sljfaq-words 3 / annotate 9 / correct 10 / integration 13 / patch 8），
+`tools/check.js` 通过。新增 `tests/sljfaq-words.test.js`：
+把参考页的例子分成「读得对」与「读不出来（逐条附理由）」两张表，
+页面上出现的例子必须登记，不许静默跳过。
+
+**已知缺口**（拼写决定不了，页面自己也说先查词典）：
+`ow`（now/snow）、`oo`（book/moon）、`oo+r`（door/four）、`our`（hour/tour）、
+`θ/ð` 同形、`-er` 的两个读音、`igh` 被 `f` 拼块抢先（fight）、
+专有名词（Disney/Washington）、词典形（pajamas/slippers/router/tarot）。
+完整清单与理由见 `tests/sljfaq-words.test.js` 的 `KNOWN_GAPS`。
+
 ### 读音从哪来（四层）
 
 | 顺序 | 来源 | 例子 | 可信度 |
@@ -71,13 +151,18 @@ DOM 注入、还原、churn 认输、`age` 闸门、同步修复钩子这套机�
 
 ### 验证
 
-- 单元测试 **105 个全过**：拉丁词扫描 11 / 读音引擎 54 / DOM 注音 9 /
-  联网校正 10 / 集成 13 / 共存补丁 8
-- `npm run check` 通过（0 警告）；读音词典 491 条，键是英文、值是纯片假名
+- 单元测试 **136 个全过**：拉丁词扫描 11 / 读音引擎 54 / sljfaq 例子 3 /
+  词典纪律 5 / DOM 注音 9 / 联网校正 10 / 大模型层 21 / 集成 15 / 共存补丁 8
+- `npm run check` 通过（0 警告，9 个测试文件全部登记）；读音词典 **6046 条**，
+  键是英文、值是纯片假名
+- 规则层不变量：词典里全部 6046 个词过一遍规则，输出必须全是纯片假名
 - CI 覆盖：静态自检 + 全部测试 + 打包 + 打 tag 发 Release
 
 ### 已知限制
 
-- 规则音译只是兜底：`hello` → ヘッラオ 这种还不准；常用词都在词典里，其余靠联网校正
-- `th` 类词（`the` / `think`）会被标成"没把握"并交给联网校正
+- 规则音译只是兜底：`hello` → ヘッラオ 这种还不准；词典覆盖了词频前 6000，
+  其余交给大模型（配了 key）或免费接口
+- 规则层有几处比老版本更差的拼写（`my` → マイー、词尾 `-se`、二合字母 + r 等），
+  这些词全在词典里，真机走不到；清单见 README「已知限制」
+- 人工词表里有 2/80 条是"意译"而非"音译"（`cigarette` → タバコ）
 - 罗马音路径按 `di → ヂ` 切分，`diorama` 走罗马音会得到 ヂオラマ（走词典才是 ジオラマ）

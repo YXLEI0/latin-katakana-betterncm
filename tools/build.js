@@ -20,21 +20,22 @@ const ROOT = path.join(__dirname, "..");
 const SRC = path.join(ROOT, "src");
 const OUT_DIR = path.join(ROOT, "builds");
 
-// 打进包的文件（相对 src/），顺序就是 manifest 的 injects 依赖顺序
-const SRC_FILES = [
-  "manifest.json",
-  "core/latin.js",
-  "core/dict.js",
-  "core/reading.js",
-  "core/correct.js",
-  "core/annotate.js",
-  "main.js",
-  "preview.png",
-];
+/*
+ * 打进包的文件清单**从 manifest.json 推出来**，不再手写第二份。
+ *
+ * 之前这里是硬编码的数组，加一个 core/llm.js 就得同时改三处
+ * （manifest、这里的 SRC_FILES、ALLOWED_CORE），漏一处就在打包时才炸。
+ * 现在唯一的事实来源是 manifest 的 injects 顺序，外加 manifest.json 与预览图。
+ */
+const MANIFEST = JSON.parse(fs.readFileSync(path.join(SRC, "manifest.json"), "utf8"));
+const INJECTED = ((MANIFEST.injects && MANIFEST.injects.Main) || []).map((i) => i.file);
+const SRC_FILES = ["manifest.json"].concat(INJECTED).concat([MANIFEST.preview || "preview.png"]);
 
 // src/ 下允许存在的全部内容（多出来说明有临时文件误提交）
 const ALLOWED_TOP = new Set(["manifest.json", "main.js", "preview.png", "core"]);
-const ALLOWED_CORE = new Set(["latin.js", "dict.js", "reading.js", "correct.js", "annotate.js"]);
+const ALLOWED_CORE = new Set(
+  INJECTED.filter((f) => f.indexOf("core/") === 0).map((f) => f.slice("core/".length))
+);
 
 // ---------------------------------------------------------------- zip
 

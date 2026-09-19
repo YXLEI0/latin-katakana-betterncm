@@ -87,7 +87,12 @@
 
   var DEFAULTS = {
     enabled: true,
-    online: true, // 词典/规则都没把握时是否联网校正
+    online: true, // 词典/规则都没把握时是否联网校正（Google 接口，不用填 key）
+    // ---- 大模型校正（质量比规则高一个数量级，需要自己填 key）
+    llmEnabled: true,
+    llmEndpoint: "https://api.deepseek.com/chat/completions",
+    llmModel: "deepseek-chat",
+    llmKey: "",
     annotateAll: true, // 除歌词外，也标播放栏的歌名/歌手
     scope: "all", // titles | lyrics | all | custom
     customSelector: "",
@@ -149,6 +154,7 @@
   var state = {
     reader: null,
     corrector: null,
+    llm: null,
     annotator: null,
     observer: null,
     timer: null,
@@ -165,22 +171,33 @@
   // ------------------------------------------------------------ 读音
 
   /*
-   * 取一个词的显示读音。
+   * 取一个词的显示读音。层序（越靠前越优先）：
    *
-   * 本地先算（词典 -> 罗马音 -> 规则）；**只有"规则猜的、且没把握"的词**才去问
-   * 联网校正 —— 词典和罗马音的结果是确定的，不该被翻译接口覆盖，也没必要发请求。
-   * 联网结果只在校正器真给出纯片假名时才顶替本地结果（校正器内部已按此过滤）。
+   *   1. 词典（人工核过的外来语写法）—— 不等请求，也不让联网结果覆盖；
+   *   2. 罗马音（歌词本来就是罗马音的，切出来是确定的）；
+   *   3. **大模型校正**：只对"规则猜出来的"词生效。命中缓存就立刻用，
+   *      没命中就入队（lookup 返回 null），结果异步回来时通过 onUpdate 重扫换上；
+   *   4. Google 校正：没配大模型 key 时才轮到它，且只对"没把握"的词；
+   *   5. 规则结果。
    *
-   * 顺带入队：corrector.lookup() 对没查过的词会排进批处理队列并返回 null，
-   * 所以这里不需要再单独维护一个"待校正"集合。
+   * 为什么规则结果可以被大模型盖掉：规则是拼写音译，hello 会读成 ヘッラオ、
+   * question 会读成 クワエサション —— 那不是人唱的音。词典之外没有更可靠的来源。
    */
   function readForDisplay(word) {
     if (!state.reader) return null;
     var r = state.reader.read(word);
     if (!r || !r.kana) return null;
-    if (config.online && state.corrector && r.source === "rule" && !r.confident) {
-      var fixed = state.corrector.lookup(word);
-      if (fixed) return fixed;
+
+    // 词典与罗马音的结果是确定的，不该被覆盖，也没必要发请求
+    if (r.source === "rule") {
+      if (state.llm) {
+        var llm = state.llm.lookup(word);
+        if (llm) return llm;
+      }
+      if (config.online && state.corrector && !r.confident) {
+        var fixed = state.corrector.lookup(word);
+        if (fixed) return fixed;
+      }
     }
     return r.kana;
   }
@@ -368,6 +385,16 @@
       "</select></label></div>" +
       '<div class="lk-row"><label>自定义选择器 <input type="text" data-k="customSelector" placeholder="例如 ul.lyric > li"></label></div>' +
       '<div class="lk-hint">选择器留空或匹配不到元素时会自动回退。</div>' +
+      "<h3>大模型校正（推荐）</h3>" +
+      '<div class="lk-row"><label><input type="checkbox" data-k="llmEnabled"> 用大模型校正规则读出来的词</label></div>' +
+      '<div class="lk-row"><label>接口地址 <input type="text" data-k="llmEndpoint"></label></div>' +
+      '<div class="lk-row"><label>模型 <input type="text" data-k="llmModel"></label></div>' +
+      '<div class="lk-row"><label>API Key <input type="password" data-k="llmKey" placeholder="sk-..."></label></div>' +
+      '<div class="lk-row"><button data-a="llmTest">测试连接</button> <span data-v="llmTest"></span></div>' +
+      '<div class="lk-hint">规则层是拼写音译（<code>hello</code> 会读成 ヘッラオ、' +
+      "<code>question</code> 读成 クワエサション），所以词典之外交给大模型更准。" +
+      "Key <b>只存在本机 localStorage</b>，除了你填的这个接口地址之外不会发到别处，也永远不会进仓库。" +
+      "留空则整层不工作，自动退回下面的免费接口。</div>" +
       "<h3>操作</h3>" +
       '<div class="lk-row">' +
       '<button data-a="rescan">重新扫描</button> ' +
@@ -441,6 +468,14 @@
         lines.push("在线校正: 命中 " + c.onlineHits + " / 请求 " + c.requests + " / 失败 " + c.failures + (c.lastError ? "（" + c.lastError + "）" : ""));
         lines.push("待校正: " + (state.corrector ? state.corrector.pending() : 0) + "，缓存条目 " + c.cached);
       }
+      if (state.llm) {
+        var s = state.llm.stats();
+        lines.push(
+          "大模型: " + (s.hasKey ? (s.enabled ? "已启用" : "已停用") : "未填 key") +
+            " 命中 " + s.hits + " / 缓存 " + s.cached + " / 待问 " + s.pending + " / 请求 " + s.requests +
+            " / 失败 " + s.failures + (s.lastError ? "（" + s.lastError + "）" : "")
+        );
+      }
       if (state.error) lines.push("错误: " + state.error);
       status.textContent = lines.join("\n");
     }
@@ -475,6 +510,18 @@
           } else if (key === "online") {
             if (state.corrector) state.corrector.setOnline(config.online);
             if (config.online) rescan();
+          } else if (key.indexOf("llm") === 0) {
+            // 接口地址 / 模型 / key 变了，把新配置推给客户端再重扫：
+            // 关掉或清空 key 时，已经命中缓存的那些词也要退回去，所以必须重扫
+            if (state.llm) {
+              state.llm.configure({
+                enabled: config.llmEnabled !== false,
+                endpoint: config.llmEndpoint,
+                model: config.llmModel,
+                key: config.llmKey,
+              });
+            }
+            rescan();
           } else if (NEEDS_RESCAN.indexOf(key) >= 0) {
             rescan();
           } else if (NEEDS_RESTYLE.indexOf(key) >= 0) {
@@ -521,11 +568,23 @@
             }, 1500);
           } else if (what === "clearCache") {
             if (state.corrector) state.corrector.clearCache();
+            if (state.llm) state.llm.clearCache();
             rescan();
             b.textContent = "已清空";
             setTimeout(function () {
               b.textContent = "清除校正缓存";
             }, 1500);
+          } else if (what === "llmTest") {
+            var out = root.querySelector('[data-v="llmTest"]');
+            if (!state.llm) {
+              if (out) out.textContent = "核心模块未加载";
+            } else {
+              if (out) out.textContent = "测试中…";
+              state.llm.test().then(function (r) {
+                if (out) out.textContent = (r.ok ? "✅ " : "❌ ") + r.message;
+                refreshAll();
+              });
+            }
           }
           refreshAll();
         });
@@ -616,6 +675,30 @@
           if (config.verbose) console.log.apply(console, [LOG].concat(Array.prototype.slice.call(arguments)));
         },
       });
+      // 大模型校正：没填 key 就整层不工作（lookup 一律返回 null），自动退回上面的 Google 路子
+      if (typeof LKLLM !== "undefined") {
+        state.llm = LKLLM.createClient({
+          enabled: config.llmEnabled !== false,
+          endpoint: config.llmEndpoint,
+          model: config.llmModel,
+          key: config.llmKey,
+          log: function () {
+            trace("llm", Array.prototype.join.call(arguments, " "));
+            if (config.verbose) console.log.apply(console, [LOG].concat(Array.prototype.slice.call(arguments)));
+          },
+          onStatus: function (msg) {
+            log(msg);
+            notifyConfigUI();
+          },
+          onUpdate: function () {
+            // 大模型的结果回来了：撤掉已有注音重扫，新的读音就能换上
+            if (!config.enabled) return;
+            if (state.annotator) state.annotator.restoreAll();
+            schedule(0);
+            notifyConfigUI();
+          },
+        });
+      }
       state.annotator = LKAnnotate.createAnnotator({
         lookup: function (word) {
           return readForDisplay(word);
@@ -690,7 +773,37 @@
         return {
           reading: state.reader ? state.reader.stats() : null,
           correct: state.corrector ? state.corrector.stats() : null,
+          llm: state.llm ? state.llm.stats() : null,
         };
+      },
+      llm: {
+        stats: function () {
+          return state.llm ? state.llm.stats() : null;
+        },
+        test: function () {
+          return state.llm ? state.llm.test() : Promise.resolve({ ok: false, message: "核心模块未加载" });
+        },
+        flush: function () {
+          return state.llm ? state.llm.flush() : Promise.resolve(null);
+        },
+        clearCache: function () {
+          if (state.llm) state.llm.clearCache();
+          rescan();
+        },
+        configure: function (next) {
+          if (!state.llm) return null;
+          state.llm.configure(next || {});
+          if (next && next.key !== undefined) {
+            config.llmKey = String(next.key || "");
+            saveConfig();
+          }
+          if (next && next.enabled !== undefined) {
+            config.llmEnabled = !!next.enabled;
+            saveConfig();
+          }
+          rescan();
+          return state.llm.stats();
+        },
       },
       scan: function (text) {
         return LKMatcher.scan(text);

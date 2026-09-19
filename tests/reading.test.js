@@ -262,7 +262,10 @@ test("英文：任务点名的外来语靠规则/小表读对", () => {
 });
 
 test("英文：sh/ch/ck/ng 这些字母组合", () => {
-  assert.strictEqual(LK.englishToKatakana("she").kana, "シー");
+  // she：sh -> シ，词尾 e 是默字，不补长音（参照 sljfaq：词尾 e 不发音）
+  assert.strictEqual(LK.englishToKatakana("she").kana, "シ");
+  // cheese：ch -> チ、ee -> イー、词尾 se 里 s + 默字 e -> セ
+  // （s 在词尾读 /s/ 不是 /z/，所以是 セ 不是 ズ；/z/ 要靠词表）
   assert.strictEqual(LK.englishToKatakana("cheese").kana, "チイーセ");
   assert.strictEqual(LK.englishToKatakana("box").kana, "ボックス");
   assert.strictEqual(LK.englishToKatakana("six").kana, "シックス");
@@ -297,9 +300,11 @@ test("英文：非字符串输入也给一个安全的空读音", () => {
 });
 
 test("英文：confident:false 的判定条件", () => {
-  // ① 词尾不发音的 e（辅音 + e 结尾）：拼写定不下来
-  assert.strictEqual(LK.englishToKatakana("orange").confident, false);
-  // ② th 这种发音不唯一的二合字母
+  // ① 拼写读不出音的元音块：ow 在 now / snow 里读法不同
+  //    （参照 sljfaq 的 "Conversions based on spelling" 那节）
+  assert.strictEqual(LK.englishToKatakana("now").confident, false);
+  // ② th：页面对 θ（-> サ行）和 ð（-> ザ行）都有明确落点，所以**读音**
+  //    照规则给；但「哪个词是 θ、哪个是 ð」拼写分不出来 —— 仍然算不放心。
   assert.strictEqual(LK.englishToKatakana("the").confident, false);
   assert.strictEqual(LK.englishToKatakana("think").confident, false);
   // ③ 元音连写不在表里 / 三个元音连写

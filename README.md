@@ -25,18 +25,98 @@
 
 ## 读音从哪来
 
-四层，按顺序命中（`src/core/reading.js`）：
+五层，按顺序命中（`src/core/reading.js` + `src/core/llm.js`）：
 
 | 顺序 | 来源 | 例子 | 可信度 |
 | --- | --- | --- | --- |
-| 1 | **离线词典**（`src/core/dict.js`，491 条） | `clover` → クローバー、`light` → ライト | 确定对 |
+| 1 | **离线词典**（`src/core/dict.js`，**6046 条**） | `clover` → クローバー、`hello` → ハロー | 确定对 |
 | 2 | **罗马音切分**（歌词里官方写的罗马音） | `sekai` → セカイ、`shinjiteru` → シンジテル | 确定对 |
 | 3 | **英文音译规则**（兜底，永远给得出结果） | `blorf` → ブローフ | 猜的，标记为"没把握" |
-| 4 | **联网校正**（只对第 3 层"没把握"的词） | Google en→ja，**只接受纯片假名**的结果 | 更准 |
+| 4 | **大模型校正**（只对规则读出来的词；需要你自己填 API Key） | `kaleidoscope` → カレイドスコープ | 很准，异步换上去 |
+| 5 | **Google 校正**（没配大模型时才轮到它，只对"没把握"的词） | Google en→ja，**只接受纯片假名** | 更准 |
 
-第 4 层的关键取舍：Google 的 en→ja 对**外来语**通常回片假名（`clover` → クローバー），
-对**普通词**回汉字（`love` → 愛）。后者对唱歌没用 —— 我们要的是读音不是翻译 ——
-所以非纯片假名的结果直接丢掉，保留本地规则的结果。
+词典是**查表**、规则是**猜**：所以第 1 层命中就直接用，第 2 层（罗马音）是确定的，
+只有第 3 层那个"猜出来的"结果会被第 4/5 层替换。
+
+### 大模型校正（推荐打开）
+
+规则层再怎么写也只是拼写音译：`hello` → ヘッラオ、`question` → クワエサション ——
+那不是人唱的音。所以词典之外交给大模型：
+
+- **设置面板 → 大模型校正**：填 API Key（默认 `https://api.deepseek.com/chat/completions`
+  + `deepseek-chat`，任何 OpenAI 兼容接口都行），点「测试连接」当场验证；
+- 命中缓存**立刻**用；没命中就入队，攒 30 个词或 400ms 发一次请求，
+  结果回来时自动重扫换掉 —— **先显示规则的即时结果，不阻塞注音**；
+- 一个词只问一次：**命中和"模型也给不出"都永久落 localStorage**，重启网易云不重新花钱；
+- 请求失败不写缓存，按退避冷却重试（60s 起、翻倍、10 分钟封顶）；
+- 限流 20 请求/分钟、单批 30 词、20 秒超时；**任何异常都只是"这一层不工作"**，
+  自动退回第 5 层的免费接口；
+- Key **只存在本机 localStorage**，除你填的那个接口地址之外不会发到别处，永远不会进仓库。
+  留空则整层不工作（也**一个请求都不会发**）。
+
+实测（真接口，16 个词典外的词一批问完，1.5 秒）：
+`precious → プレシャス`、`blossom → ブロッサム`、`twilight → トワイライト`、
+`nostalgia → ノスタルジア`、`silhouette → シルエット`、`kaleidoscope → カレイドスコープ`。
+
+### 离线词典是怎么来的
+
+`src/core/dict.js` 是**生成物**，由 `tools/build-dict.js` 合并两份词表：
+
+| 来源 | 条数 | 怎么来的 |
+| --- | --- | --- |
+| `tools/seed-words.js` | 491 | 人工核过（大部分是反转 katakana-terminator 的离线词典得到的真实外来语写法 + 手工补的歌词高频词） |
+| `tools/seed-words-llm.js` | 5555 | `tools/expand-dict-llm.js` 让大模型按英文词频（前 6000）批量生成的读音 |
+
+人工优先：同一个词两边都有时保留人工那份；生成物只收**纯片假名**，
+混进汉字/平假名的结果当场丢掉（实测拦下 1 条：`portuguese → ポルトガル語`）。
+
+重新生成（需要 `DEEPSEEK_API_KEY` 环境变量，约 4.5 分钟 / 8 万 tokens / 几分钱）：
+
+```bash
+npm run build:dict:llm -- --top 6000 --resume   # 生成/续跑 tools/seed-words-llm.js
+npm run build:dict                              # 合并进 src/core/dict.js
+```
+
+**质量怎么核的**：拿人工核过的 491 条抽 80 条再问一遍模型，**一致率 95%**；
+4 条不一致里 2 条其实是人工那份更差（`cigarette` 人工 タバコ、`complaint` 人工 クレーム ——
+那是"意译"不是"音译"，歌词里唱 cigarette 更该是 シガレット），
+另 2 条是两可写法（ヴィクトリー/ビクトリー、イエスタデイ/イエスタデー）。
+
+### 规则层依据（sljfaq）
+
+**英文音译规则**（第 3 层的 `convertEnglish`）按 sci.lang.japan FAQ 的
+[How do I write an English word in Japanese?](https://www.sljfaq.org/afaq/english-in-japanese.html)
+写，代码里每条规则/每张表都注了 `参照 sljfaq：…`。已按该页实现的约定：
+
+- **英式发音优先**（vitamin → ビタミン，不是 バイタミン）；
+- **非重读 r**（英式不卷舌）：`ar/er/ir/ur + 辅音或词尾` → アー、
+  `or` → オー（car → カー、bird → バード、horse → ホース）；
+- **θ → サ行**（think → シンク）、**ð → ザ行**（the → ザ、-ther → ザー）；
+- **v → バ行**是首选写法（love → ラブ、vitamin → ビタミン），
+  ヴァ/ヴィ/ヴ/ヴェ/ヴォ 只在日语实际那么写的词里用（visual → ヴィジュアル，走小表）；
+- `ti/di` → ティ/ディ（Disney → ディズニー）、`dz` → ッズ（goods → グッズ）；
+- **æ after k → キャ**（cap → キャップ），开音节的 `ca` 保持 カ（camera → カメラ）；
+- **词尾不发音的 e**：前面的元音是长音（time → タイム），`-ce/-ge` 收 ス/ジ
+  （dance → ダンス、orange → オレンジ）；
+- **辅音 + 词尾 y → イー**（happy → ハッピー、city → シティ、lucky → ラッキー）；
+- **`-Cle` 词尾** → クル/プル/ブル/トル…（simple → シンプル、table → テーブル、people → ピープル）；
+- **m/n 在辅音前收 ン**（hamburger → ハンバーガー、London → ロンドン、front → フロント）；
+- **促音**：多音节词只在重读音节促音，而重音光看拼写定不下来 ——
+  所以只对**单音节词**的词尾塞音补 ッ（hot → ホット、cat → キャット、dog → ドッグ），
+  其余的靠 `confident:false` 交给上层，不猜；
+- **`-ing` → イング**（surfing 的 サーフィン 是该页单列的例外形式）。
+
+**硬契约**：`englishToKatakana()` 的输出一定是**纯片假名**（ァ-ヶ + ー）。
+规则层任何一步拼出别的东西（占位符、`undefined`、拉丁字母），
+`englishToKatakana` 最后会统一清掉并把 `confident` 置 false。
+这条由 `tests/dict.test.js` 的不变量测试（遍历全部词典词）守着。
+
+**已知缺口**（拼写层确实决定不了、页面自己也说「先查词典」的情形）：
+θ/ð 拼写同形、`ow` 在 now/snow、`oo` 在 book/moon、`our` 在 four/hour/tour、
+`-er` 的两个读音、促音落在重读音节上、专有名词（Disney / Washington）、
+词典形（pajamas → パジャマ、slippers → スリパー、router → ルーター、tarot → タロット）。
+`tests/sljfaq-words.test.js` 把页面上的例子分成「读得对」和「读不出来（附理由）」
+两张表逐条登记，**不允许静默跳过**。
 
 词典是**生成**的，别手改：
 
@@ -110,7 +190,9 @@ npm run patch:furigana -- --force # 以备份为基准重打
 | 选项 | 说明 |
 | --- | --- |
 | 启用拉丁字母注音 | 总开关 |
-| 规则没把握时联网校正读音 | 关掉则完全离线（词典 + 罗马音 + 规则） |
+| 用大模型校正规则读出来的词 | 需要填下面的 API Key；关掉则这一层完全不工作 |
+| 接口地址 / 模型 / API Key | 默认 DeepSeek；任何 OpenAI 兼容接口都行。「测试连接」当场验证 |
+| 规则没把握时联网校正读音 | 免费的那条路（Google 接口）。配了大模型时大模型优先 |
 | 除歌词外也标注播放栏的歌曲名 / 歌手 | 关掉就只处理歌词区域 |
 | 注音字号 / 不透明度 | 默认 55% / 80% |
 | 标注范围 | 歌词 + 播放栏 / 只标歌词 / 只标播放栏 / 自定义选择器 |
@@ -120,11 +202,15 @@ npm run patch:furigana -- --force # 以备份为基准重打
 控制台里有一个 `LK` 对象：
 
 ```js
-LK.stats()             // 读音命中统计 + 在线校正统计
-LK.read('light')       // 单个词：{ kana, source, confid  }，source 是 dict/romaji/rule/online
+LK.stats()             // 读音 + 大模型 + 在线校正三份统计
+LK.read('light')       // 单个词：{ kana, source, confident }，source 是 dict/romaji/rule/online
 LK.scan('light と clover')  // 分词结果
 LK.pass()              // 立刻重扫一次
 LK.clearCache()        // 清掉在线校正缓存
+LK.llm.stats()         // 大模型层：命中 / 缓存条数 / 待问 / 请求 / 失败 / 退避剩余
+LK.llm.test()          // 用当前配置打一次真请求，返回 { ok, message }
+LK.llm.flush()         // 立刻把队列里的词发出去（不等攒批窗口）
+LK.llm.clearCache()    // 清掉大模型缓存（下次会重新问）
 ```
 
 运行轨迹写在 `localStorage`（键 `latin-katakana.trace`），用仓库里的工具读：
@@ -152,14 +238,32 @@ node tools/read-trace.js
 
 ## 已知限制
 
-- **规则音译只是兜底**：`hello` → ヘッラオ、`question` → クワエサション 这种还不准
-  （不在词表里的生僻词会读歪）。常用的词都进了词典，剩下的靠联网校正兜。
+- **规则音译只是兜底**：`hello` → ヘッラオ 这种还不准。6046 条的词典覆盖了英语词频前 6000，
+  配了大模型 key 之后词典外的词也交给模型，所以正常情况下看不到规则层的输出。
+- **规则层在若干拼写上比老版本更差**（诚实记账，都没有为了好看去塞词表）：
+  `my` → マイー、`cake` → キャケ、`third/shirt/church/short` 这类
+  「二合字母 + r」（→ シアード/シアート/チアーチ/シオート）、
+  `horse/nurse/purse` 的词尾 `-se`（→ ホーセ/ナーセ/パーセ）、
+  `search/earth/early` 的 `ear`、`memory` → メモーイー、`book` → ボオック。
+  这些词全都在词典里（或人工小表里），所以真机上不会走到规则层；
+  走得到的只有词典外的专有名词，那些正好是大模型层的地盘。
+- **规则层的读音依据是 sljfaq 那张表**（见「规则层依据」一节），
+  但表里有些例子拼写决定不了读音，规则层读不准：
+  `ow`（now / snow）、`oo`（book / moon）、`oo+r`（door / four）、
+  `our`（hour / tour）、`θ/ð`（think / the）、`-er` 的两个读音、
+  `igh` 被前面的 `f` 拼块抢先（fight）等。这些要么进词典/小表，
+  要么标 `confident: false` 交给大模型/联网。完整清单见
+  `tests/sljfaq-words.test.js` 的 `KNOWN_GAPS`（每条都写了理由）。
+- **人工词表里有少量"意译"而非"音译"的条目**：那 491 条是从
+  "片假名外来语 → 英文" 反转来的，所以 `cigarette` 是 タバコ、`complaint` 是 クレーム
+  （日语里就这两个词，但歌词里唱出来更像 シガレット/コンプレイント）。
+  交叉验证 80 条里这样的有 2 条。
 - 罗马音路径按 `di → ヂ` 切分，所以 `diorama` 走罗马音会得到 ヂオラマ；
-  正常走词典拿到 ジオラマ。`the` / `think` 这类 `th` 词会标上 `confident: false`
-  并交给联网校正。
+  正常走词典拿到 ジオラマ。
 - 桌面歌词不生效（原生窗口，够不到）。
 - 只处理拉丁字母，汉字振假名是 jp-furigana 的活。
-- 在线校正依赖 Google 的**非公开**接口，可能失效或被限流；失效时自动退回本地读音。
+- 大模型层要你自己填 key（**只存本机 localStorage**）；不填也能用，只是退回免费的
+  Google 接口。Google 那条依赖**非公开**接口，可能失效或被限流；失效时自动退回本地读音。
 
 ## 开发
 

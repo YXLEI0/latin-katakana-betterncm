@@ -18,6 +18,7 @@
 			{ "file": "core/dict.js" },
 			{ "file": "core/reading.js" },
 			{ "file": "core/correct.js" },
+			{ "file": "core/llm.js" },
 			{ "file": "core/annotate.js" },
 			{ "file": "main.js" }
 		]

@@ -1,5 +1,5 @@
 /*
- * 集成测试：像 BetterNCM 那样把 6 个文件注入到一个页面里，
+ * 集成测试：像 BetterNCM 那样把 7 个文件注入到一个页面里，
  * 提供 plugin / betterncm 全局桩，然后观察插件是否真的开始工作。
  *
  * 这是最接近真机的一层：manifest 的 injects 顺序、main.js 里的生命周期注册、
@@ -46,9 +46,16 @@ function bootPlugin(html, options) {
   const window = ctx.window;
 
   // 网络：默认全部失败，保证测试不碰真接口
-  window.fetch = function () {
+  window.fetch = options.fetch || function () {
     return Promise.reject(new Error("offline (test)"));
   };
+
+  // main.js 是在「注入时」读 localStorage 里的配置，所以要在 loadScripts 之前种进去
+  if (options.config) {
+    const saved = {};
+    for (const k of Object.keys(options.config)) saved[k] = options.config[k];
+    window.localStorage.setItem("latin-katakana.config", JSON.stringify(saved));
+  }
 
   const opened = [];
   const listeners = { load: [], config: [] };
@@ -122,7 +129,7 @@ function baseText(el) {
 const PAIRS = (p) =>
   [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent]);
 
-test("注入 6 个文件后，插件注册了 onLoad / onConfig 并导出 API", async () => {
+test("注入 7 个文件后，插件注册了 onLoad / onConfig 并导出 API", async () => {
   const env = bootPlugin();
   assert.strictEqual(env.listeners.load.length, 1, "应该注册了 onLoad");
   assert.strictEqual(env.listeners.config.length, 1, "应该注册了 onConfig");
@@ -264,6 +271,71 @@ test("和被注音过的行待在一起：反复扫描既不重注也不认输",
   assert.strictEqual(p.querySelector(".fg-rt").textContent, "よつば");
 });
 
+// 用来测大模型层的一行：kaleidoscope 是词典里没有的词（6046 条的词典也覆盖不到它），
+// 所以它必然落到规则层（读成乱七八糟的拼写音译），正好用来看"结果回来之后有没有被换掉"。
+const LLM_HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>きらめく kaleidoscope の light</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+
+test("大模型层：规则读歪的词，结果回来之后注音会被换上（先即时、后修正）", async () => {
+  // 走整条真实链路：boot -> 规则先给一个即时读音 -> 入队 -> 一批问完 ->
+  // onUpdate 重扫 -> DOM 里的注音被换成大模型的写法。
+  const requests = [];
+  const env = bootPlugin(LLM_HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions" },
+    fetch: function (url, init) {
+      const body = JSON.parse(init.body);
+      const words = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      requests.push({ url: url, words: words, auth: init.headers.Authorization });
+      const out = {};
+      for (const w of words) out[w] = w === "kaleidoscope" ? "カレイドスコープ" : "ダミー";
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1400);
+
+  assert.ok(requests.length >= 1, "应该向大模型发过请求");
+  assert.strictEqual(requests[0].auth, "Bearer sk-test", "key 要按 Bearer 发出去");
+  assert.ok(requests[0].words.indexOf("kaleidoscope") >= 0, "词典里没有的词要进队列：" + requests[0].words.join(","));
+  assert.ok(requests[0].words.indexOf("light") < 0, "词典命中的词不该浪费请求：" + requests[0].words.join(","));
+
+  const s = env.api.stats().llm;
+  assert.ok(s && s.hasKey === true && s.requests >= 1 && s.hits >= 1, JSON.stringify(s));
+
+  // 关键：DOM 里那个词现在必须是大模型给的读音，不是规则拼出来的
+  const line = env.document.querySelector("ul.lyric li p");
+  const pairs = [...line.querySelectorAll("ruby.lt-ruby")].map((r) => r.querySelector(".lt-rt").textContent);
+  assert.ok(pairs.indexOf("カレイドスコープ") >= 0, "注音应该被换成大模型的读音：" + pairs.join(","));
+  assert.strictEqual(baseText(line), "きらめく kaleidoscope の light", "底字不许动");
+});
+
+test("大模型层没配 key 时：一切照旧走本地，不发任何请求", async () => {
+  let called = 0;
+  const env = bootPlugin(NCM_HTML, {
+    fetch: function () {
+      called++;
+      return Promise.reject(new Error("offline (test)"));
+    },
+  });
+  await env.runLoad();
+  await sleep(600);
+  assert.strictEqual(called, 0, "没填 key 不该发请求");
+  assert.ok(rubyCount(env.document.querySelector("ul.lyric")) >= 3, "本地照样要标上");
+  const s = env.api.stats();
+  assert.strictEqual(s.llm.hasKey, false);
+});
+
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {
   // 真机上两个插件都会插注音。共存补丁重建完一行只调一个全局钩子，
   // 谁后加载谁就得**链上去**，直接覆盖会让另一个插件立刻开始闪。
@@ -360,7 +432,7 @@ test("缺核心模块时优雅退出，不抛异常", () => {
     onConfig: () => {},
   };
   window.betterncm = { app: {}, ncm: {}, fs: {} };
-  for (const k of ["LKMatcher", "LKDict", "LKReading", "LKCorrect", "LKAnnotate"]) delete window[k];
+  for (const k of ["LKMatcher", "LKDict", "LKReading", "LKCorrect", "LKLLM", "LKAnnotate"]) delete window[k];
 
   assert.doesNotThrow(() => {
     loadScripts(ctx.dom, ["main.js"]);

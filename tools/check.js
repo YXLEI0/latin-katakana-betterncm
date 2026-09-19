@@ -87,8 +87,11 @@ console.log("[0/7] 运行时版本");
   const TEST_FILES = [
     "tests/latin.test.js",
     "tests/reading.test.js",
+    "tests/sljfaq-words.test.js",
+    "tests/dict.test.js",
     "tests/annotate.test.js",
     "tests/correct.test.js",
+    "tests/llm.test.js",
     "tests/integration.test.js",
     "tests/patch.test.js",
   ];
@@ -161,6 +164,7 @@ const WANT_ORDER = [
   "core/dict.js",
   "core/reading.js",
   "core/correct.js",
+  "core/llm.js",
   "core/annotate.js",
   "main.js",
 ];
