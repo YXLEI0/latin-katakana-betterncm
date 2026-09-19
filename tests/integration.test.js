@@ -336,6 +336,35 @@ test("大模型层没配 key 时：一切照旧走本地，不发任何请求", 
   assert.strictEqual(s.llm.hasKey, false);
 });
 
+test("用户报的那行：Tell me a story 里的 a 也要注音", async () => {
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>Tell me a story tell me a story 叶うなら</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+  const env = bootPlugin(HTML);
+  await env.runLoad();
+  await sleep(600);
+
+  const p = env.document.querySelector("ul.lyric li p");
+  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent]);
+  assert.deepStrictEqual(pairs, [
+    ["Tell", "テル"],
+    ["me", "ミー"],
+    ["a", "ア"],
+    ["story", "ストーリー"],
+    ["tell", "テル"],
+    ["me", "ミー"],
+    ["a", "ア"],
+    ["story", "ストーリー"],
+  ]);
+  assert.strictEqual(baseText(p), "Tell me a story tell me a story 叶うなら", "底字一字不改");
+});
+
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {
   // 真机上两个插件都会插注音。共存补丁重建完一行只调一个全局钩子，
   // 谁后加载谁就得**链上去**，直接覆盖会让另一个插件立刻开始闪。

@@ -59,16 +59,26 @@
   }
 
   /*
-   * 不值得标的：单字母。
+   * 单字母词：默认不标，但英文里真实存在的两个词例外。
    *
-   * 「a」「I」这种一个字母的，标上去只是噪音（而且 I 是日语里的「い」还是英语的
-   * 「アイ」本来就说不清）。真需要标的词不会只有一个字母。
+   * 「x」「b」这种一个字母的多半是首字母缩写或者排版噪声，标上去只是噪音，
+   * 所以默认跳过。但 `a` 和 `I` 是**真正的英文单词**，而且在 J-pop 歌词里满地都是
+   * （"Tell me a story"、"I love you"）—— 一行里其它词都标了、就它们空着，
+   * 比标错还显眼。它们的读音由词典给（`a` -> ア、`i` -> アイ，见 tools/seed-words.js）。
+   *
+   * 已知取舍：罗马音歌词里孤零零一个 `i`（= い）会被读成 アイ。
+   * 但 RNP 的罗马音层本来就被整层跳过，纯罗马音行里的单字母也极少，
+   * 而英文歌部分里 "I" 远比裸的 "i" 常见，所以选这一侧。
    *
    * 注意**不做**"常见词不标"的白名单：用户要的就是歌词里的拉丁词都标上读音，
    * the / and 这类也照标 —— 否则一行里漏一半，看着更奇怪。
    */
+  var SINGLE_LETTER_WORDS = { a: true, i: true };
+
   function looksReadable(token) {
-    return !!token && token.norm.length >= 2;
+    if (!token || !token.norm) return false;
+    if (token.norm.length >= 2) return true;
+    return SINGLE_LETTER_WORDS[token.norm] === true;
   }
 
   /** 这片文字里有没有"值得标"的词（用来快速判断整段要不要处理） */

@@ -87,16 +87,26 @@ test("词正好在文本开头时，注音不能跑到行尾", () => {
   assert.strictEqual(baseText(p), "clover と dream の 話はなし");
 });
 
-test("单字母不标，两字母以上才标", () => {
+test("单字母：a / I 要标，其它单字母不标", () => {
+  // 用户报的：`Tell me a story` 里的 a 空着。a 和 I 是真正的英文单词，要标；
+  // x 这种首字母缩写/排版噪声仍然跳过。
   const ctx = newCtx(`<!doctype html><html><body>
-<ul class="lyric"><li class="line"><p>a と to と sky</p></li></ul>
+<ul class="lyric"><li class="line"><p>a と to と sky と I と x</p></li></ul>
 </body></html>`);
   forceRubyLayout(ctx, true);
   const ann = makeAnnotator(ctx);
   ann.pass();
   const p = ctx.document.querySelector("p");
-  const bases = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue);
-  assert.deepStrictEqual(bases, ["to", "sky"], "单字母是噪音，不标");
+  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+    r.childNodes[0].nodeValue,
+    r.querySelector(".lt-rt").textContent,
+  ]);
+  assert.deepStrictEqual(pairs, [
+    ["a", "ア"],
+    ["to", "トゥ"],
+    ["sky", "スカイ"],
+    ["I", "アイ"],
+  ], "a / I 要标，x 不标");
 });
 
 test("重复扫描稳定，不会反复重注", () => {

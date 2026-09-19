@@ -81,16 +81,28 @@ test("scan：不会因为零宽匹配卡死（正则改坏时的保护）", () =
   assert.ok(toks.length >= 1);
 });
 
-test("looksReadable：单字母不标，两字母以上才标", () => {
-  const [single, two, three] = latin.scan("a to sky");
-  assert.strictEqual(latin.looksReadable(single), false, "「a」这种单字母是噪音");
-  assert.strictEqual(latin.looksReadable(two), true);
-  assert.strictEqual(latin.looksReadable(three), true);
+test("looksReadable：单字母默认不标，但 a / I 是真词要标", () => {
+  // 用户报的：`Tell me a story` 里那个 a 不注音。
+  // 单字母默认跳过（首字母缩写、排版噪声），可 `a` 和 `I` 是真正的英文单词，
+  // 在 J-pop 歌词里满地都是，漏掉它们比标错更显眼。
+  const toks = latin.scan("Tell me a story I love you x b");
+  const by = {};
+  for (const t of toks) by[t.text] = latin.looksReadable(t);
+  assert.strictEqual(by["a"], true, "a 是英文单词，要标（ア）");
+  assert.strictEqual(by["I"], true, "I 是英文单词，要标（アイ）");
+  assert.strictEqual(by["x"], false, "其它单字母仍然不标");
+  assert.strictEqual(by["b"], false, "其它单字母仍然不标");
+  assert.strictEqual(by["Tell"], true);
+  assert.strictEqual(by["me"], true);
+  assert.strictEqual(by["story"], true);
+  assert.strictEqual(by["love"], true);
+  assert.strictEqual(by["you"], true);
 });
 
 test("hasReadable：整段里有没有值得标的词", () => {
   assert.strictEqual(latin.hasReadable("きらめく light"), true);
-  assert.strictEqual(latin.hasReadable("a i u"), false, "只有单字母就不值得处理");
+  assert.strictEqual(latin.hasReadable("x y z"), false, "只有不标的单字母就不值得处理");
+  assert.strictEqual(latin.hasReadable("a"), true, "只有 a 也要处理（它是单词）");
   assert.strictEqual(latin.hasReadable("きらめく"), false);
 });
 

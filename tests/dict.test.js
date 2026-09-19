@@ -82,6 +82,8 @@ test("常见歌词词都能「确定地」读出纯片假名（不许掉进猜�
     "river", "finger", "teacher",
     // 虚词：歌词里也会出现，注音要按唱出来的音
     "the", "of", "and", "you", "me", "we", "my", "your", "love", "kiss",
+    // 单字母词：a / I 是真正的英文单词，必须有确定读音
+    "a", "i",
   ];
   const bad = [];
   for (const w of must) {

@@ -14,6 +14,9 @@
 "use strict";
 
 module.exports = [
+  // 单字母词（`a` / `I`）：这两个是英文里真实存在的单词，也是歌词里最常见的一对。
+  // 它们不在词频表的候选里（那份表只取长度 >= 2 的词），所以人工放进来。
+  { en: "a", kana: "ア" },
   { en: "access", kana: "アクセス" },
   { en: "accessories", kana: "アクセサリー" },
   { en: "account", kana: "アカウント" },
@@ -176,6 +179,7 @@ module.exports = [
   { en: "history", kana: "ヒストリー" },
   { en: "horror", kana: "ホラー" },
   { en: "hotel", kana: "ホテル" },
+  { en: "i", kana: "アイ" }, // 英文的 "I"：アイ（罗马音里的裸 i = イ，见 latin.js 里的取舍说明）
   { en: "icon", kana: "アイコン" },
   { en: "idea", kana: "アイデア" },
   { en: "image", kana: "イメージ" },
