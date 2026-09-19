@@ -2,7 +2,7 @@
 
 在网易云音乐的日语歌词里，给**拉丁字母**上方标注**片假名读音**
 
-默认歌词页（`I know this sky loves you.` → アイ ノウ ディス スカイ ラブズ ユー）：
+默认歌词页（歌词区实拍：`I know this sky loves you.` → アイ ノウ ディス スカイ ラブズ ユー）：
 
 ![默认歌词页](src/preview.png)
 

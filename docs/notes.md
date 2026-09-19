@@ -392,9 +392,11 @@ tools/
   patch-jp-furigana*.js  jp-furigana 共存补丁（和片假名终结者仓库里的同一份，必须保持一致）
 ```
 
-`src/preview.png` 是**真机截图**（网易云歌词页，《快晴》那句
-「I know this sky loves you.」上面标着 アイ ノウ ディス スカイ ラブズ ユー），
-不是画出来的示意图 —— 不要用占位图覆盖它。
+`src/preview.png` 是**真机截图裁出来的歌词区**：从一张 1585×1128 的默认歌词页截图里
+裁出歌词部分，等比放大到 **750×350** —— 和 [jp-furigana](https://github.com/Leleawa/jp-furigana)
+的 `preview.jpg` **同尺寸**（商店里两个插件并排时构图一致）。
+内容是《快晴》那句「I know this sky loves you.」标着 アイ ノウ ディス スカイ ラブズ ユー，
+下面跟着中文翻译。不是画出来的示意图 —— 不要用占位图覆盖它。
 
 ## 许可
 
