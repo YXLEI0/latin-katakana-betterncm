@@ -318,6 +318,96 @@ test("英文：confident:false 的判定条件", () => {
   assert.strictEqual(LK.englishToKatakana("world").confident, true);
 });
 
+// ============================================================ 缩写
+
+test("缩写：'s / 're / 'll / 'd / 've / 'm / n't 都要读对", () => {
+  // 用户报的：you're / I'll / it's / I'd 注不准。
+  // 根因是折掉撇号之后撞上别的词条（I'll -> ill、I'd -> id），
+  // 所以缩写必须排在词典前面。词典里故意塞了 ill / id 当"陷阱"。
+  const r = LK.createReader({
+    dict: {
+      ill: "イル",
+      id: "アイディー",
+      i: "アイ",
+      you: "ユー",
+      we: "ウィー",
+      they: "ゼイ",
+      he: "ヒー",
+      she: "シー",
+      it: "イット",
+      is: "イズ",
+      that: "ザット",
+      let: "レット",
+      there: "ゼア",
+      who: "フー",
+      do: "ドゥー",
+      ca: "シーエー",
+      sarah: "サラ",
+    },
+  });
+  const cases = [
+    ["you're", "ユア"],
+    ["we're", "ウィア"],
+    ["they're", "ゼア"],
+    ["I'll", "アイル"],
+    ["you'll", "ユール"],
+    ["we'll", "ウィル"],
+    ["he'll", "ヒール"],
+    ["it'll", "イットル"],
+    ["I'd", "アイド"],
+    ["you'd", "ユード"],
+    ["I've", "アイブ"],
+    ["I'm", "アイム"],
+    ["it's", "イッツ"],
+    ["that's", "ザッツ"],
+    ["let's", "レッツ"],
+    ["he's", "ヒーズ"],
+    ["she's", "シーズ"],
+    ["there's", "ゼアズ"],
+    ["Sarah's", "サラズ"],
+    ["don't", "ドント"],
+    ["can't", "キャント"],
+    ["won't", "ウォント"],
+    ["isn't", "イズント"],
+    ["couldn't", "クドント"],
+    ["shouldn't", "シュドント"],
+    ["y'all", "ヨール"],
+  ];
+  for (const [word, want] of cases) {
+    const got = r.read(word);
+    assert.ok(got, word + " 应该读得出来");
+    assert.strictEqual(got.kana, want, word);
+  }
+  // 关键的"陷阱"：绝不能因为折掉撇号就命中 ill / id
+  assert.notStrictEqual(r.read("I'll").kana, "イル");
+  assert.notStrictEqual(r.read("I'd").kana, "アイディー");
+  // 词干走的是哪一层，来源就记哪一层（大模型那层靠 source==="rule" 决定要不要问）
+  assert.strictEqual(r.read("Sarah's").source, "dict", "词干命中词典，来源就是词典");
+  assert.strictEqual(r.read("zephyr's").source, "rule", "词干是规则猜的，来源就是规则");
+  assert.strictEqual(r.read("zephyr's").kana.slice(-1), "ズ");
+});
+
+test("缩写的拆分与拼接（splitContraction / mergeContraction）", () => {
+  const S = LK.splitContraction;
+  assert.deepStrictEqual(S("you're"), { base: "you", suffix: "re", fixed: null });
+  assert.deepStrictEqual(S("I'll".replace("'", "\u2019")), { base: "I", suffix: "ll", fixed: null });
+  assert.deepStrictEqual(S("don't"), { base: "do", suffix: "nt", fixed: "ドント" });
+  assert.deepStrictEqual(S("y'all"), { base: null, suffix: null, fixed: "ヨール" });
+  assert.strictEqual(S("light"), null, "没有撇号就不是缩写");
+  assert.strictEqual(S("rock'n'roll"), null, "中间夹撇号但尾巴不认识 -> 不碰");
+
+  const M = LK.mergeContraction;
+  assert.strictEqual(M("イット", "s"), "イッツ", "t 结尾并成 ツ");
+  assert.strictEqual(M("キッド", "s"), "キッズ", "d 结尾并成 ズ");
+  assert.strictEqual(M("ヒー", "s"), "ヒーズ", "其它直接接 ズ");
+  assert.strictEqual(M("ユー", "re"), "ユア", "长音收掉再接 ア");
+  assert.strictEqual(M("アイ", "ll"), "アイル");
+  assert.strictEqual(M("アイ", "d"), "アイド");
+  assert.strictEqual(M("アイ", "ve"), "アイブ");
+  assert.strictEqual(M("アイ", "m"), "アイム");
+  assert.strictEqual(M("ド", "nt"), "ドント");
+});
+
 // ============================================================ 记号逐字母
 
 test("记号：逐字母读（字母名），分隔符不发音、& 读 アンド", () => {

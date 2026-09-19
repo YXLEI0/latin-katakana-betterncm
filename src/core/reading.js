@@ -1496,6 +1496,96 @@
   var LETTER_AMP = "\u30A2\u30F3\u30C9"; // アンド
 
   /*
+   * ------------------------------------------------------------ 缩写
+   *
+   * 用户报的：`you're` / `I'll` / `it's` / `I'd` 这类注不准。
+   *
+   * 根因是折撇号那一步：`normalize()` 把 `'` 去掉，于是
+   *   `I'll` -> `ill`（词典里真有 ill = イル）
+   *   `I'd`  -> `id`（词典里真有 id = アイディー）
+   *   `you're` -> `youre`（谁也不认识，落到规则去猜 -> ヨウレ）
+   * 所以缩写必须在**折撇号之前**认出来：拆成"词干 + 缩写尾巴"，
+   * 词干照常走词典/罗马音/规则，尾巴按下面这张表补上。
+   *
+   * 绝大多数缩写用"拼接 + 少量音变"就够了（见 mergeContraction），
+   * 少数几个例外单独列表 —— 它们的读音不是词干加尾巴能拼出来的。
+   */
+  var EN_CONTRACTIONS = {
+    // n't：词干的读音会被词典/规则带偏，逐个定死
+    "don't": "\u30C9\u30F3\u30C8", // ドント（do 是 ドゥー，接上去变成 ドゥーント）
+    "can't": "\u30AD\u30E3\u30F3\u30C8", // キャント（ca 在词典里是字母名 シーエー）
+    "won't": "\u30A6\u30A9\u30F3\u30C8", // ウォント
+    "ain't": "\u30A8\u30A4\u30F3\u30C8", // エイント
+    "weren't": "\u30EF\u30FC\u30F3\u30C8", // ワーント（were 不是 ウィア）
+    "couldn't": "\u30AF\u30C9\u30F3\u30C8", // クドント（could 是 クッド，会多一个促音）
+    "wouldn't": "\u30A6\u30C9\u30F3\u30C8", // ウドント
+    "shouldn't": "\u30B7\u30E5\u30C9\u30F3\u30C8", // シュドント
+    "mustn't": "\u30DE\u30B9\u30F3\u30C8", // マスント
+    "hadn't": "\u30CF\u30C9\u30F3\u30C8", // ハドント
+    "needn't": "\u30CB\u30C9\u30F3\u30C8", // ニドント
+    // 其它不规则
+    "they're": "\u30BC\u30A2", // ゼア（ゼイ+ア 不对）
+    "we'll": "\u30A6\u30A3\u30EB", // ウィル（ウィー+ル 会变成 ウィール）
+    "y'all": "\u30E8\u30FC\u30EB", // ヨール（不是词干+尾巴能拼的）
+  };
+
+  /** "n't" 单独认：don't = do + n't、can't = ca + n't */
+  var RE_CONTRACTION_NT = /^([A-Za-z]+)n['\u2019\u02BC\uFF07]t$/;
+  /** 其余缩写：词干 + 撇号 + 尾巴 */
+  var RE_CONTRACTION = /^([A-Za-z]+)['\u2019\u02BC\uFF07](s|re|ll|d|ve|m)$/i;
+
+  /**
+   * 拆一个缩写。不是缩写返回 null，否则返回 { base, suffix, fixed }：
+   *   base   词干（拿去走正常读音路径）
+   *   suffix 尾巴（s / re / ll / d / ve / m / nt）
+   *   fixed  例外表里定死的整词读音（没有就是 null）
+   */
+  function splitContraction(raw) {
+    if (typeof raw !== "string") return null;
+    var s = raw.trim();
+    if (s.indexOf("'") < 0 && s.indexOf("\u2019") < 0 && s.indexOf("\u02BC") < 0 && s.indexOf("\uFF07") < 0) {
+      return null;
+    }
+    var lower = s.toLowerCase();
+    // 先把"词干 + 尾巴"拆出来（拆得出来就带上整词表里的例外读音）
+    var m = RE_CONTRACTION_NT.exec(s);
+    if (m) return { base: m[1], suffix: "nt", fixed: EN_CONTRACTIONS[lower] || null };
+    m = RE_CONTRACTION.exec(s);
+    if (m) return { base: m[1], suffix: m[2].toLowerCase(), fixed: EN_CONTRACTIONS[lower] || null };
+    // 拆不出来的（y'all 这类）只能靠整词表
+    if (EN_CONTRACTIONS[lower]) return { base: null, suffix: null, fixed: EN_CONTRACTIONS[lower] };
+    return null;
+  }
+
+  /** 把词干的读音和缩写尾巴拼起来（该并促音的并促音、该收长音的收长音） */
+  function mergeContraction(kana, suffix) {
+    if (!kana) return kana;
+    if (suffix === "s") {
+      /*
+       * it's / that's / let's：词尾是 ト 时并成 ツ（イット -> イッツ，
+       * 不是 イッズ）；是 ド 时并成 ズ（キッド -> キッズ）。
+       * 注意去掉的是**词尾那个假名**再补促音那套 —— 词干本身可能已经带 ッ
+       * （it 的词典读音是 イット），再补一个就成 イッッズ 了。
+       */
+      if (/[\u30C8]$/.test(kana)) return kana.slice(0, -1) + "\u30C4"; // イット -> イッツ
+      if (/[\u30C9]$/.test(kana)) return kana.slice(0, -1) + "\u30BA"; // キッド -> キッズ
+      if (/[\u30C3]$/.test(kana)) return kana + "\u30C4"; // 已经是促音结尾
+      return kana + "\u30BA"; // ズ（he's -> ヒーズ）
+    }
+    if (suffix === "re") {
+      // you're / we're：长音要收掉（ユー + ア = ユア）
+      if (kana.charAt(kana.length - 1) === "\u30FC") kana = kana.slice(0, -1);
+      return kana + "\u30A2"; // ア
+    }
+    if (suffix === "ll") return kana + "\u30EB"; // ル：I'll -> アイル
+    if (suffix === "d") return kana + "\u30C9"; // ド：I'd -> アイド
+    if (suffix === "ve") return kana + "\u30D6"; // ブ：I've -> アイブ
+    if (suffix === "m") return kana + "\u30E0"; // ム：I'm -> アイム
+    if (suffix === "nt") return kana + "\u30F3\u30C8"; // ント：don't -> ドント
+    return kana;
+  }
+
+  /*
    * 整串就是一个记号：`D/N/A`、`N/A`、`A.B.C`、`R&B`、`X-Y` ——
    * 字母被分隔符一个一个串起来。和 matcher 的 RE_NOTATION_WHOLE 同一口径。
    *
@@ -1730,6 +1820,26 @@
         return { kana: spelled, source: "letters", confident: true };
       }
 
+      /*
+       * ①.5 缩写（'s / 're / 'll / 'd / 've / 'm / n't）：**必须在词典前面**。
+       *      折掉撇号之后 `I'll` 会变成 `ill`、`I'd` 变成 `id`，
+       *      正好撞上词典里的别的词 —— 用户报的就是这个。
+       *      词干递归走正常路径（词典/罗马音/规则），尾巴按音变补上。
+       */
+      var contr = splitContraction(raw);
+      if (contr) {
+        if (contr.fixed) {
+          trace("缩写命中（整词表）：" + raw + " -> " + contr.fixed);
+          return { kana: contr.fixed, source: "dict", confident: true };
+        }
+        var baseRes = lookup(contr.base);
+        if (baseRes) {
+          var merged = mergeContraction(baseRes.kana, contr.suffix);
+          trace("缩写命中：" + raw + " = " + contr.base + " + " + contr.suffix + " -> " + merged);
+          return { kana: merged, source: baseRes.source, confident: baseRes.confident };
+        }
+      }
+
       // ② 词典：折叠写法优先（词典里存的是 ASCII）
       //    注意**不能**再走"去掉非字母"那一档键：`déjà` 会被削成 `dj`，
       //    正好命中词典里的 DJ -> ディージェイ（用户报过类似的怪音）。
@@ -1863,6 +1973,9 @@
     lettersToKatakana: lettersToKatakana,
     notationToKatakana: notationToKatakana,
     spellOutAcronym: spellOutAcronym,
+    splitContraction: splitContraction,
+    mergeContraction: mergeContraction,
+    EN_CONTRACTIONS: EN_CONTRACTIONS,
     foldLatin: foldLatin,
     createReader: createReader,
     normalize: normalize,
