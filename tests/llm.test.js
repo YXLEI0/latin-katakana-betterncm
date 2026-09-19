@@ -132,6 +132,19 @@ test("词会先规范化：大写、连字符、脏字符都折成同一个键",
   assert.strictEqual(client.lookup("EMAIL"), "イーメール");
 });
 
+test("带变音符号的词：键要折成 ASCII（Tōkyō -> tokyo），不能削成半截", async () => {
+  const ctx = loadCore();
+  const { client, calls } = makeClient(ctx, { reply: () => ({ tokyo: "トーキョー" }) });
+  assert.strictEqual(client.lookup("Tōkyō"), null);
+  await client.flush();
+  assert.deepStrictEqual(calls[0].words, ["tokyo"], "折之前会变成 tky 这种半个词");
+  assert.strictEqual(client.lookup("Tōkyō"), "トーキョー");
+  assert.strictEqual(client.lookup("TŌKYŌ"), "トーキョー", "大小写与符号都归到同一个键");
+  assert.strictEqual(client.lookup("Café"), null, "Café 也要能进队列（键是 cafe）");
+  await client.flush();
+  assert.ok(calls[calls.length - 1].words.indexOf("cafe") >= 0, JSON.stringify(calls[calls.length - 1].words));
+});
+
 // ============================================================ 校验
 
 test("只接受纯片假名：汉字 / 平假名 / 英文 / 空都被丢掉并记成 miss", async () => {

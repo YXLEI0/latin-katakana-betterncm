@@ -1540,6 +1540,84 @@
     return lettersToKatakana(s.toLowerCase().replace(/[^a-z&]/g, ""));
   }
 
+  // ------------------------------------------------------------ 变音符号折叠
+
+  /*
+   * 变音符号 -> ASCII。用户报的 `Ō` / `Tōkyō` / `Café` 都属于这一类。
+   *
+   * 分两组处理，性质完全不同：
+   *   1. **长音符 ā ē ī ō ū**（日语罗马字的写法）-> "元音 + -"，
+   *      因为在本仓库的罗马音口径里 `-` 就是长音（`saka-` -> サカー），
+   *      于是 `Tōkyō` -> `to-kyo-` -> トーキョー、`kōhī` -> `ko-hi-` -> コーヒー。
+   *      这一组是**确定**的（罗马字的长音就是这么标的）。
+   *   2. 别的变音符号（é ü ñ ç …）-> 基础字母（José -> jose、Café -> cafe）。
+   *      这一组只是"没有更好的办法"：读音得看是哪种语言，所以标成
+   *      `confident: false`，交给大模型/联网那一层去修（ホセ 而不是 ジョセ）。
+   */
+  var FOLD_MAP = (function () {
+    var m = {};
+    function add(chars, to) {
+      for (var i = 0; i < chars.length; i++) m[chars.charAt(i)] = to;
+    }
+    // 1. 长音符：折成「元音 + -」，'-' 在罗马音里读长音
+    add("\u0101", "a-"); // ā
+    add("\u0113", "e-"); // ē
+    add("\u012B", "i-"); // ī
+    add("\u014D", "o-"); // ō
+    add("\u016B", "u-"); // ū
+    // 2. 其它变音符号：折成基础字母
+    add("\u00E0\u00E1\u00E2\u00E3\u00E4\u00E5\u0103\u0105", "a");
+    add("\u00E8\u00E9\u00EA\u00EB\u0115\u0117\u0119\u011B", "e");
+    add("\u00EC\u00ED\u00EE\u00EF\u012D\u012F\u0131", "i");
+    add("\u00F2\u00F3\u00F4\u00F5\u00F6\u00F8\u014F\u0151", "o");
+    add("\u00F9\u00FA\u00FB\u00FC\u016D\u016F\u0171\u0173", "u");
+    add("\u00FD\u00FF\u0177", "y");
+    add("\u00E7\u0107\u0109\u010B\u010D", "c");
+    add("\u00F1\u0144\u0146\u0148", "n");
+    add("\u015B\u015D\u015F\u0161", "s");
+    add("\u017A\u017C\u017E", "z");
+    add("\u0142\u013A\u013E\u013C", "l");
+    add("\u011D\u011F\u0121\u0123", "g");
+    add("\u010F\u0111", "d");
+    add("\u0165\u0163", "t");
+    add("\u0155\u0159", "r");
+    add("\u0175", "w");
+    add("\u0125", "h");
+    add("\u00E6", "ae");
+    add("\u0153", "oe");
+    add("\u00DF", "ss");
+    add("\u00FE", "th");
+    add("\u00F0", "d");
+    return m;
+  })();
+
+  /**
+   * 把带变音符号的写法折成 ASCII。没有变音符号返回 **null**（调用方据此走原路）。
+   * 返回 { text, pureMacron }：pureMacron 表示"只有长音符"（= 日语罗马字，可信）。
+   */
+  function foldLatin(s) {
+    if (typeof s !== "string" || !s) return null;
+    var lower = s.toLowerCase();
+    var out = "";
+    var changed = false;
+    var macron = false;
+    var other = false;
+    for (var i = 0; i < lower.length; i++) {
+      var ch = lower.charAt(i);
+      var rep = FOLD_MAP[ch];
+      if (rep === undefined) {
+        out += ch;
+        continue;
+      }
+      changed = true;
+      if (rep.length === 2 && rep.charAt(1) === "-") macron = true;
+      else other = true;
+      out += rep;
+    }
+    if (!changed) return null;
+    return { text: out, pureMacron: macron && !other };
+  }
+
   // ------------------------------------------------------------ 规范化
 
   /**
@@ -1605,9 +1683,17 @@
     function lookup(raw) {
       if (typeof raw !== "string") return null;
 
+      /*
+       * 变音符号先折成 ASCII：`Tōkyō` -> `to-kyo-`、`Café` -> `cafe`。
+       * 折过之后所有的查表/规则都用折叠形式，只有"记号"判据用原始写法
+       * （分隔符的形态只在原文里才有）。
+       */
+      var fold = foldLatin(raw);
+      var query = fold ? fold.text : raw;
+
       // 去掉首尾标点后再判断「有没有拉丁字母」。
       // 纯标点（"..."）和空串都在这里被挡掉。
-      var shown = normalize(raw);
+      var shown = normalize(query);
       if (!shown || !RE_LATIN.test(shown)) return null;
 
       /*
@@ -1625,11 +1711,26 @@
         return { kana: spelled, source: "letters", confident: true };
       }
 
-      var keys = keysFor(raw, shown);
+      // ② 词典：折叠写法优先（词典里存的是 ASCII）
+      //    注意**不能**再走"去掉非字母"那一档键：`déjà` 会被削成 `dj`，
+      //    正好命中词典里的 DJ -> ディージェイ（用户报过类似的怪音）。
+      var keys = fold ? keysFor(fold.text, shown) : keysFor(raw, normalize(raw));
       var i;
       var key;
 
-      // ② 词典
+      /*
+       * ②.5 只有长音符的词（`Tōkyō` / `kōhī` / `arigatō`）：这就是**日语罗马字**，
+       *      麦克风就是长音符标记 —— 按罗马音读（トーキョー / コーヒー / アリガトー）
+       *      比查"英文词"的词典更贴近唱出来的音，所以排在词典前面。
+       */
+      if (fold && fold.pureMacron) {
+        var macronKana = romajiToKatakana(fold.text);
+        if (macronKana) {
+          trace("romaji（长音符）命中：" + fold.text + " -> " + macronKana);
+          return { kana: macronKana, source: "romaji", confident: true };
+        }
+      }
+
       for (i = 0; i < keys.length; i++) {
         key = keys[i];
         if (dict[key] !== undefined && dict[key]) {
@@ -1649,16 +1750,26 @@
 
       // ③ 罗马音。这里用 shown（已小写、去了首尾标点）而不是 stripNonLetters，
       //    因为 "saka-" 词尾的连字符是长音符，不能被吃掉。
+      //    折叠过的写法先试：`to-kyo-` 这种末尾的长音符在 normalize 里会被去掉，
+      //    所以要用 fold.text 原样喂进去（Tōkyō -> トーキョー，而不是 トキョ）。
+      if (fold) {
+        var foldKana = romajiToKatakana(fold.text);
+        if (foldKana) {
+          trace("romaji（折叠）命中：" + fold.text + " -> " + foldKana);
+          // 只有长音符（日语罗马字）才算确定；别的变音符号交给上层去修
+          return { kana: foldKana, source: "romaji", confident: fold.pureMacron };
+        }
+      }
       var kana = romajiToKatakana(shown);
       if (kana) {
         trace("romaji 命中：" + shown + " -> " + kana);
-        return { kana: kana, source: "romaji", confident: true };
+        return { kana: kana, source: "romaji", confident: !fold };
       }
 
       // ④ 英文规则。永远有结果（最差也是个不 confident 的读音）。
       var res = englishToKatakana(shown);
       trace("rule 命中：" + shown + " -> " + res.kana + "（confident=" + res.confident + "）");
-      return { kana: res.kana, source: "rule", confident: res.confident };
+      return { kana: res.kana, source: "rule", confident: res.confident && !fold };
     }
 
     /** 公开的 read：负责计一次数 */
@@ -1720,6 +1831,7 @@
     englishToKatakana: englishToKatakana,
     lettersToKatakana: lettersToKatakana,
     notationToKatakana: notationToKatakana,
+    foldLatin: foldLatin,
     createReader: createReader,
     normalize: normalize,
     // 下面这些是给上层/测试翻表用的，不在任务要求的四个 API 里，但不多余

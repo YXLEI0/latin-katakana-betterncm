@@ -245,7 +245,22 @@
 
     function keyOf(word) {
       if (typeof word !== "string") return "";
-      var w = word.toLowerCase().replace(/[^a-z]/g, "");
+      /*
+       * 变音符号先折掉再当键：`Ō` / `Tōkyō` / `Café` 这种词不能因为字母带符号，
+       * 就被下面那句 replace(/[^a-z]/g, "") 削成半个词
+       * （`Tōkyō` 会变成 `tky`，缓存键也就对不上了）。
+       * 优先用 NFD 分解再删组合用记号；引擎不支持时退回"把带符号的字母整段删掉"
+       * （宁可少问一个词，也不要拿半个词去问）。
+       */
+      var raw = word.toLowerCase();
+      try {
+        if (typeof raw.normalize === "function") {
+          raw = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        }
+      } catch (e) {
+        /* 引擎不支持就往下走兜底 */
+      }
+      var w = raw.replace(/[\u00C0-\u024F\u1E00-\u1EFF]/g, "").replace(/[^a-z]/g, "");
       if (!w || w.length > MAX_WORD_LEN) return "";
       return w;
     }

@@ -125,6 +125,30 @@ test("记号整体算一个词：D/N/A / N/A / A.B.C / R&B / X-Y", () => {
   assert.strictEqual(xray.text, "X-ray");
 });
 
+test("带变音符号的拉丁字母要能扫到，不能把词切成两半", () => {
+  // 用户报的：`Ō` 等没注音上。ASCII 正则的后果不只是漏标 —— `Tōkyō` 会被切成
+  // `T` + `ky`，而 `ky` 单独命中词典读成 ケーワイ，比不标还糟。
+  const cases = [
+    ["Ō", ["Ō"]],
+    ["Tōkyō", ["Tōkyō"]],
+    ["kōhī", ["kōhī"]],
+    ["arigatō", ["arigatō"]],
+    ["Ōkami", ["Ōkami"]],
+    ["Café", ["Café"]],
+    ["déjà vu", ["déjà", "vu"]],
+  ];
+  for (const [line, want] of cases) {
+    const got = latin.scan(line).map((t) => t.text);
+    assert.deepStrictEqual(got, want, JSON.stringify(line));
+  }
+  // 单个带符号的字母（Ō）要标；粘着分隔符的照样不标
+  const o = latin.scan("Ō")[0];
+  assert.strictEqual(o.diacritic, true);
+  assert.strictEqual(latin.looksReadable(o), true, "Ō 是罗马音里的长音，要标");
+  assert.strictEqual(latin.hasLatin("Ō"), true, "hasLatin 也要认带符号的字母");
+  assert.strictEqual(latin.looksReadable(latin.scan("&Ō&")[0]), false, "粘着分隔符的仍然不标");
+});
+
 test("粘在分隔符上的单字母不算词（D/N/A 里的 A 被注成 ア 是错的）", () => {
   // 用户报的：`だって D/N/Aじゃ 騙れない` 里那个 A 被注音了。
   // 它是标题记号的零件，不是英文冠词。

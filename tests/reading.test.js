@@ -362,6 +362,47 @@ test("不是记号的连字符词照旧按单词读（x-ray 不能逐字母念�
   assert.strictEqual(LK.lettersToKatakana("abcdefghijklm"), null, "太长的不当记号");
 });
 
+// ============================================================ 变音符号
+
+test("变音符号折叠：长音符 ā ē ī ō ū 折成「元音 + -」（= 长音）", () => {
+  const f = LK.foldLatin;
+  assert.deepStrictEqual(f("Tōkyō"), { text: "to-kyo-", pureMacron: true });
+  assert.deepStrictEqual(f("kōhī"), { text: "ko-hi-", pureMacron: true });
+  assert.deepStrictEqual(f("Ō"), { text: "o-", pureMacron: true });
+  assert.strictEqual(f("light"), null, "没有变音符号就返回 null（走原路）");
+  assert.strictEqual(f(""), null);
+  // 别的变音符号折成基础字母，并且**不算** pureMacron
+  assert.deepStrictEqual(f("Café"), { text: "cafe", pureMacron: false });
+  assert.deepStrictEqual(f("déjà"), { text: "deja", pureMacron: false });
+  assert.deepStrictEqual(f("José"), { text: "jose", pureMacron: false });
+  assert.deepStrictEqual(f("äöüß"), { text: "aouss", pureMacron: false });
+});
+
+test("日语罗马字的长音符按罗马音读：Tōkyō -> トーキョー", () => {
+  const r = LK.createReader({ dict: { tokyo: "トウキョウ" } });
+  // 长音符是"日语罗马字"的标志，按罗马音读更贴近唱出来的音，所以排在词典前面
+  assert.deepStrictEqual(r.read("Tōkyō"), { kana: "トーキョー", source: "romaji", confident: true });
+  assert.deepStrictEqual(r.read("kōhī"), { kana: "コーヒー", source: "romaji", confident: true });
+  assert.deepStrictEqual(r.read("arigatō"), { kana: "アリガトー", source: "romaji", confident: true });
+  assert.deepStrictEqual(r.read("Ō"), { kana: "オー", source: "romaji", confident: true });
+  assert.deepStrictEqual(r.read("Ōkami"), { kana: "オーカミ", source: "romaji", confident: true });
+});
+
+test("别的变音符号：词典优先，读不准的标 confident:false 交给大模型", () => {
+  const r = LK.createReader({ dict: { cafe: "カフェ", jose: "ホセ" } });
+  assert.deepStrictEqual(r.read("Café"), { kana: "カフェ", source: "dict", confident: true });
+  assert.deepStrictEqual(r.read("José"), { kana: "ホセ", source: "dict", confident: true });
+
+  // 词典里没有的：走罗马音/规则，但**必须**标不放心（读音取决于语种，José 是 ホセ 不是 ジョセ）
+  const r2 = LK.createReader({ dict: {} });
+  const deja = r2.read("déjà");
+  assert.strictEqual(deja.kana, "デジャ");
+  assert.strictEqual(deja.confident, false, "非长音符的变音符号要交给上层校正");
+  // 关键回归：折叠写法不能再去撞"去掉非字母"那一档键（déjà -> dj -> ディージェイ）
+  const r3 = LK.createReader({ dict: { dj: "ディージェイ" } });
+  assert.strictEqual(r3.read("déjà").kana, "デジャ", "déjà 不能被读成 DJ");
+});
+
 // ============================================================ createReader
 
 test("reader：dict 命中优先于罗马音和规则", () => {

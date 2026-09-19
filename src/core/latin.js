@@ -12,6 +12,16 @@
   "use strict";
 
   /*
+   * 拉丁字母的字符集：ASCII + Latin-1 Supplement + Latin Extended-A/B +
+   * Latin Extended Additional。**必须带变音符号那一堆** —— 用户报的
+   * `Ō` 就是被 ASCII 正则漏掉的：`Tōkyō` 会被切成 `T` + `ky`，
+   * 于是 `ky` 单独命中词典读成 ケーワイ，比不标还糟。
+   */
+  var LAT = "[A-Za-z\\u00C0-\\u024F\\u1E00-\\u1EFF]";
+  /** 记号里的分隔符（`D/N/A` 的斜杠等） */
+  var GLUE = "[\\/\\\\|_.&#*~+=\\u30FB\\uFF0F\\uFF3C-]";
+
+  /*
    * 一个"词"：字母开头结尾，中间允许撇号和连字符（don't / e-mail / rock'n'roll）。
    * 撇号用 ASCII 的和全角的都收 —— 歌词里两种都见过。
    *
@@ -21,20 +31,20 @@
    * 必须排在普通词前面：否则 `D/N/A` 会被切成三个单字母，或者 `X-Y` 被
    * 当成一个普通的连字符词读成"xy"。
    */
-  var RE_NOTATION = /[A-Za-z](?:[\/\\|_.&#*~+=\u30FB\uFF0F\uFF3C-][A-Za-z])+/g;
+  var RE_NOTATION = new RegExp(LAT + "(?:" + GLUE + LAT + ")+", "g");
 
   /** 整串就是一个记号（`D/N/A`、`N/A`、`A.B.C`、`R&B`、`X-Y`） */
-  var RE_NOTATION_WHOLE = /^[A-Za-z](?:[\/\\|_.&#*~+=\u30FB\uFF0F\uFF3C-][A-Za-z])+$/;
+  var RE_NOTATION_WHOLE = new RegExp("^" + LAT + "(?:" + GLUE + LAT + ")+$");
 
   /** 普通词（含撇号/连字符） */
-  var RE_PLAIN = /[A-Za-z](?:[A-Za-z]|['\u2019-](?=[A-Za-z]))*/g;
+  var RE_PLAIN = new RegExp(LAT + "(?:" + LAT + "|['\\u2019-](?=" + LAT + "))*", "g");
 
-  /** 这段文字里有没有拉丁字母 */
+  /** 这段文字里有没有拉丁字母（含带变音符号的） */
   function hasLatin(text) {
     // 注意必须先挡掉空值：/[A-Za-z]/.test(null) 会把参数转成字符串 "null"，
     // 于是返回 true —— 后面那句 scan 就会去扫一个不存在的文本。
     if (!text) return false;
-    return /[A-Za-z]/.test(String(text));
+    return new RegExp(LAT).test(String(text));
   }
 
   /*
@@ -70,9 +80,12 @@
     if (!text) return out;
     var i = 0;
     var len = text.length;
+    var RE_LATIN_ONE = new RegExp(LAT);
     while (i < len) {
       var ch = text.charAt(i);
-      if (!/[A-Za-z]/.test(ch)) {
+      // 注意这里也要用 LAT：只判 [A-Za-z] 的话，`Ōkami` 会在 Ō 上直接跳过，
+      // 剩下 `kami` 被当成一个词（用户报的 `Ō` 不注音就是这么来的）
+      if (!RE_LATIN_ONE.test(ch)) {
         i++;
         continue;
       }
@@ -83,7 +96,8 @@
        */
       var raw = null;
       var nota = matchAt(RE_NOTATION, text, i);
-      if (nota && !/[A-Za-z]/.test(text.charAt(i + nota.length))) raw = nota;
+      // 记号后面不能再跟字母（含带变音符号的），否则 e-mail 会被切成 e-m + ail
+      if (nota && !RE_LATIN_ONE.test(text.charAt(i + nota.length))) raw = nota;
       if (!raw) raw = matchAt(RE_PLAIN, text, i);
       if (!raw) {
         i++;
@@ -100,6 +114,8 @@
         // （例如句尾那个孤零零的 `A.`），那种不标
         glued: raw.length === 1 ? isGluedLetter(text, start, end) : false,
         notation: raw.length > 1 && RE_NOTATION_WHOLE.test(raw),
+        // 带变音符号（Ō / é / ü …）：读音层要先折成 ASCII 再查，见 reading.js
+        diacritic: /[^\x00-\x7F]/.test(raw),
       });
       i = end;
     }
@@ -146,9 +162,13 @@
     if (!token || !token.norm) return false;
     // 记号：整体逐字母读（D/N/A -> ディーエヌエー）
     if (token.notation === true) return token.norm.replace(/[^a-z]/g, "").length >= 2;
-    if (token.norm.length >= 2) return true;
-    if (token.glued === true) return false; // 记号的零件（D/N/A 里的 A）
-    return SINGLE_LETTER_WORDS[token.norm] === true;
+    if (token.norm.length === 1) {
+      // 粘在分隔符上的单字母还是不算词（`&A&`、`A.`）
+      if (token.glued === true) return false;
+      // 带变音符号的单字母（`Ō`）不是缩写噪声，是罗马音/外语里的一个音，要标
+      return token.diacritic === true || SINGLE_LETTER_WORDS[token.norm] === true;
+    }
+    return true;
   }
 
   /** 这片文字里有没有"值得标"的词（用来快速判断整段要不要处理） */
