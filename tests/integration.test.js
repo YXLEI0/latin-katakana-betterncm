@@ -1,0 +1,329 @@
+/*
+ * 集成测试：像 BetterNCM 那样把 6 个文件注入到一个页面里，
+ * 提供 plugin / betterncm 全局桩，然后观察插件是否真的开始工作。
+ *
+ * 这是最接近真机的一层：manifest 的 injects 顺序、main.js 里的生命周期注册、
+ * 扫描调度、设置面板构建，都会在这里跑到。
+ */
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert");
+const { loadCore, loadScripts, CORE_FILES } = require("./helpers");
+
+const FILES = CORE_FILES.concat(["main.js"]);
+
+// 贴近真机：默认播放页的歌词结构 + RNP 歌词页的三层结构
+const NCM_HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-playbar">
+    <div class="words">
+      <span class="name"><a href="#">light と clover</a></span>
+      <span class="by"><a href="#">dreamer</a></span>
+    </div>
+  </div>
+  <div class="m-lyric">
+    <ul id="mod_pc_lyric_record" class="lyric">
+      <li class="line"><p>きらめく light と clover</p></li>
+      <li class="line"><p>ずっと dream を見てた</p></li>
+    </ul>
+  </div>
+  <div class="rnp-lyrics-line">
+    <div class="rnp-lyrics-line-original">いざなった clover へ</div>
+    <div class="rnp-lyrics-line-romaji">i za na tta clover</div>
+    <div class="rnp-lyrics-line-translated">走向那株四叶草</div>
+  </div>
+</div>
+</body></html>`;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 造一个假的 BetterNCM 环境并注入插件 */
+function bootPlugin(html, options) {
+  options = options || {};
+  const ctx = loadCore(html || NCM_HTML, { reader: false });
+  const dom = ctx.dom;
+  const window = ctx.window;
+
+  // 网络：默认全部失败，保证测试不碰真接口
+  window.fetch = function () {
+    return Promise.reject(new Error("offline (test)"));
+  };
+
+  const opened = [];
+  const listeners = { load: [], config: [] };
+  const betterncm = {
+    app: {
+      getBetterNCMVersion: function () {
+        return Promise.resolve("1.3.4-test");
+      },
+    },
+    ncm: {
+      openUrl: function (u) {
+        opened.push(u);
+      },
+    },
+    fs: {},
+  };
+  const plugin = {
+    devMode: !!options.dev,
+    pluginPath: "C:/betterncm/plugins/latin-katakana",
+    onLoad: function (fn) {
+      listeners.load.push(fn);
+    },
+    onConfig: function (fn) {
+      listeners.config.push(fn);
+    },
+  };
+
+  // BetterNCM 是把 plugin / betterncm 作为全局注入的，挂到 window 上即可
+  window.betterncm = betterncm;
+  window.plugin = plugin;
+
+  loadScripts(dom, FILES);
+
+  const env = {
+    ctx,
+    dom,
+    window,
+    document: window.document,
+    plugin,
+    betterncm,
+    opened,
+    listeners,
+    runLoad: async function () {
+      for (const fn of listeners.load) await fn();
+    },
+  };
+  // window.LatinKatakana 要到 onLoad 之后才存在（BetterNCM 就是这个顺序），
+  // 所以这里用 getter 延迟取值，别在 boot 阶段就抄一份 undefined。
+  Object.defineProperty(env, "api", {
+    get: function () {
+      return window.LatinKatakana;
+    },
+  });
+  return env;
+}
+
+function rubyCount(root) {
+  return root.querySelectorAll("ruby.lt-ruby").length;
+}
+
+/** 底字文本（剔掉注音）——标准 ruby 里 <rt> 的文本也算 textContent，必须显式去掉 */
+function baseText(el) {
+  const clone = el.cloneNode(true);
+  const anns = clone.querySelectorAll("rt, .lt-rt, .kt-rt, .fg-rt, rp");
+  for (let i = 0; i < anns.length; i++) {
+    if (anns[i].parentNode) anns[i].parentNode.removeChild(anns[i]);
+  }
+  return clone.textContent;
+}
+
+const PAIRS = (p) =>
+  [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent]);
+
+test("注入 6 个文件后，插件注册了 onLoad / onConfig 并导出 API", async () => {
+  const env = bootPlugin();
+  assert.strictEqual(env.listeners.load.length, 1, "应该注册了 onLoad");
+  assert.strictEqual(env.listeners.config.length, 1, "应该注册了 onConfig");
+  await env.runLoad();
+  assert.strictEqual(typeof env.api, "object", "onLoad 后应该导出 API");
+  assert.strictEqual(typeof env.api.read, "function");
+});
+
+test("默认：歌词里的拉丁词标上片假名读音，底字一字不改", async () => {
+  const env = bootPlugin();
+  await env.runLoad();
+  await sleep(600);
+
+  const lines = env.document.querySelectorAll("ul.lyric li p");
+  assert.deepStrictEqual(PAIRS(lines[0]), [
+    ["light", "ライト"],
+    ["clover", "クローバー"],
+  ]);
+  assert.strictEqual(baseText(lines[0]), "きらめく light と clover");
+  assert.deepStrictEqual(PAIRS(lines[1]), [["dream", "ドリーム"]]);
+});
+
+test("播放栏的歌名 / 歌手也标", async () => {
+  const env = bootPlugin();
+  await env.runLoad();
+  await sleep(600);
+  const pairs = [];
+  const rubies = env.document.querySelectorAll(".m-playbar ruby.lt-ruby");
+  for (let i = 0; i < rubies.length; i++) pairs.push(rubies[i].querySelector(".lt-rt").textContent);
+  // dreamer 是变形词（规则会读成 ドレアメー），所以它必须在词典里 —— 见 tools/seed-words.js 第二批
+  assert.deepStrictEqual(pairs.sort(), ["クローバー", "ドリーマー", "ライト"].sort());
+  assert.strictEqual(baseText(env.document.querySelector(".m-playbar .name")), "light と clover");
+});
+
+test("RNP 的罗马音层和中文翻译层不标，只标原文层", async () => {
+  const env = bootPlugin();
+  await env.runLoad();
+  await sleep(600);
+  assert.strictEqual(rubyCount(env.document.querySelector(".rnp-lyrics-line-original")), 1, "原文层要标");
+  assert.strictEqual(rubyCount(env.document.querySelector(".rnp-lyrics-line-romaji")), 0, "罗马音层要跳过");
+  assert.strictEqual(rubyCount(env.document.querySelector(".rnp-lyrics-line-translated")), 0, "翻译层要跳过");
+});
+
+// 三个插件同时开着时，一行里会同时有别人的注音节点。
+// 片假名终结者的 <rt class="kt-rt"> 里装的偏偏是**英文原词**（dream、hello…），
+// 正是我们要标的对象 —— 如果不把别人的注音节点整棵跳过，
+// 就会在英文注释上面再注一层片假名，等于给注解做注解。
+const COEXIST_HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>きらめく <ruby class="kt-ruby">ドリーム<rt class="kt-rt">dream</rt></ruby> と <ruby class="fg-ruby">四葉<rt class="fg-rt">よつば</rt></ruby> clover</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+
+test("已经带别人注音的行：只标底字，绝不往别人的注音里再注一层", async () => {
+  const env = bootPlugin(COEXIST_HTML);
+  await env.runLoad();
+  await sleep(600);
+
+  const p = env.document.querySelector("ul.lyric li p");
+  // 我们自己该标的那个词标上了
+  assert.deepStrictEqual(PAIRS(p), [["clover", "クローバー"]]);
+  // 别人的注音节点内部一个 lt-ruby 都不能有
+  assert.strictEqual(p.querySelectorAll(".kt-rt ruby.lt-ruby, .fg-rt ruby.lt-ruby").length, 0);
+  assert.strictEqual(p.querySelector(".kt-rt").textContent, "dream", "片假名终结者的英文注释不能被改写");
+  assert.strictEqual(p.querySelector(".fg-rt").textContent, "よつば", "jp-furigana 的振假名不能被改写");
+  // 底字不变（别人的 <rt> 不算底字）
+  assert.strictEqual(baseText(p), "きらめく ドリーム と 四葉 clover");
+});
+
+/*
+ * 上面的用例走的是「人家用真 <ruby>/<rt>」这条路 —— 那条路上 <rt> 标签本身
+ * 就在 SKIP_TAGS 里，所以它证明不了我们认识对方的 **class**。
+ * 内核不支持 ruby 时三家都降级成 <span class="xx-rt">，那时只剩 class 可认；
+ * 这里就把那条路单独钉住（片假名终结者的降级节点是 span.kt-ruby / span.kt-rt）。
+ */
+const COEXIST_FALLBACK_HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>きらめく <span class="kt-ruby">ドリーム<span class="kt-rt">dream</span></span> と clover</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+
+test("降级成 <span> 的别人注音，靠 class 也要认出来（不能给 dream 再注一层）", async () => {
+  const env = bootPlugin(COEXIST_FALLBACK_HTML);
+  await env.runLoad();
+  await sleep(600);
+
+  const p = env.document.querySelector("ul.lyric li p");
+  assert.strictEqual(p.querySelectorAll(".kt-ruby ruby.lt-ruby, .kt-rt ruby.lt-ruby").length, 0, p.innerHTML);
+  assert.strictEqual(p.querySelector(".kt-rt").textContent, "dream", "别人的注音文字不许被改写");
+  assert.deepStrictEqual(PAIRS(p), [["clover", "クローバー"]], "同一行里我们该标的照样标");
+});
+
+test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {
+  // 真机上两个插件都会插注音。共存补丁重建完一行只调一个全局钩子，
+  // 谁后加载谁就得**链上去**，直接覆盖会让另一个插件立刻开始闪。
+  const env = bootPlugin();
+  const called = [];
+  env.window.__ktRepairLine = function () {
+    called.push("prev");
+  };
+  await env.runLoad();
+
+  assert.strictEqual(typeof env.window.__ktRepairLine, "function");
+  const li = env.document.querySelectorAll("ul.lyric li")[0];
+  env.window.__ktRepairLine(li);
+  assert.ok(called.indexOf("prev") >= 0, "前一个钩子必须被调到（否则片假名终结者会闪）");
+});
+
+test("钩子：对方重建完一行直接叫我们时，注音要在同一次调用里补好", async () => {
+  const env = bootPlugin();
+  await env.runLoad();
+  await sleep(600);
+
+  const li = env.document.querySelectorAll("ul.lyric li")[0];
+  const p = li.querySelector("p");
+  // 模拟对方整行重建（我们的注音随之消失）
+  while (p.firstChild) p.removeChild(p.firstChild);
+  p.appendChild(env.document.createTextNode("きらめく light と clover"));
+  assert.strictEqual(rubyCount(p), 0, "重建后注音应已消失");
+
+  const ok = env.window.__ktRepairLine(li);
+  assert.strictEqual(ok, true, "钩子应该返回 true");
+  assert.ok(rubyCount(p) >= 1, "钩子返回时注音必须已经就位（等下一帧就是可见的一闪）");
+  assert.strictEqual(baseText(p), "きらめく light と clover");
+});
+
+test("禁用后 DOM 完全还原并收走样式，重新启用又能标注", async () => {
+  const env = bootPlugin();
+  await env.runLoad();
+  await sleep(600);
+  const annotated = env.document.body.innerHTML;
+  assert.ok(rubyCount(env.document.body) > 0);
+
+  env.api.set("enabled", false);
+  await sleep(200);
+  assert.strictEqual(rubyCount(env.document.body), 0, "禁用后不该有注音");
+  assert.ok(!env.document.body.innerHTML.includes("lt-ruby"), "禁用后 DOM 里不该有痕迹");
+  assert.strictEqual(env.document.getElementById("latin-katakana-style"), null, "注入的样式表要收走");
+
+  env.api.set("enabled", true);
+  await sleep(600);
+  assert.strictEqual(env.document.body.innerHTML, annotated, "重新启用后应该回到同样的结果");
+  assert.ok(env.document.getElementById("latin-katakana-style"), "样式要补回来");
+});
+
+test("断网时依然能标（词典 + 罗马音 + 规则全在本地）", async () => {
+  const env = bootPlugin();
+  await env.runLoad();
+  await sleep(600);
+  // fetch 全程失败，但读音全部来自本地
+  assert.ok(rubyCount(env.document.querySelector("ul.lyric")) >= 3, "离线也要能标");
+  const stats = env.api.stats();
+  assert.ok(stats.reading, "应该有读音统计");
+  assert.ok(stats.reading.dictHits + stats.reading.romajiHits + stats.reading.ruleHits >= 3, JSON.stringify(stats.reading));
+});
+
+test("设置面板能构建出来，改动落盘到 localStorage", async () => {
+  const env = bootPlugin(NCM_HTML, { dev: true });
+  await env.runLoad();
+  const root = env.listeners.config[0]();
+  assert.ok(root, "onConfig 应该返回一个元素");
+  assert.strictEqual(root.id, "latin-katakana-config");
+
+  const enabled = root.querySelector('[data-k="enabled"]');
+  assert.ok(enabled && enabled.type === "checkbox" && enabled.checked === true);
+
+  const rtSize = root.querySelector('[data-k="rtSize"]');
+  assert.strictEqual(rtSize.value, "55");
+  rtSize.value = "70";
+  rtSize.dispatchEvent(new env.window.Event("change"));
+
+  const raw = env.window.localStorage.getItem("latin-katakana.config");
+  assert.ok(raw, "配置应该写进 localStorage");
+  assert.strictEqual(JSON.parse(raw).rtSize, 70);
+});
+
+test("缺核心模块时优雅退出，不抛异常", () => {
+  const ctx = loadCore(NCM_HTML, { reader: false });
+  const window = ctx.window;
+  window.fetch = () => Promise.reject(new Error("offline"));
+  const listeners = [];
+  window.plugin = {
+    devMode: false,
+    pluginPath: "",
+    onLoad: (fn) => listeners.push(fn),
+    onConfig: () => {},
+  };
+  window.betterncm = { app: {}, ncm: {}, fs: {} };
+  for (const k of ["LKMatcher", "LKDict", "LKReading", "LKCorrect", "LKAnnotate"]) delete window[k];
+
+  assert.doesNotThrow(() => {
+    loadScripts(ctx.dom, ["main.js"]);
+    for (const fn of listeners) fn();
+  }, "缺依赖时不应抛异常");
+  assert.strictEqual(window.LatinKatakana, undefined, "初始化失败就不该导出 API");
+});
