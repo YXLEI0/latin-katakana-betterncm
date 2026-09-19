@@ -1540,6 +1540,25 @@
     return lettersToKatakana(s.toLowerCase().replace(/[^a-z&]/g, ""));
   }
 
+  /**
+   * 全大写的无元音缩写 -> 逐字母读音（不是这种缩写返回 null）。
+   *
+   * 用户报的 `LDK` 一类。判据刻意收得紧，免得误伤真词：
+   *   - 原文**全大写**（缩写就是这么写的；`my` / `sky` / `why` 这些真词是小写）；
+   *   - 长度 2~6；
+   *   - 一个元音都没有，而且 **y 也算元音**（否则 my / sky / why / fly 会被逐字母念）。
+   * 于是 LDK / NHK / CD / TV / BGM / RPG / DVD / CM / DJ 都逐字母读，
+   * 而 hmm / tsk / shh 这类小写感叹词不受影响。
+   */
+  function spellOutAcronym(raw) {
+    if (typeof raw !== "string") return null;
+    var s = raw.trim();
+    if (s.length < 2 || s.length > 6) return null;
+    if (!/^[A-Z]+$/.test(s)) return null;
+    if (/[AEIOUY]/.test(s)) return null;
+    return lettersToKatakana(s.toLowerCase());
+  }
+
   // ------------------------------------------------------------ 变音符号折叠
 
   /*
@@ -1748,6 +1767,18 @@
         }
       }
 
+      /*
+       * ②.6 全大写的无元音缩写（LDK / NHK / CD / TV / BGM / RPG / DVD …）：
+       *      按字母名逐个念。必须排在规则层前面 —— 规则会把它当成一个词去拼
+       *      （LDK -> ラダク、TV -> タブ，用户报的就是这个）。
+       *      词典里已有的（CM -> シーエム、DJ -> ディージェイ）在前面就返回了，不受影响。
+       */
+      var spelledAcronym = spellOutAcronym(raw);
+      if (spelledAcronym) {
+        trace("letters（缩写）命中：" + raw + " -> " + spelledAcronym);
+        return { kana: spelledAcronym, source: "letters", confident: true };
+      }
+
       // ③ 罗马音。这里用 shown（已小写、去了首尾标点）而不是 stripNonLetters，
       //    因为 "saka-" 词尾的连字符是长音符，不能被吃掉。
       //    折叠过的写法先试：`to-kyo-` 这种末尾的长音符在 normalize 里会被去掉，
@@ -1831,6 +1862,7 @@
     englishToKatakana: englishToKatakana,
     lettersToKatakana: lettersToKatakana,
     notationToKatakana: notationToKatakana,
+    spellOutAcronym: spellOutAcronym,
     foldLatin: foldLatin,
     createReader: createReader,
     normalize: normalize,

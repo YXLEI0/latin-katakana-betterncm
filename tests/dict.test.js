@@ -84,6 +84,8 @@ test("常见歌词词都能「确定地」读出纯片假名（不许掉进猜�
     "the", "of", "and", "you", "me", "we", "my", "your", "love", "kiss",
     // 单字母词：a / I 是真正的英文单词，必须有确定读音
     "a", "i",
+    // 常见缩写（用户报的 Mr. / Dr.）：日语里念整个词，不是字母名
+    "mr", "mrs", "ms", "dr", "prof", "jr", "sr",
   ];
   const bad = [];
   for (const w of must) {

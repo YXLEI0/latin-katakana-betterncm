@@ -362,6 +362,51 @@ test("不是记号的连字符词照旧按单词读（x-ray 不能逐字母念�
   assert.strictEqual(LK.lettersToKatakana("abcdefghijklm"), null, "太长的不当记号");
 });
 
+// ============================================================ 缩写
+
+test("全大写的无元音缩写逐字母读（LDK / TV / BGM …）", () => {
+  // 用户报的：LDK 被规则拼成 ラダク、TV 拼成 タブ
+  const r = LK.createReader({ dict: { cm: "シーエム" } });
+  const cases = [
+    ["LDK", "エルディーケー"],
+    ["NHK", "エヌエイチケー"],
+    ["CD", "シーディー"],
+    ["TV", "ティーブイ"],
+    ["BGM", "ビージーエム"],
+    ["RPG", "アールピージー"],
+    ["DVD", "ディーブイディー"],
+  ];
+  for (const [word, want] of cases) {
+    const got = r.read(word);
+    assert.strictEqual(got.kana, want, word);
+    assert.strictEqual(got.source, "letters", word + " 应该记在 letters 这一类");
+    assert.strictEqual(got.confident, true, word);
+  }
+  // 词典里已有的缩写仍然走词典（不冲突）
+  assert.strictEqual(r.read("CM").source, "dict");
+  assert.strictEqual(r.read("CM").kana, "シーエム");
+});
+
+test("逐字母缩写的判据不能误伤真词（my / sky / why / hmm / Ldk）", () => {
+  const A = LK.spellOutAcronym;
+  assert.strictEqual(A("LDK"), "エルディーケー");
+  assert.strictEqual(A("TV"), "ティーブイ");
+  // y 也算元音：my / sky / why / fly 这些是真词
+  assert.strictEqual(A("MY"), null);
+  assert.strictEqual(A("SKY"), null);
+  assert.strictEqual(A("WHY"), null);
+  // 小写感叹词不算缩写（hmm / tsk / shh）
+  assert.strictEqual(A("hmm"), null);
+  assert.strictEqual(A("tsk"), null);
+  // 混大小写不算（缩写就是全大写写的）
+  assert.strictEqual(A("Ldk"), null);
+  // 长度边界：6 个字母还算缩写，7 个就不猜了
+  assert.strictEqual(A("BCDFGH"), "ビーシーディーエフジーエイチ", "6 个字母还是缩写");
+  assert.strictEqual(A("BCDFGHJ"), null, "7 个字母不当缩写");
+  assert.strictEqual(A("A"), null, "单个字母不走这条");
+  assert.strictEqual(A("D/N/A"), null, "记号有自己的路径");
+});
+
 // ============================================================ 变音符号
 
 test("变音符号折叠：长音符 ā ē ī ō ū 折成「元音 + -」（= 长音）", () => {

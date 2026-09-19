@@ -461,6 +461,30 @@ test("用户报的那行：带变音符号的 Ō 也要注音（Tōkyō -> ト�
   assert.strictEqual(baseText(p), "Tōkyōの夜を arigatō と歌う", "原文一字不改");
 });
 
+test("用户报的缩写：Mr. / Dr. 念整个词，LDK 这类缩写逐字母读", async () => {
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>Mr. Brown と Dr. K、それから LDK の部屋</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+  const env = bootPlugin(HTML);
+  await env.runLoad();
+  await sleep(600);
+
+  const p = env.document.querySelector("ul.lyric li p");
+  assert.deepStrictEqual(PAIRS(p), [
+    ["Mr", "ミスター"],
+    ["Brown", "ブラウン"],
+    ["Dr", "ドクター"],
+    ["LDK", "エルディーケー"],
+  ]);
+  assert.strictEqual(baseText(p), "Mr. Brown と Dr. K、それから LDK の部屋", "原文（含句点）一字不改");
+});
+
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {
   // 真机上两个插件都会插注音。共存补丁重建完一行只调一个全局钩子，
   // 谁后加载谁就得**链上去**，直接覆盖会让另一个插件立刻开始闪。
