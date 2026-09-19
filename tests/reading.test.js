@@ -318,7 +318,47 @@ test("英文：confident:false 的判定条件", () => {
   assert.strictEqual(LK.englishToKatakana("world").confident, true);
 });
 
-// ============================================================ 缩写
+// ============================================================ 首音校验
+
+test("首音校验：拦住拟声词/意译，不误伤默字组合", () => {
+  // 用户报的：tick 注成 カチカチ（Google 的 en→ja 会把它当拟声词回）
+  const V = LK.looksLikeTransliteration;
+  const rejected = [
+    ["tick", "カチカチ"],
+    ["tick", "ダニ"], // 名词义（蜱虫）
+    ["love", "アイ"], // 意译
+    ["beat", "コドウ"],
+    ["light", "ヒカリ"],
+  ];
+  for (const [w, k] of rejected) assert.strictEqual(V(w, k), false, w + " / " + k + " 该拦下");
+  const accepted = [
+    ["tick", "ティック"],
+    ["tick", "チック"],
+    ["love", "ラブ"],
+    ["beat", "ビート"],
+    ["knock", "ノック"],
+    ["light", "ライト"],
+    ["guitar", "ギター"],
+    ["piano", "ピアノ"],
+    ["dance", "ダンス"],
+    ["zoom", "ズーム"],
+    // 默字/不规则开头的组合一律不校验（宁可漏，不可错杀）
+    ["knife", "ナイフ"],
+    ["psychology", "サイコロジー"],
+    ["write", "ライト"],
+    ["hour", "アワー"],
+    ["honest", "オネスト"],
+    ["yell", "エール"],
+    ["one", "ワン"],
+  ];
+  for (const [w, k] of accepted) assert.strictEqual(V(w, k), true, w + " / " + k + " 不该拦");
+  // 边界：空值一律放行（不校验），别把异常输入当成"不合法答案"
+  assert.strictEqual(V("", "ライト"), true);
+  assert.strictEqual(V("tick", ""), true);
+  assert.strictEqual(V(null, null), true);
+});
+
+// ============================================================ 缩写：词干 + 尾巴
 
 test("缩写：'s / 're / 'll / 'd / 've / 'm / n't 都要读对", () => {
   // 用户报的：you're / I'll / it's / I'd 注不准。

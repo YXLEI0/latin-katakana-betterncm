@@ -47,6 +47,7 @@ function makeClient(ctx, opts) {
     endpoint: opts.endpoint || "https://api.example.com/chat/completions",
     model: "test-model",
     key: opts.key === undefined ? "sk-test" : opts.key,
+    validate: opts.validate,
     log: function () {},
     onStatus: function (m) {
       statuses.push(m);
@@ -478,6 +479,39 @@ test("isWaiting：等待期间 true；有结论/退避/没配 key 时 false", as
   // 没配 key -> 整层不工作，也不该让上层等
   const noKey = makeClient(ctx, { key: "" });
   assert.strictEqual(noKey.client.isWaiting("hello", "say hello"), false);
+});
+
+// ============================================================ 答案校验
+
+test("拦住意译/拟声词：tick 被回成 カチカチ 时按 miss 处理，不再重问", async () => {
+  // 用户报的：tick 注成 カチカチ。光看"纯片假名"拦不住，所以由上层注入校验函数。
+  const ctx = loadCore();
+  const V = ctx.LKReading.looksLikeTransliteration;
+  const bad = makeClient(ctx, {
+    validate: V,
+    reply: () => ({ "1": "カチカチ" }), // 拟声词
+  });
+  bad.client.lookup("tick", "時計の tick が聞こえる");
+  await bad.client.flush();
+  assert.strictEqual(bad.client.lookup("tick", "時計の tick が聞こえる"), null, "不能收这种答案");
+  assert.strictEqual(bad.client.stats().hits, 0);
+  assert.strictEqual(bad.client.stats().misses, 1, "按 miss 记下来，别反复问");
+  const callsBefore = bad.calls.length;
+  bad.client.lookup("tick", "時計の tick が聞こえる");
+  await bad.client.flush();
+  assert.strictEqual(bad.calls.length, callsBefore, "miss 之后不再重问");
+
+  // 同一个词给对读音就照收
+  const good = makeClient(ctx, { validate: V, reply: () => ({ "1": "ティック" }) });
+  good.client.lookup("tick", "時計の tick が聞こえる");
+  await good.client.flush();
+  assert.strictEqual(good.client.lookup("tick", "時計の tick が聞こえる"), "ティック");
+
+  // 没注入校验时保持老行为（只判纯片假名）—— 免得别的调用方被误伤
+  const noCheck = makeClient(ctx, { reply: () => ({ "1": "カチカチ" }) });
+  noCheck.client.lookup("tick", "x");
+  await noCheck.client.flush();
+  assert.strictEqual(noCheck.client.lookup("tick", "x"), "カチカチ");
 });
 
 // ============================================================ 接口地址纠正

@@ -688,6 +688,10 @@
       updateStyles();
       state.corrector = LKCorrect.createCorrector({
         online: config.online,
+        // 纯片假名还不够：还要像这个词的音译（tick 不能被回成 カチカチ）
+        validate: function (word, kana) {
+          return typeof LKReading === "undefined" ? true : LKReading.looksLikeTransliteration(word, kana);
+        },
         log: function () {
           if (config.verbose) console.log.apply(console, [LOG].concat(Array.prototype.slice.call(arguments)));
         },
@@ -716,6 +720,10 @@
           endpoint: config.llmEndpoint,
           model: config.llmModel,
           key: config.llmKey,
+          // 同上：拦住"意译/拟声词"（用户报的 tick -> カチカチ）
+          validate: function (word, kana) {
+            return typeof LKReading === "undefined" ? true : LKReading.looksLikeTransliteration(word, kana);
+          },
           log: function () {
             trace("llm", Array.prototype.join.call(arguments, " "));
             if (config.verbose) console.log.apply(console, [LOG].concat(Array.prototype.slice.call(arguments)));

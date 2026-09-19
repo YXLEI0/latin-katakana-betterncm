@@ -103,7 +103,10 @@
       "（read 在 “read a book” 里是 リード、在 “I read it yesterday” 里是 レッド）；\n" +
       "5. 人名/地名/乐队名按日语里的通行音译（Beatles → ビートルズ）；" +
       "字母串记号（D/N/A）按字母名念（ディーエヌエー）；\n" +
-      "6. 严格输出一个 JSON 对象，**键是 i 字段的值**（数字，写成字符串也行），值是片假名，不要多余字段。\n" +
+      "6. **这是音译不是翻译**：把英文的**发音**写成片假名，不要给日语词、不要给拟声词。" +
+      "tick → ティック（不是「カチカチ」）、love → ラブ（不是「愛」）、" +
+      "beat → ビート（不是「鼓動」）；\n" +
+      "7. 严格输出一个 JSON 对象，**键是 i 字段的值**（数字，写成字符串也行），值是片假名，不要多余字段。\n" +
       "条目：" +
       JSON.stringify(rows)
     );
@@ -176,6 +179,12 @@
     var log = options.log || function () {};
     var onStatus = options.onStatus || function () {};
     var onUpdate = options.onUpdate || function () {};
+    /*
+     * 答案校验：由上层注入（main.js 传 reading.js 的 looksLikeTransliteration）。
+     * 光看"纯片假名"拦不住**意译/拟声词** —— 用户报的 tick -> カチカチ 就是这种，
+     * 校验不过就按 miss 处理（记下来，别再问同一个词）。
+     */
+    var validate = typeof options.validate === "function" ? options.validate : null;
 
     var cfg = {
       enabled: options.enabled !== false,
@@ -465,7 +474,7 @@
         var v2 = byIndex[String(i + 1)];
         if (v2 === undefined) v2 = byWordKey[item.word];
         var kana = typeof v2 === "string" ? v2.replace(/\s+/g, "").trim() : "";
-        if (kana && RE_KATAKANA.test(kana) && kana.length <= 14) {
+        if (kana && RE_KATAKANA.test(kana) && kana.length <= 14 && (!validate || validate(item.word, kana))) {
           mem.set(item.key, { k: kana });
           byWord[item.word] = kana; // 外层索引：给 peek()/控制台用
           stats.hits++;

@@ -49,6 +49,7 @@ function makeCorrector(ctx, opts) {
   const updates = [];
   const corrector = ctx.LKCorrect.createCorrector({
     online: true,
+    validate: opts.validate,
     log: function () {},
     onStatus: function () {},
     onUpdate: function () {
@@ -75,6 +76,23 @@ test("isWaiting：排队/请求中为 true，回来或失败后为 false", async
   assert.strictEqual(down.corrector.isWaiting("clover"), true);
   await sleep(1600);
   assert.strictEqual(down.corrector.isWaiting("clover"), false, "失败了就别等");
+});
+
+test("拦住意译/拟声词：Google 把 tick 回成 カチカチ 时不许用", async () => {
+  // 用户报的 tick -> カチカチ：Google 的 en→ja 会回拟声词，纯片假名，字符集拦不住
+  const ctx = loadCore();
+  const V = ctx.LKReading.looksLikeTransliteration;
+  const { corrector } = makeCorrector(ctx, { validate: V, reply: () => dictResponse(["カチカチ"]) });
+  corrector.lookup("tick");
+  await sleep(1600);
+  assert.strictEqual(corrector.lookup("tick"), null, "拟声词不是读音");
+  assert.strictEqual(corrector.stats().onlineHits, 0);
+
+  // 正确音译照收
+  const ok = makeCorrector(ctx, { validate: V, reply: () => dictResponse(["ティック"]) });
+  ok.corrector.lookup("tick");
+  await sleep(1600);
+  assert.strictEqual(ok.corrector.lookup("tick"), "ティック");
 });
 
 test("纯片假名的结果被接受（clover -> クローバー）", async () => {

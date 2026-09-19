@@ -57,6 +57,12 @@
     var onStatus = options.onStatus || function () {};
     var onlineEnabled = options.online !== false;
     var log = options.log || function () {};
+    /*
+     * 答案校验：由上层注入（main.js 传 reading.js 的 looksLikeTransliteration）。
+     * Google 的 en→ja 对 tick 会回「カチカチ」这种**拟声词**，纯片假名，光看字符集
+     * 拦不住 —— 用户报的就是这个。校验不过按 miss 处理。
+     */
+    var validate = typeof options.validate === "function" ? options.validate : null;
 
     var mem = new Map(); // word -> gloss | null(null 表示查过但没有)
     var persisted = loadCache();
@@ -210,7 +216,8 @@
           for (var i = 0; i < words.length; i++) {
             var g = glosses[i];
             inflight.delete(words[i]);
-            if (typeof g === "string" && g) {
+            // 光"纯片假名"不够：还要像这个词的**音译**（tick 不能被回成 カチカチ）
+            if (typeof g === "string" && g && (!validate || validate(words[i], g))) {
               mem.set(words[i], g);
               dirty = true;
               got++;

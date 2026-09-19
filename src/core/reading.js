@@ -1727,7 +1727,55 @@
     return { text: out, pureMacron: macron && !other };
   }
 
-  // ------------------------------------------------------------ 规范化
+  // ------------------------------------------------------------ 校验在线结果
+
+  /*
+   * 首音校验：一个"纯片假名"的答案不一定是**音译**。
+   *
+   * 用户报的：`tick` 被注成 カチカチ —— 那是拟声词/意译，不是 tick 的读音
+   * （Google 的 en→ja 对 tick 会回「カチカチ」这种，纯片假名，光看字符集拦不住）。
+   *
+   * 判据只看**第一个假名**：词首字母是稳定的辅音时，音译的首音必然落在对应的行上
+   * （t 只能出 タ行、k 只能出 カ行……）。tick 的 カチカチ 首音是 カ（カ行），
+   * 与 t 不符 -> 判为"这不是音译"，丢掉，让本地规则兜底。
+   *
+   * 刻意保守：h / w / y 开头、元音开头、以及 kn / gn / ps 这类有默字的组合
+   * 一律**不做校验**（write -> ライト、hour -> アワー、knife -> ナイフ 都是合法的）。
+   * 宁可漏掉几个错的，也不要把对的判错。
+   */
+  var FIRST_ROWS = {
+    b: "\u30D0\u30D3\u30D6\u30D9\u30DC",
+    c: "\u30AB\u30AD\u30AF\u30B1\u30B3\u30B5\u30B7\u30B9\u30BB\u30BD",
+    d: "\u30C0\u30C7\u30A3\u30C9\u30C9\u30A5",
+    f: "\u30D5\u30A1\u30D5\u30A3\u30D5\u30A7\u30D5\u30A9",
+    g: "\u30AC\u30AE\u30B0\u30B2\u30B4\u30CA\u30CB\u30CC\u30CD\u30CE", // gn
+    j: "\u30B8\u30B8\u30E3\u30B8\u30E5\u30B8\u30A7\u30B8\u30E7",
+    k: "\u30AB\u30AD\u30AF\u30B1\u30B3\u30CA\u30CB\u30CC\u30CD\u30CE", // kn
+    l: "\u30E9\u30EA\u30EB\u30EC\u30ED",
+    m: "\u30DE\u30DF\u30E0\u30E1\u30E2",
+    n: "\u30CA\u30CB\u30CC\u30CD\u30CE",
+    p: "\u30D1\u30D4\u30D7\u30DA\u30DD\u30B5\u30B7\u30B9\u30BB\u30BD", // ps
+    q: "\u30AB\u30AD\u30AF\u30B1\u30B3",
+    r: "\u30E9\u30EA\u30EB\u30EC\u30ED",
+    s: "\u30B5\u30B7\u30B9\u30BB\u30BD",
+    t: "\u30BF\u30C1\u30C4\u30C6\u30C8",
+    v: "\u30D0\u30D3\u30D6\u30D9\u30DC\u30F4",
+    z: "\u30B6\u30B8\u30BA\u30BC\u30BE",
+  };
+
+  /**
+   * 这个片假名答案像不像 word 的**音译**？
+   * 首字母没有把握（h/w/y/元音）时一律返回 true（不拦）。
+   */
+  function looksLikeTransliteration(word, kana) {
+    if (typeof word !== "string" || typeof kana !== "string" || !kana) return true;
+    var first = word.toLowerCase().charAt(0);
+    var row = FIRST_ROWS[first];
+    if (!row) return true; // h / w / y / 元音 / 其它 -> 不校验
+    return row.indexOf(kana.charAt(0)) >= 0;
+  }
+
+  // ------------------------------------------------------------ 规范
 
   /**
    * 小写化 + 去掉首尾非字母字符。
@@ -1975,6 +2023,7 @@
     spellOutAcronym: spellOutAcronym,
     splitContraction: splitContraction,
     mergeContraction: mergeContraction,
+    looksLikeTransliteration: looksLikeTransliteration,
     EN_CONTRACTIONS: EN_CONTRACTIONS,
     foldLatin: foldLatin,
     createReader: createReader,
