@@ -570,7 +570,7 @@ test("用户报的缩写：you're / I'll / it's / I'd 都要注对（不能撞�
   assert.strictEqual(baseText(p), "you're my everything, I'll be there, it's ok, I'd say", "原文含撇号一字不改");
 });
 
-test("用户报的 tick：离线也必须注成 ティック，不能是 カチカチ", async () => {
+test("用户报的 tick：不许是 カチカチ（拟声词）；没在线可用时用规则读音兜底", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">
   <div class="m-lyric">
@@ -580,7 +580,14 @@ test("用户报的 tick：离线也必须注成 ティック，不能是 カチ�
   </div>
 </div>
 </body></html>`;
-  const env = bootPlugin(HTML);
+  /*
+   * tick / tock **没有**收进词典（用户选的：让大模型按语境决定）。
+   * 所以这里把在线两层都关掉，看规则兜底给什么 —— 必须是 ティック，
+   * 不能是 Google 那种拟声词 カチカチ。
+   * （配了 key 的机器上不会走到这里：大模型那层会先按语境给答案，
+   *   而 カチカチ 这种"不像音译"的答案会被首音校验直接拦掉。）
+   */
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
   await env.runLoad();
   await sleep(600);
 

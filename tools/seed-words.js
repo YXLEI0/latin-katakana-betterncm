@@ -31,8 +31,6 @@ module.exports = [
   { en: "sr", kana: "シニア" },
   { en: "vs", kana: "バーサス" },
   { en: "etc", kana: "エトセトラ" },
-  { en: "tick", kana: "ティック" }, // 时计声；Google 会把它当拟声词回「カチカチ」
-  { en: "tock", kana: "トック" },
   { en: "ltd", kana: "リミテッド" },
   { en: "inc", kana: "インク" },
   { en: "access", kana: "アクセス" },
