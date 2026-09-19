@@ -103,8 +103,17 @@
 
 | 来源 | 条数 | 怎么来的 |
 | --- | --- | --- |
-| `tools/seed-words.js` | 491 | 人工核过（大部分是反转 katakana-terminator 的离线词典得到的真实外来语写法 + 手工补的歌词高频词） |
-| `tools/seed-words-llm.js` | 5555 | `tools/expand-dict-llm.js` 让大模型按英文词频（前 6000）批量生成的读音 |
+| `tools/seed-words.js` | 527 | 人工核过（大部分是反转 katakana-terminator 的离线词典得到的真实外来语写法 + 手工补的歌词高频词） |
+| `tools/seed-words-llm.js` | 5550 | `tools/expand-dict-llm.js` 让大模型按英文词频（前 6000）批量生成的读音 |
+
+**词频表漏掉的那批靠人工补**：词频表前 6000 里没有 `thirteen`…`nineteen`、
+`forty`…`ninety` 这些，于是它们一直走规则层，而规则层把 -teen / -ty 读错
+（实测：thirteen シアーテエン、fifteen フィファテエン、forty フォータイー、
+fifty フィファタイー），`nineteen` 甚至被罗马音层抢走读成 ニネテエン。
+数字读音没有歧义、歌词里又常见，所以整族人工钉死（顺带补了
+`second` / `hour` / `pence` / `penny`）—— 词典 6056 → **6077 条**。
+发现它的契机挺好笑的：把设置面板预览的示例句换成高考听力那句
+「The shirt is nine pounds fifteen pence.」时，预览里 `fifteen` 显示成 フィファテエン。
 
 人工优先：同一个词两边都有时保留人工那份；生成物只收**纯片假名**，
 混进汉字/平假名的结果当场丢掉（实测拦下 1 条：`portuguese → ポルトガル語`）。
@@ -375,6 +384,7 @@ src/
   core/correct.js     联网校正：批量、四接口、只接受纯片假名
   core/annotate.js    DOM 注音注入与还原
 tests/                jsdom 单元测试
+docs/images/          README 里的真机截图（不进插件包 —— 只有 src/preview.png 进包）
 tools/
   build.js / check.js / read-trace.js / verify-install.js
   build-dict.js       生成离线读音词典

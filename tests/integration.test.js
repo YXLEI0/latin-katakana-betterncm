@@ -775,6 +775,41 @@ test("断网时依然能标（词典 + 罗马音 + 规则全在本地）", async
   assert.ok(stats.reading.dictHits + stats.reading.romajiHits + stats.reading.ruleHits >= 3, JSON.stringify(stats.reading));
 });
 
+test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
+  // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
+  //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；
+  //   2. 中文翻译行照样显示、但一个字都不注音（真机行为）；
+  //   3. 预览走的是真扫描 + 真读音逻辑，不是手写的字符串。
+  const env = bootPlugin(NCM_HTML, { dev: true });
+  await env.runLoad();
+  const root = env.listeners.config[0]();
+  const preview = root.querySelector(".lk-preview");
+  assert.ok(preview, "面板里应该有预览区");
+
+  const pairs = [...preview.querySelectorAll("ruby.lt-ruby")].map((r) => [
+    r.childNodes[0].nodeValue,
+    r.querySelector(".lt-rt").textContent,
+  ]);
+  assert.deepStrictEqual(
+    pairs,
+    [
+      ["The", "ザ"],
+      ["shirt", "シャツ"],
+      ["is", "イズ"],
+      ["nine", "ナイン"],
+      ["pounds", "パウンズ"],
+      ["fifteen", "フィフティーン"],
+      ["pence", "ペンス"],
+    ],
+    "预览示例句的读音"
+  );
+
+  const trans = preview.querySelector(".lk-preview-trans");
+  assert.ok(trans, "预览里应该带一行中文翻译");
+  assert.strictEqual(trans.textContent, "衬衫的价格为九磅十五便士");
+  assert.strictEqual(trans.querySelectorAll("ruby, rt").length, 0, "翻译行不许注音");
+});
+
 test("设置面板能构建出来，改动落盘到 localStorage", async () => {
   const env = bootPlugin(NCM_HTML, { dev: true });
   await env.runLoad();

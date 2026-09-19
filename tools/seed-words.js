@@ -31,6 +31,43 @@ module.exports = [
    */
   { en: "georgette", kana: "ジョージェット" },
   /*
+   * 数字与单位（整族钉死）。
+   *
+   * 怎么发现的：设置面板的预览示例句换成高考听力那句「The shirt is nine pounds
+   * fifteen pence.」时，探针发现 `fifteen` 不在词典里，走规则层给的是
+   * **フィファテエン**。顺着查了一整族，漏的还不止一个 ——
+   * thirteen シアーテエン、fourteen フォアーテエン、sixteen シクステエン、
+   * seventeen セベンテエン、eighteen エアイテエン、forty フォータイー、
+   * fifty フィファタイー、sixty シクスタイー、seventy セベンタイー、
+   * eighty エアイタイー、ninety ニネタイー，而 `nineteen` 更离谱，
+   * 先被罗马音层抢走读成 ニネテエン。
+   *
+   * 原因是这批词**不在那份词频表的前 6000 里**（表里只有 one/three/nine/twenty/
+   * thirty 这些），所以从来没进过生成词表。数字读音没有歧义、歌词里又常见
+   * （twenty-four、fifty…），与其指望规则层，不如人工钉死。
+   */
+  { en: "two", kana: "トゥー" },
+  { en: "seven", kana: "セブン" },
+  { en: "eight", kana: "エイト" },
+  { en: "eleven", kana: "イレブン" },
+  { en: "thirteen", kana: "サーティーン" },
+  { en: "fourteen", kana: "フォーティーン" },
+  { en: "fifteen", kana: "フィフティーン" },
+  { en: "sixteen", kana: "シックスティーン" },
+  { en: "seventeen", kana: "セブンティーン" },
+  { en: "eighteen", kana: "エイティーン" },
+  { en: "nineteen", kana: "ナインティーン" },
+  { en: "forty", kana: "フォーティ" },
+  { en: "fifty", kana: "フィフティ" },
+  { en: "sixty", kana: "シックスティ" },
+  { en: "seventy", kana: "セブンティ" },
+  { en: "eighty", kana: "エイティ" },
+  { en: "ninety", kana: "ナインティ" },
+  { en: "second", kana: "セカンド" },
+  { en: "hour", kana: "アワー" },
+  { en: "pence", kana: "ペンス" },
+  { en: "penny", kana: "ペニー" },
+  /*
    * 常见缩写（用户报的 `Mr.` / `Dr.`）：日语里念的是**整个词**，不是字母名。
    * 它们会先于规则层命中，所以放在这里就是权威写法。
    * 有歧义的没收：`St.`（セント / ストリート）、`No.`（ナンバー / ノー）。

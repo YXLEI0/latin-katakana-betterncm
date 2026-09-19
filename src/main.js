@@ -410,6 +410,7 @@
       "#latin-katakana-config .lk-hint { opacity: .65; font-size: 12px; line-height: 1.6; }" +
       "#latin-katakana-config input[type=text] { width: 320px; padding: 2px 6px; }" +
       "#latin-katakana-config .lk-preview { padding: 10px 12px; border: 1px solid rgba(128,128,128,.35); border-radius: 6px; font-size: 18px; }" +
+      "#latin-katakana-config .lk-preview-trans { margin-top: 4px; font-size: 14px; opacity: .6; }" +
       "#latin-katakana-config .lk-status { white-space: pre-wrap; font-family: monospace; font-size: 12px; opacity: .8; }" +
       "#latin-katakana-config .lk-links a { margin-right: 14px; }" +
       "</style>" +
@@ -469,8 +470,16 @@
         preview.textContent = "核心模块未加载";
         return;
       }
-      // 用真实的扫描 + 读音逻辑做预览，保证预览和实际效果一致
-      var demo = "きらめく light と clover、それから Sekai へ。";
+      /*
+       * 预览示例句用高考英语听力那句名句（「衬衫的价格为九磅十五便士」）。
+       *
+       * 两行是刻意的：第一行是原文，按真实逻辑注音；第二行是**中文翻译**。
+       * 真机上翻译层是不标的（见 annotate.js：同一个 <li> 只取第一块、
+       * class 里带 trans/translated 的整层跳过），预览也照这个来 ——
+       * 免得给人「翻译也会被注音」的错预期。
+       */
+      var demo = "The shirt is nine pounds fifteen pence.";
+      var demoTrans = "衬衫的价格为九磅十五便士";
       var frag = document.createDocumentFragment();
       var pos = 0;
       var tokens = LKMatcher.scan(demo);
@@ -498,10 +507,20 @@
       }
       if (pos < demo.length) frag.appendChild(document.createTextNode(demo.slice(pos)));
       preview.appendChild(frag);
+      /*
+       * 中文翻译行：真机上不注音，预览里也不注。用单独的类而不是塞进上面那段文本，
+       * 是为了让样式和真机的翻译层一样淡一点，一眼能看出"这行不归我们管"。
+       */
+      if (demoTrans) {
+        var trans = document.createElement("div");
+        trans.className = "lk-preview-trans";
+        trans.textContent = demoTrans;
+        preview.appendChild(trans);
+      }
       if (!got) {
         var hint = document.createElement("div");
         hint.className = "lk-hint";
-        hint.textContent = "没能给示例词算出读音（可在控制台调 LK.read('light') 查看）";
+        hint.textContent = "没能给示例词算出读音（可在控制台调 LK.read('shirt') 查看）";
         preview.appendChild(hint);
       }
     }
