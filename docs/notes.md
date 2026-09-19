@@ -51,6 +51,12 @@
 
 - **设置面板 → 大模型校正**：填 API Key（默认 `https://api.deepseek.com/chat/completions`
   + `deepseek-chat`，任何 OpenAI 兼容接口都行），点「测试连接」当场验证；
+- **接口地址会自动补全**：DeepSeek / OpenAI 文档里给的是 `base_url`
+  （`https://api.deepseek.com` 或 `https://api.deepseek.com/v1`），照抄粘进来 POST 过去是
+  **404**（实测：只有完整地址 `/chat/completions` 那一档返回 200）。
+  现在少一段就补一段，设置面板里也会把纠正后的值写回输入框。
+  报错也不再是干巴巴的 "HTTP 404"，而是**地址 + 该改哪儿 + 服务端原话**
+  （401/403/429/5xx 各有对应提示）；
 - 命中缓存**立刻**用；没命中就入队，攒 30 个词或 400ms 发一次请求，
   结果回来时自动重扫换掉 —— **先显示规则的即时结果，不阻塞注音**；
 - 一个词只问一次：**命中和"模型也给不出"都永久落 localStorage**，重启网易云不重新花钱；

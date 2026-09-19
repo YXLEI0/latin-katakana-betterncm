@@ -501,6 +501,18 @@
           if (el.type === "checkbox") config[key] = el.checked;
           else if (el.type === "range") config[key] = Number(el.value);
           else config[key] = el.value;
+          /*
+           * 接口地址当场纠正：多数人粘的是文档里的 base_url
+           * （`https://api.deepseek.com` 或 `…/v1`），那样 POST 过去是 404。
+           * 纠正后的值写回输入框，免得每次都得记住补 `/chat/completions`。
+           */
+          if (key === "llmEndpoint" && typeof LKLLM !== "undefined" && LKLLM.normalizeEndpoint) {
+            var fixed = LKLLM.normalizeEndpoint(config.llmEndpoint);
+            if (fixed !== config.llmEndpoint) {
+              config.llmEndpoint = fixed;
+              el.value = fixed;
+            }
+          }
           saveConfig();
           var out = root.querySelector('[data-v="' + key + '"]');
           if (out) out.textContent = fmt(key);

@@ -33,6 +33,12 @@
 - key 只存本机 localStorage，设置面板里填、可点「测试连接」；
   默认 `api.deepseek.com` + `deepseek-chat`，任何 OpenAI 兼容接口都行。
 - 真接口联调：16 个词典外的词一批问完 1.5 秒，16/16 命中且全是纯片假名。
+- **接口地址自动补全**：DeepSeek / OpenAI 文档里给的是 `base_url`
+  （`https://api.deepseek.com` 或 `…/v1`），照抄粘进来 POST 过去就是 **404**（实测）。
+  现在会按"少一段补一段"纠正成 `/chat/completions`，设置面板里也会把纠正后的值写回输入框；
+  真接口复验：三种写法（主机名 / `…/v1` / 完整地址）全部 200。
+  同时把报错信息从 "HTTP 404" 改成"**地址 + 该改哪儿 + 服务端原话**"，
+  401/403/429/5xx 各有对应提示。
 - 端到端测试（`tests/integration.test.js`）：boot → 规则先给即时读音 → 入队 →
   一批问完 → `onUpdate` 重扫 → DOM 里的注音被换成大模型的写法。
 

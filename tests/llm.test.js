@@ -364,3 +364,80 @@ test("stats 返回的是快照，改它不影响内部状态", async () => {
   s.hits = 999;
   assert.notStrictEqual(client.stats().hits, 999);
 });
+
+// ============================================================ 接口地址纠正
+
+test("接口地址会自动补全：粘 base_url 也能用（这就是 404 的常见原因）", () => {
+  const ctx = loadCore();
+  const N = ctx.LKLLM.normalizeEndpoint;
+  // 文档里给的是 base_url，直接粘进来 POST 过去就是 404（实测 2026-09）
+  assert.strictEqual(N("https://api.deepseek.com"), "https://api.deepseek.com/v1/chat/completions");
+  assert.strictEqual(N("https://api.deepseek.com/v1"), "https://api.deepseek.com/v1/chat/completions");
+  assert.strictEqual(N("https://api.deepseek.com/v1/"), "https://api.deepseek.com/v1/chat/completions");
+  assert.strictEqual(N("  https://api.deepseek.com/v1  "), "https://api.deepseek.com/v1/chat/completions");
+  // 从文档/终端复制时带上的引号、尖括号也要能吃掉
+  assert.strictEqual(N('"https://api.deepseek.com/v1"'), "https://api.deepseek.com/v1/chat/completions");
+  assert.strictEqual(N("<https://api.deepseek.com>"), "https://api.deepseek.com/v1/chat/completions");
+  // 已经是完整地址的：原样（结尾多一个斜杠也去掉）
+  assert.strictEqual(N("https://api.deepseek.com/chat/completions"), "https://api.deepseek.com/chat/completions");
+  assert.strictEqual(N("https://api.deepseek.com/chat/completions/"), "https://api.deepseek.com/chat/completions");
+  // 带别的前缀（DeepSeek 的 beta、本地网关之类）不猜，原样交给服务端
+  assert.strictEqual(N("https://api.deepseek.com/beta/chat/completions"), "https://api.deepseek.com/beta/chat/completions");
+  assert.strictEqual(N("http://127.0.0.1:1234/v1"), "http://127.0.0.1:1234/v1/chat/completions");
+  // 空的就用默认
+  assert.strictEqual(N(""), ctx.LKLLM.DEFAULT_ENDPOINT);
+  assert.strictEqual(N(undefined), ctx.LKLLM.DEFAULT_ENDPOINT);
+});
+
+test("客户端内部用的就是纠正后的地址（配置里存 base_url 也不影响）", async () => {
+  const ctx = loadCore();
+  const calls = [];
+  ctx.window.fetch = function (url) {
+    calls.push(url);
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ choices: [{ message: { content: '{"hello":"ハロー"}' } }] }),
+    });
+  };
+  const client = ctx.LKLLM.createClient({ enabled: true, key: "sk-test", endpoint: "https://api.deepseek.com/v1" });
+  client.lookup("hello");
+  await client.flush();
+  assert.deepStrictEqual(calls, ["https://api.deepseek.com/v1/chat/completions"]);
+  client.configure({ endpoint: "https://api.example.com" });
+  assert.strictEqual(client.stats().endpoint, "https://api.example.com/v1/chat/completions");
+});
+
+test("404 的报错要指出地址问题，并把服务端原话带上（不然没法照着修）", async () => {
+  const ctx = loadCore();
+  ctx.window.fetch = function () {
+    return Promise.resolve({
+      ok: false,
+      status: 404,
+      text: () => Promise.resolve(""),
+    });
+  };
+  const client = ctx.LKLLM.createClient({ enabled: true, key: "sk-test", endpoint: "https://api.deepseek.com/v1" });
+  const r = await client.test();
+  assert.strictEqual(r.ok, false);
+  assert.ok(r.message.indexOf("404") >= 0, r.message);
+  assert.ok(r.message.indexOf("/chat/completions") >= 0, "要提示正确写法：" + r.message);
+  assert.ok(r.message.indexOf("api.deepseek.com/v1/chat/completions") >= 0, "要带上实际请求的地址：" + r.message);
+
+  // 服务端有说明时也要带出来
+  ctx.window.fetch = function () {
+    return Promise.resolve({ ok: false, status: 401, text: () => Promise.resolve('{"error":"bad key"}') });
+  };
+  const c2 = ctx.LKLLM.createClient({ enabled: true, key: "sk-bad", endpoint: "https://api.deepseek.com" });
+  const r2 = await c2.test();
+  assert.ok(r2.message.indexOf("bad key") >= 0, r2.message);
+  assert.ok(r2.message.indexOf("Key") >= 0, r2.message);
+});
+
+test("自检成功时把实际用的地址一起报出来", async () => {
+  const ctx = loadCore();
+  const { client } = makeClient(ctx, { reply: () => ({ clover: "クローバー" }) });
+  const r = await client.test();
+  assert.strictEqual(r.ok, true);
+  assert.ok(r.message.indexOf("https://api.example.com/chat/completions") >= 0, r.message);
+});

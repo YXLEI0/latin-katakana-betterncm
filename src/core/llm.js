@@ -45,6 +45,34 @@
   // 只认纯片假名（含长音符与小写 ャュョッ 那一带）
   var RE_KATAKANA = /^[\u30A1-\u30F6\u30FC]+$/;
 
+  /**
+   * 把用户填的接口地址折成**真正能 POST 的地址**。
+   *
+   * 为什么需要它：DeepSeek / OpenAI 的文档里给的是 `base_url`
+   * （`https://api.deepseek.com` 或 `https://api.deepseek.com/v1`），
+   * 顺手粘进设置面板就会 404 —— 实测（2026-09）：
+   *
+   *   200  https://api.deepseek.com/chat/completions
+   *   200  https://api.deepseek.com/v1/chat/completions
+   *   200  https://api.deepseek.com/chat/completions/     ← 结尾多一个斜杠也行
+   *   404  https://api.deepseek.com/v1
+   *   404  https://api.deepseek.com
+   *
+   * 所以这里按"少一段就补一段"的规则纠正，认不出来的路径原样返回
+   * （让服务端自己报错，错误信息里会带上真实请求的地址）。
+   */
+  function normalizeEndpoint(raw) {
+    var url = String(raw == null ? "" : raw).trim();
+    // 有人会把引号、尖括号一起粘进来（从文档或终端复制的常见形态）
+    url = url.replace(/^["'<]+/, "").replace(/["'>]+$/, "").trim();
+    if (!url) return DEFAULT_ENDPOINT;
+    url = url.replace(/\/+$/, ""); // /v1/ 与 /v1 等价
+    if (/\/chat\/completions$/.test(url)) return url; // 已经是完整地址（含 /beta/ 这类前缀）
+    if (/\/v\d+$/.test(url)) return url + "/chat/completions"; // 只给了 base_url（…/v1）
+    if (/^https?:\/\/[^/]+$/.test(url)) return url + "/v1/chat/completions"; // 只给了主机名
+    return url;
+  }
+
   function promptFor(words) {
     return (
       "你是日语歌词注音助手。下面这些拉丁字母词要唱进日语歌里，请给出日语里最自然的片假名读音。\n" +
@@ -71,6 +99,48 @@
     }
   }
 
+  /** 尽力把响应体读成字符串（读不到就给空串，绝不 reject） */
+  function readBody(res) {
+    try {
+      if (res && typeof res.text === "function") {
+        return Promise.resolve(res.text()).catch(function () {
+          return "";
+        });
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    return Promise.resolve("");
+  }
+
+  /**
+   * 把"HTTP 4xx/5xx"变成**能照着修**的错误信息：地址 + 服务端原话。
+   *
+   * 为什么值得单独写一个：404 最常见的原因是地址少了 `/chat/completions`
+   * （把 base_url 粘进来了），而服务端对这种情况往往回一个**空 body** ——
+   * 只报 "HTTP 404" 的话，用户完全不知道该改哪儿。
+   */
+  function httpError(status, url, body) {
+    var hint = "";
+    if (status === 404) {
+      hint = /\/chat\/completions$/.test(url)
+        ? "（地址不对：服务端不认识这个路径）"
+        : "（地址不对：接口地址一般以 /chat/completions 结尾，别只填 base_url）";
+    } else if (status === 401 || status === 403) hint = "（Key 不对或没权限）";
+    else if (status === 429) hint = "（被限流了，等一会儿再试）";
+    else if (status >= 500) hint = "（服务端出错，稍后再试）";
+    var msg = "HTTP " + status + hint + " @ " + url;
+    var s = String(body || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 160);
+    if (s) msg += "　服务端说：" + s;
+    var err = new Error(msg);
+    err.status = status;
+    err.url = url;
+    return err;
+  }
+
   function createClient(options) {
     options = options || {};
     var log = options.log || function () {};
@@ -79,7 +149,7 @@
 
     var cfg = {
       enabled: options.enabled !== false,
-      endpoint: options.endpoint || DEFAULT_ENDPOINT,
+      endpoint: normalizeEndpoint(options.endpoint),
       model: options.model || DEFAULT_MODEL,
       key: options.key || "",
       batchSize: options.batchSize || BATCH_SIZE,
@@ -268,8 +338,10 @@
 
       return Promise.resolve(p)
         .then(function (res) {
-          if (!res || !res.ok) throw new Error("HTTP " + (res && res.status));
-          return res.json();
+          if (res && res.ok) return res.json();
+          return readBody(res).then(function (body) {
+            throw httpError(res && res.status, cfg.endpoint, body);
+          });
         })
         .then(function (data) {
           var content =
@@ -409,8 +481,10 @@
           });
         })
         .then(function (res) {
-          if (!res || !res.ok) throw new Error("HTTP " + (res && res.status));
-          return res.json();
+          if (res && res.ok) return res.json();
+          return readBody(res).then(function (body) {
+            throw httpError(res && res.status, cfg.endpoint, body);
+          });
         })
         .then(function (data) {
           var content =
@@ -419,7 +493,7 @@
           var kana = obj && typeof obj.clover === "string" ? obj.clover : "";
           if (!kana) return { ok: false, message: "接口通了，但没解析出读音：" + String(content).slice(0, 80) };
           if (!RE_KATAKANA.test(kana)) return { ok: false, message: "接口通了，但返回的不是纯片假名：" + kana };
-          return { ok: true, message: "接口正常（clover -> " + kana + "）" };
+          return { ok: true, message: "接口正常（" + cfg.endpoint + "，clover -> " + kana + "）" };
         })
         .catch(function (e) {
           return { ok: false, message: "请求失败：" + ((e && e.message) || String(e)) };
@@ -441,7 +515,7 @@
       configure: function (next) {
         next = next || {};
         if (next.enabled !== undefined) cfg.enabled = !!next.enabled;
-        if (next.endpoint) cfg.endpoint = String(next.endpoint);
+        if (next.endpoint !== undefined) cfg.endpoint = normalizeEndpoint(next.endpoint);
         if (next.model) cfg.model = String(next.model);
         if (next.key !== undefined) cfg.key = String(next.key || "");
         if (next.batchSize) cfg.batchSize = Math.max(1, Math.min(60, next.batchSize | 0));
@@ -486,6 +560,7 @@
 
   return {
     createClient: createClient,
+    normalizeEndpoint: normalizeEndpoint,
     DEFAULT_ENDPOINT: DEFAULT_ENDPOINT,
     DEFAULT_MODEL: DEFAULT_MODEL,
     RE_KATAKANA: RE_KATAKANA,
