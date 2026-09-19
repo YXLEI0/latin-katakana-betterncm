@@ -99,6 +99,25 @@ test("looksReadable：单字母默认不标，但 a / I 是真词要标", () => 
   assert.strictEqual(by["you"], true);
 });
 
+test("粘在分隔符上的单字母不算词（D/N/A 里的 A 被注成 ア 是错的）", () => {
+  // 用户报的：`だって D/N/Aじゃ 騙れない` 里那个 A 被注音了。
+  // 它是标题记号的零件，不是英文冠词。
+  const glued = ["だって D/N/Aじゃ 騙れない", "N/A", "A.B.C", "X-Y", "&A&"];
+  for (const line of glued) {
+    for (const tk of latin.scan(line)) {
+      if (tk.text.length === 1) {
+        assert.strictEqual(latin.looksReadable(tk), false, JSON.stringify(line) + " 里的 " + tk.text + " 不该标");
+      }
+    }
+  }
+  // 反过来：不粘分隔符的冠词/代词照旧要标
+  const free = latin.scan("A story");
+  assert.strictEqual(free[0].text, "A");
+  assert.strictEqual(latin.looksReadable(free[0]), true, "句首的 A 是冠词，要标");
+  const iTok = latin.scan("I love you")[0];
+  assert.strictEqual(latin.looksReadable(iTok), true, "I 是代词，要标");
+});
+
 test("hasReadable：整段里有没有值得标的词", () => {
   assert.strictEqual(latin.hasReadable("きらめく light"), true);
   assert.strictEqual(latin.hasReadable("x y z"), false, "只有不标的单字母就不值得处理");

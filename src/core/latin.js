@@ -25,11 +25,31 @@
     return /[A-Za-z]/.test(String(text));
   }
 
+  /*
+   * 单字母是不是"某个记号被拆开的一截"（而不是一个英文单词）。
+   *
+   * 用户报的：`だって D/N/Aじゃ 騙れない` 里的那个 A 被注成了 ア。
+   * 这类写法的 A 是标题/记号的零件（`D/N/A`、`N/A`、`A.B.C`、`X-Y`），
+   * 按英文冠词去读是错的。判据只看**紧挨着的前后一个字符**：
+   * 是分隔符就说明它和邻字粘在一起。
+   *
+   * 全角斜杠/中点也认（歌词里经常混排），句尾的 `.` 同样算 —— 代价是
+   * "A." 这种句首缩写不再注音，比把 `A.B.C` 里的 A 注成 ア 好得多。
+   * 装饰性符号（`&A&`、`*A*`、`#A`）同样算粘住：那种 A 是排版效果，不是冠词。
+   */
+  var GLUE_CHARS = "/\\|_.\u30FB\uFF0F\uFF3C-\u2010\u2011\u2013\u2014&#*~+=\u301C";
+  function isGluedLetter(text, start, end) {
+    var before = start > 0 ? text.charAt(start - 1) : "";
+    var after = end < text.length ? text.charAt(end) : "";
+    return (before !== "" && GLUE_CHARS.indexOf(before) >= 0) || (after !== "" && GLUE_CHARS.indexOf(after) >= 0);
+  }
+
   /**
-   * 切成一个个词，返回 [{ text, start, end, norm }]。
+   * 切成一个个词，返回 [{ text, start, end, norm, glued }]。
    *
    * norm 是拿去查读音的形式：小写、去掉撇号连字符。查表、音译都用它 ——
    * 保留原始 text 是为了原样把底字写回 DOM（底字必须是歌词原文，一个字符不改）。
+   * glued 只对单字母有意义：它粘在分隔符上，是记号的一截，不是词。
    */
   function scan(text) {
     var out = [];
@@ -38,11 +58,14 @@
     var m;
     while ((m = RE_WORD.exec(text)) !== null) {
       var raw = m[0];
+      var start = m.index;
+      var end = m.index + raw.length;
       out.push({
         text: raw,
-        start: m.index,
-        end: m.index + raw.length,
+        start: start,
+        end: end,
         norm: normalize(raw),
+        glued: raw.length === 1 ? isGluedLetter(text, start, end) : false,
       });
       // 零宽匹配保护：正常不会发生，但正则改坏了不能让浏览器卡死
       if (m.index === RE_WORD.lastIndex) RE_WORD.lastIndex++;
@@ -70,6 +93,9 @@
    * 但 RNP 的罗马音层本来就被整层跳过，纯罗马音行里的单字母也极少，
    * 而英文歌部分里 "I" 远比裸的 "i" 常见，所以选这一侧。
    *
+   * 粘在分隔符上的单字母不算词（`D/N/A` 的 A、`N/A`、`A.B.C`）——
+   * 那是记号的零件，按英文冠词读成 ア 是错的（用户报过）。见 isGluedLetter()。
+   *
    * 注意**不做**"常见词不标"的白名单：用户要的就是歌词里的拉丁词都标上读音，
    * the / and 这类也照标 —— 否则一行里漏一半，看着更奇怪。
    */
@@ -78,6 +104,7 @@
   function looksReadable(token) {
     if (!token || !token.norm) return false;
     if (token.norm.length >= 2) return true;
+    if (token.glued === true) return false; // 记号的零件（D/N/A 里的 A）
     return SINGLE_LETTER_WORDS[token.norm] === true;
   }
 
