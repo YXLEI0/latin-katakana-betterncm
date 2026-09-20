@@ -264,6 +264,60 @@ test("换歌：框架复用同一行只换文字时，上一首的注音必须�
   assert.strictEqual(ann.churnedCount(), 0, "换歌是正常重绘，不该被当成打架而认输");
 });
 
+test("认输的判据（一）：注音活了 70ms 才被重绘掉，不算打架", async () => {
+  // 用户报的「MWAH 一直没注音」。查下来最可能是这里误伤：RNP 的逐字行大约每
+  // 100ms 重写一次内容，而旧门槛是"活不够 150ms 就算打架"—— 于是三轮就进认输期，
+  // 那一行在退避窗口里**完全没有注音**。可我们的补注是在 MutationObserver 回调里
+  // 做的（赶在下一帧之前），100ms 的空窗根本到不了屏幕：这里没有"闪"要治。
+  const ctx = newCtx();
+  const ann = makeAnnotator(ctx);
+  const p = ctx.document.querySelector("p");
+  const BASE = "きらめく light と clover";
+  const wipe = () => {
+    p.textContent = BASE; // 对方重建：注音没了，底字一字不改
+  };
+
+  ann.pass();
+  assert.strictEqual(p.querySelectorAll("ruby.lt-ruby").length, 2, "前提：先注上：" + p.innerHTML);
+
+  for (let i = 0; i < 4; i++) {
+    await new Promise((r) => setTimeout(r, 70));
+    wipe();
+    ann.pass();
+    assert.strictEqual(
+      p.querySelectorAll("ruby.lt-ruby").length,
+      2,
+      `第 ${i + 1} 次重绘后要立刻补回来：` + p.innerHTML
+    );
+  }
+  assert.strictEqual(ann.churnedCount(), 0, "100ms 级重绘不该被当成死循环 —— 认输等于那行彻底没注音");
+});
+
+test("认输的判据（二）：同一拍就被抹掉（真死循环）仍然要认输", () => {
+  // 反过来的一半契约：真的在无条件重建（注什么、同一拍就毁什么）时必须退避，
+  // 否则我们每一轮都重注一遍，纯烧 CPU。
+  const ctx = newCtx();
+  const ann = makeAnnotator(ctx);
+  const p = ctx.document.querySelector("p");
+  const wipe = () => {
+    p.textContent = "きらめく light と clover";
+  };
+
+  for (let i = 0; i < 4; i++) {
+    wipe();
+    ann.pass();
+  }
+  assert.ok(ann.churnedCount() > 0, "同一拍连抹 4 次必须认输");
+
+  wipe();
+  const last = ann.pass();
+  assert.strictEqual(p.querySelectorAll("ruby.lt-ruby").length, 0, "认输期内不再注音：" + p.innerHTML);
+  assert.ok(
+    (last.skips || []).join(" ").indexOf("认输期") >= 0,
+    "跳过原因要写进结果，不然排障时看不到是故意的：" + JSON.stringify(last.skips)
+  );
+});
+
 test("换歌：禁用/重扫时的还原也不能把上一首的歌词写回去", () => {
   const ctx = newCtx();
   const ann = makeAnnotator(ctx);

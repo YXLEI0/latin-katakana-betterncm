@@ -717,6 +717,22 @@
   function diagWord(w) {
     if (!w) return "用法：LK.word('the')";
     var out = [];
+    /*
+     * 先挡一种最容易冤人的情况：这个词**本来就不该被标**（单字母缩写、
+     * `XX` 这种同一字母重复的占位符）。不然报告里会写"读作 エックスエックス"，
+     * 看着像插件读错了，其实是"我们故意不标它"。
+     */
+    try {
+      var tkFirst = LKMatcher.scan(String(w))[0];
+      if (tkFirst && tkFirst.text === String(w) && !LKMatcher.looksReadable(tkFirst)) {
+        out.push("这个词**不会**被标注（不是读音问题）：");
+        out.push("　" + (tkFirst.norm.length === 1 ? "单个字母（只有 a / I 是英文单词）" : "同一个字母重复的占位符（`XX`/`XXX`，歌词里是打码）"));
+        out.push("　要不要标是 `core/latin.js` 的 looksReadable() 决定的，跟词典/模型无关");
+        return out.join("\n");
+      }
+    } catch (e) {
+      /* 诊断不该因为分词失败而中断 */
+    }
     var local = state.reader ? state.reader.read(w) : null;
     out.push("词：" + w);
     out.push(

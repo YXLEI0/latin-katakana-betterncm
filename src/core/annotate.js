@@ -169,7 +169,7 @@
      * 键用**文本**而不是元素：对方每次重建都换一个新元素（wrap 是新建的 span），
      * 按元素记永远归不了零，按文本才能跨重建累计。
      *
-     * 认输不是永久的：退避时间按 4 倍递增（15s → 1min → 4min → 封顶 10min），
+     * 认输不是永久的：退避时间按 2 倍递增（1s → 2s → … → 封顶 1min），
      * 每轮只闪一下就退回去。这样对方修好（补丁打上）之后会自动恢复，
      * 而不需要我们重启插件。
      */
@@ -191,7 +191,7 @@
     var CHURN_WINDOW_MS = 1500; // 计数窗口
     var CHURN_LIMIT = 3; // 窗口内超过这个次数才认输
     /*
-     * 退避：1s 起，每次翻倍（1s → 2s → 4s → … → 10min 封顶）。
+     * 退避：1s 起，每次翻倍（1s → 2s → 4s → … → 1min 封顶）。
      *
      * 这里的教训是拿真机轨迹换来的，别把 "短退避" 改回 "一次就退 10 分钟"：
      *   17:04:09 churn 2s   ... peer{dirty=false hosts=1 无wrap=0 ktOwn=1 原文一致=true}
@@ -202,16 +202,16 @@
      *
      * 死循环的特征是"短时间内连续十几二十轮"（1.2.3 之前的实测：每秒 4 轮、
      * 一分钟十几条 churn）。所以正确策略是**短退避、尽快重试**：
-     * 正常重绘的重试一次就稳住了；真死循环则靠翻倍在一分钟内退到 10 分钟。
+     * 正常重绘的重试一次就稳住了；真死循环则靠翻倍在一分钟内退到 1 分钟上限。
      */
     var CHURN_BASE_MS = typeof options.churnBaseMs === "number" ? options.churnBaseMs : 1000;
     /*
-     * 退避上限。原来是 10 分钟 —— 用户反复报"某一行不注音"，很可能就是踩了这个：
-     * 那一行被播放器/别的插件反复重建（RNP 逐字歌词会为每个字重建当前行），
-     * 我们认输之后退避一路翻倍到 10 分钟，那行就"永远"没注音了。
-     * 2 分钟够礼貌，也不会让人以为插件坏了。
+     * 退避上限。原来是 10 分钟 → 3 分钟 → 2 分钟 → 现在 1 分钟。
+     * 用户反复报"某一行不注音"，踩的就是这个：那一行被播放器/别的插件反复重建
+     * （RNP 逐字歌词会为每个字重建当前行），我们认输之后退避一路翻倍，
+     * 那行就"永远"没注音了。退避只是**礼貌**，不该让人以为插件坏了。
      */
-    var CHURN_MAX_MS = 120000;
+    var CHURN_MAX_MS = 60000;
     /*
      * 只有「刚插上就被毁」才算打架。
      *
@@ -220,9 +220,17 @@
      *   age≈0~几十 ms              —— 对方在无条件重建，注什么秒毁什么（真死循环）
      * 配合 2.0.11 的"下一帧前补回来"，正常重绘的重建根本看不见，补一次几乎免费，
      * 所以**不该为它认输**（认输会让那一句十几秒没有英文 —— 用户看到的就是
-     * "RNP 页的ジオラマ一直没注音"）。只有真死循环才值得退避。
+     * "RNP 页的ジオラマ一直没注音"）。
+     *
+     * 这道门槛原本是 150ms。用户报的「MWAH 一直没注音」说明 150ms 还是太高：
+     * RNP 的逐字行大约每 100ms 重写一次内容，cycle 落在 150ms 以内 →
+     * 每次都被判成"打架" → 三轮就进认输期 → 那一行在退避窗口里**完全没有注音**。
+     * 而我们的补注是在 MutationObserver 回调里做的（在下一帧之前），
+     * 100ms 的空窗根本到不了屏幕 —— 也就是说：这里根本没有"闪"要治，
+     * 认输纯属误伤。所以门槛降到 50ms（一帧 16ms 的 3 倍），
+     * 只把"同一拍就被抹掉"的真死循环留下。
      */
-    var CHURN_FAST_MS = 150;
+    var CHURN_FAST_MS = 50;
     /*
      * 原谅期：这么久没有再打架，就把 strikes 清零。
      * 否则一段文字一旦被打过一次，之后每次重试都只给 1 轮机会、退避起点也更高，
@@ -289,10 +297,14 @@
       if (!c || now - c.since > CHURN_WINDOW_MS) c = { count: 0, since: now, strikes: (c && c.strikes) || 0 };
       c.count++;
       /*
-       * 第一次遇到这个片段，给 CHURN_LIMIT 次机会（正常行切换会被重绘一两次，
-       * 不能一上来就放弃）；已经判过它爱打架之后，每次重试只试 1 轮。
+       * 每次都要凑够 CHURN_LIMIT 次**窗口内**的重建才认输。
+       *
+       * 以前是"判过它爱打架之后，每次重试只给 1 轮机会"（limit=1）—— 太狠了：
+       * 那一行只要再被重绘**一次**（换歌、拖动进度、逐字动画的收尾各一次都算），
+       * 退避就再翻一倍，很快顶到上限，于是"某一行永远没注音"。
+       * 真死循环在 1.5s 窗口里轻松凑够 3 次，正常重绘凑不够 —— 这个判据本来就够用。
        */
-      var limit = c.strikes > 0 ? 1 : CHURN_LIMIT;
+      var limit = CHURN_LIMIT;
       if (c.count < limit) {
         c.last = now;
         churnByText.set(text, c);
@@ -300,8 +312,8 @@
       }
       c.strikes++;
       /*
-       * 退避按 2 倍递增（1s → 2s → … → 10min 封顶）。
-       * 不要改成"第二次起直接顶到 10 分钟"：真机数据否过它 ——
+       * 退避按 2 倍递增（1s → 2s → … → 1min 封顶）。
+       * 不要改成"第二次起直接顶到上限"：真机数据否过它 ——
        * 对端状态健康、两次 churn 隔了 3 秒，那只是正常重绘，
        * 却让那一句十分钟没有英文。翻倍递增下正常重绘重试一两次就稳了，
        * 真死循环才会很快退到上限。
@@ -1750,16 +1762,88 @@
           /* 诊断不该因为读文本失败而中断 */
         }
         out.push("  已经有注音记录：" + (records.get(node) ? "有" : "没有"));
+        /*
+         * 「在区域里、却没有记录」= 这行是被**跳过**的，不是漏扫。
+         *
+         * 以前这里只报"是/没有"，用户拿着这句话回来问"那为什么"，我还得再猜一轮
+         * （MWAH 那次来回就是这么耗掉的）。所以把 pass() 里那几条判据在这里
+         * 原样重放一遍，直接给结论：是哪一条让这行空着。
+         */
+        var val = node.nodeValue || "";
+        if (inRegion && !records.get(node)) {
+          var untilChurn = churnUntil.get(val);
+          var inChurn = untilChurn != null && Date.now() < untilChurn;
+          var cinfo = churnByText.get(val);
+          var mo = host ? motionByHost.get(host) : null;
+          if (skippedByClass) {
+            out.push("  → 祖先被整层跳过（" + skippedByClass + "）：罗马音/翻译层、占位层或隐藏副本，这行不归我们管");
+          } else if (skippable) {
+            out.push("  → 祖先被跳过（" + skippable + "）：别的插件的注音节点 / 表单 / 输入框，不能碰");
+          } else if (!matcher.hasReadable(val)) {
+            out.push("  → 这段文字里没有值得注音的词（单字母缩写、`XX` 这种占位符），是**故意**不标的");
+          } else if (inChurn) {
+            out.push(
+              "  → 正在**认输期**（还有 " +
+                Math.max(0, Math.round(untilChurn - Date.now())) +
+                "ms 不碰这段文字" +
+                (cinfo && cinfo.strikes ? "，已经被抹掉 " + cinfo.strikes + " 轮" : "") +
+                "）：注上去就被对方重建掉，先退避，退了会自己补回来"
+            );
+          } else if (host && !host.isConnected) {
+            out.push("  → 文本节点已经脱链（播放器刚重建了这行），等下一轮扫描补");
+          } else if (val.length < 2) {
+            out.push("  → 这段文字太短（不到 2 个字符），跳过");
+          } else if (RE_CREDIT.test(val)) {
+            out.push("  → 这行被当成制作信息行（作词/作曲/编曲…），跳过");
+          } else if (mo && mo.changes >= MOTION_LIMIT) {
+            out.push(
+              "  → 这个宿主的文本最近 " +
+                Math.round(MOTION_WINDOW_MS / 1000) +
+                "s 变了 " +
+                mo.changes +
+                " 次（还在动），这一轮先让开，窗口一过会自动重试"
+            );
+          } else {
+            out.push("  → 上面几条都不成立：下一轮扫描会补上；急着看效果就点「立刻重扫」");
+          }
+        }
+        /*
+         * 逐词报"能不能拿到读音"。只列词面是不够的 —— 「无译文」是唯一
+         * **不留痕迹**的跳过原因（连 skip 注记都只在整段一个词都读不出时才写），
+         * 而它恰恰是"某一行死活不注音"的常见成因。这里直接把 lookup 的结果摊开，
+         * 一眼就能看出是"这个词没人会读"还是"读了但被别的判据挡了"。
+         */
         var toks = [];
         try {
-          toks = matcher.scan(node.nodeValue || "").map(function (t) {
-            return t.text;
-          });
+          toks = matcher.scan(val);
         } catch (e2) {
-          /* ignore */
+          toks = [];
         }
-        out.push("  这一段的词：" + JSON.stringify(toks));
+        var tokInfo = [];
+        for (var ti = 0; ti < toks.length; ti++) {
+          var tkOne = toks[ti];
+          if (!matcher.looksReadable(tkOne)) {
+            tokInfo.push(tkOne.text + "（不标：单字母/`XX` 这类占位符）");
+            continue;
+          }
+          var kana = null;
+          var from = "";
+          try {
+            var gotOne = lookup(tkOne.text, val);
+            if (typeof gotOne === "string") kana = gotOne;
+            else if (gotOne && gotOne.kana) {
+              kana = gotOne.kana;
+              from = gotOne.source ? "，" + gotOne.source : "";
+            }
+          } catch (e3) {
+            /* 诊断不该因为读音层抛错而中断 */
+          }
+          tokInfo.push(tkOne.text + " → " + (kana ? kana + "（" + (from ? from.slice(1) : "?") + "）" : "**拿不到读音**"));
+        }
+        out.push("  这一段的词：" + (tokInfo.length ? tokInfo.join("，") : "（切不出词）"));
       }
+      // 一句总结：认输期里的文字段数是"故意没注音"的存量，排查时先看它
+      out.push("（全局：已插注音 " + records.size + " 处，认输期文字 " + churnUntil.size + " 段）");
       if (!found) {
         /*
          * 没找到"原文"匹配，但找到我们自己的注音节点：说明**这一段已经标上了**

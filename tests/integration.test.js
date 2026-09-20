@@ -1470,10 +1470,38 @@ test("LK.why('文本')：说清「那一行为什么没注音」（区域外 / �
   assert.ok(t.indexOf("当前 scope") >= 0, "要报一下 scope 和区域数：" + t);
 
   const t2 = env.api.why("bluh");
-  assert.ok(t2.indexOf('"bluh"') >= 0, "要列出这一段的词：" + t2);
+  assert.ok(t2.indexOf("bluh →") >= 0, "要列出这一段的词和它的读音：" + t2);
+  assert.ok(t2.indexOf("已经注上了") >= 0 || t2.indexOf("→") >= 0, t2);
 
   assert.ok(env.api.why("绝不存在的文本").indexOf("没找到") >= 0, "找不到也要有话说");
   assert.ok(env.api.why().indexOf("上一轮") >= 0, "不带参数还是原来的跳过统计");
+});
+
+test("LK.why()：在区域里却没注音的行，要直接说出原因，不能只报「没有」", async () => {
+  // 用户拿着「在标注区域里：是 / 已经有注音记录：没有」这两行回来问"那为什么"，
+  // 我只好再猜一轮。诊断必须一次给结论：是占位符、认输期、还是在动。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>ねえあたし知ってるよ きみがひとり“XX”してるの知ってるよ</p></li>
+  <li class="line"><p>作词：MWAH</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(250);
+
+  // 打码占位符：不注音，也不该被念成字母名
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  assert.ok(ps[0].innerHTML.indexOf("エックス") < 0, "XX 不该被念成 エックスエックス：" + ps[0].innerHTML);
+  const tx = env.api.why("XX");
+  assert.ok(tx.indexOf("占位符") >= 0, "要说清是占位符所以故意不标：" + tx);
+  assert.ok(tx.indexOf("在标注区域里：是") >= 0, "前提：它在区域里：" + tx);
+
+  // 制作信息行：在区域里，但按规则跳过 —— 原因要写出来
+  const tc = env.api.why("MWAH");
+  assert.ok(tc.indexOf("制作信息行") >= 0, "要说清是被当成制作信息行：" + tc);
+
+  assert.ok(env.api.why("XX").indexOf("全局：已插注音") >= 0, "末尾要有全局计数：" + env.api.why("XX"));
 });
 
 test("罗马音节行：短音节按罗马音读（PI→ピ / ME→メ），普通英文行不受影响", async () => {

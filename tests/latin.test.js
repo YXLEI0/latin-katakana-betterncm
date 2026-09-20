@@ -168,6 +168,28 @@ test("粘在分隔符上的单字母不算词（D/N/A 里的 A 被注成 ア 是
   assert.strictEqual(latin.looksReadable(iTok), true, "I 是代词，要标");
 });
 
+test("同一个字母重复的整词不标（`XX` 是打码，不是要念的缩写）", () => {
+  // 用户报的：`きみがひとり“XX”してるの知ってるよ` 里的 XX 被逐字母念成
+  // 「エックスエックス」。歌词里的 XX 是打码/占位，念出来比留白更难看。
+  for (const raw of ["XX", "XXX", "xx", "aa", "ZZZ"]) {
+    const tk = latin.scan(raw)[0];
+    assert.ok(tk, raw + " 要能扫到（不是漏扫，是不标）");
+    assert.strictEqual(latin.looksReadable(tk), false, raw + " 不该标");
+  }
+  assert.strictEqual(latin.hasReadable("きみがひとり“XX”してるの"), false, "整段只有 XX 就不值得处理");
+  // 反例：不同字母的缩写照旧逐字母读 —— 一刀切的边界要正好落在"重复"上
+  for (const raw of ["LDK", "TV", "MC", "DJ"]) {
+    const tk = latin.scan(raw)[0];
+    assert.strictEqual(latin.looksReadable(tk), true, raw + " 是真实缩写，要标");
+  }
+  // 记号优先：`X-X` / `A-A` 是记号（エックスワイ / エーエー），不能被这一刀误伤
+  for (const raw of ["X-X", "A-A"]) {
+    const tk = latin.scan(raw)[0];
+    assert.strictEqual(tk.notation, true, raw + " 是记号");
+    assert.strictEqual(latin.looksReadable(tk), true, raw + " 是记号，要标");
+  }
+});
+
 test("hasReadable：整段里有没有值得标的词", () => {
   assert.strictEqual(latin.hasReadable("きらめく light"), true);
   assert.strictEqual(latin.hasReadable("x y z"), false, "只有不标的单字母就不值得处理");
