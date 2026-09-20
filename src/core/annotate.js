@@ -205,7 +205,13 @@
      * 正常重绘的重试一次就稳住了；真死循环则靠翻倍在一分钟内退到 10 分钟。
      */
     var CHURN_BASE_MS = typeof options.churnBaseMs === "number" ? options.churnBaseMs : 1000;
-    var CHURN_MAX_MS = 600000; // 退避上限
+    /*
+     * 退避上限。原来是 10 分钟 —— 用户反复报"某一行不注音"，很可能就是踩了这个：
+     * 那一行被播放器/别的插件反复重建（RNP 逐字歌词会为每个字重建当前行），
+     * 我们认输之后退避一路翻倍到 10 分钟，那行就"永远"没注音了。
+     * 2 分钟够礼貌，也不会让人以为插件坏了。
+     */
+    var CHURN_MAX_MS = 120000;
     /*
      * 只有「刚插上就被毁」才算打架。
      *
@@ -1456,6 +1462,7 @@
        * 没有这一手那行就永远不注音了（见 pass() 返回值的说明）。
        */
       var retryInMs = 0;
+      var errorNotes = [];
       function noteRetry(ms) {
         if (!(ms > 0)) return;
         if (retryInMs === 0 || ms < retryInMs) retryInMs = ms;
@@ -1629,16 +1636,15 @@
           }
         } catch (e) {
           // 单个节点失败不影响其它节点；把现场记下来便于定位
-          if (options.log) {
-            options.log(
-              "注音失败 tag=" +
-                (region.tagName || "?") +
-                " cls=" +
-                String(region.className || "").slice(0, 60) +
-                " err=" +
-                ((e && e.message) || e)
-            );
-          }
+          var errMsg =
+            "注音失败 tag=" +
+            (region.tagName || "?") +
+            " cls=" +
+            String(region.className || "").slice(0, 60) +
+            " err=" +
+            ((e && e.message) || e);
+          if (errorNotes.length < SKIP_NOTE_MAX) errorNotes.push(errMsg);
+          if (options.log) options.log(errMsg);
         }
       }
       // 把这一轮的"跳过原因"写进轨迹 —— 用户说"某处没注上"时，答案就在这里
@@ -1655,6 +1661,7 @@
         unstable: unstable,
         // 跳过原因（上层会写进 LK.stats()，排障时一眼看到"为什么这行没注音"）
         skips: notes,
+        errors: errorNotes, // 单个节点注音时抛的异常（以前只在轨迹里，现在也会回到上层）
         /*
          * 这一轮有节点是因为"文本在动 / 认输期"被跳过的，那就要**自己安排下一轮**。
          *
@@ -1754,9 +1761,20 @@
         out.push("  这一段的词：" + JSON.stringify(toks));
       }
       if (!found) {
-        out.push("页面里没找到包含「" + needle + "」的原文文本节点 —— 是不是在桌面歌词/其它窗口？");
+        /*
+         * 没找到"原文"匹配，但找到我们自己的注音节点：说明**这一段已经标上了**
+         * （行首是词的那种，原文节点被我们清空、词都在 <ruby> 里，页面里就再没有
+         * 独立的原文文本节点了）。这种情况要说清楚，不然用户会以为出错了。
+         */
+        if (ours) {
+          out.push("「" + needle + "」**已经注上了**（在上面的注音 <ruby> 里）✓");
+          out.push("  如果你看到的那行没注音，说明它是另一处 —— 换那一行里的词再查一次");
+        } else {
+          out.push("页面里没找到包含「" + needle + "」的原文文本节点 —— 是不是在桌面歌词/其它窗口？");
+        }
+      } else if (ours) {
+        out.push("（另外 " + ours + " 处是我们已经标好的注音，忽略）");
       }
-      if (ours) out.push("（另外 " + ours + " 处是我们已经标好的注音，忽略）");
       return out;
     }
 

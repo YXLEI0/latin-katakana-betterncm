@@ -657,6 +657,119 @@
     }
   }
 
+  // ------------------------------------------------------------ 排障（面板和控制台共用）
+
+  /**
+   * 「这一段为什么没注音」（`LK.why('MWAH')` / 面板的排障按钮）。
+   * 带参数：找页面上包含这段文字的原文文本节点，逐层说清；
+   * 不带参数：报上一轮的扫描/跳过统计（含"注音时出错"的行）。
+   */
+  function diagWhy(text) {
+    var r = state.lastResult;
+    if (text && state.annotator && state.annotator.explain) {
+      var mode = config.scope === "lyrics" || config.scope === "titles" ? config.scope : "safe";
+      var regions = null;
+      try {
+        regions = state.annotator.findRegions(mode);
+      } catch (e) {
+        regions = null;
+      }
+      var lines = ["查「" + text + "」："];
+      var detail = state.annotator.explain(text, regions);
+      for (var i = 0; i < detail.length; i++) lines.push(detail[i]);
+      lines.push("当前 scope=" + config.scope + "，上面认到的区域数：" + (regions ? regions.length : "?"));
+      return lines.join("\n");
+    }
+    if (!r) return "还没扫过（插件没启用？）";
+    var out = [];
+    out.push(
+      "上一轮：区域 " + r.scanned + "，注音 " + r.changed + "，还原 " + r.restored +
+        "，跳过 " + r.skipped + "，放弃 " + (r.unstable || 0) + "，用时 " + state.lastPassMs + "ms"
+    );
+    if (r.retryInMs) out.push("已安排 " + Math.round(r.retryInMs) + "ms 后再扫一轮（跳过是暂时的）");
+    var errs = r.errors || [];
+    if (errs.length) {
+      out.push("注音时出错（这些行没标上）：");
+      for (var ei = 0; ei < errs.length && ei < 5; ei++) out.push("　" + errs[ei]);
+    }
+    var skips = r.skips || [];
+    if (skips.length) {
+      // 同一种原因可能连着出现很多次（一个区域里有好几个节点），压成计数
+      var seen = {};
+      for (var si = 0; si < skips.length; si++) {
+        var key = String(skips[si]).replace(/@\S+\s+".*$/, "").trim();
+        seen[key] = (seen[key] || 0) + 1;
+      }
+      out.push("跳过原因：");
+      for (var k in seen) {
+        if (Object.prototype.hasOwnProperty.call(seen, k)) out.push("　× " + seen[k] + "　" + k);
+      }
+    } else if (!r.unstable) {
+      out.push("没有跳过 —— 还有行没注音的话，点上面的「查这一行为什么没注音」填那行里的一个词");
+    }
+    if (state.error) out.push("错误：" + state.error);
+    return out.join("\n");
+  }
+
+  /**
+   * 「这个词为什么读音不对 / 一直不矫正」（`LK.word('the')` / 面板的排障按钮）。
+   */
+  function diagWord(w) {
+    if (!w) return "用法：LK.word('the')";
+    var out = [];
+    var local = state.reader ? state.reader.read(w) : null;
+    out.push("词：" + w);
+    out.push(
+      "本地层：" + (local ? local.kana + "（" + local.source + "，confident=" + local.confident + "）" : "读不出来")
+    );
+    var dict = typeof LKDict !== "undefined" ? LKDict.words : {};
+    var key = String(w).toLowerCase();
+    out.push("离线词典：" + (dict[key] ? dict[key] : "没有"));
+    var rank = local ? effectiveRank(local) : -1;
+    out.push(
+      "按当前层序（" + config.layerOrder.join(" > ") + "）在线层有没有资格覆盖它：" +
+        (rank < 0 ? "没有（形态层/最优先）" : rank + "，排在它前面的在线层才有资格")
+    );
+    var blockedNow = ruleBlocksSync();
+    if (blockedNow.length) {
+      out.push(
+        "⚠ 但「英文音译规则」排在 " + blockedNow.join(" / ") + " 前面 —— 它会替每个词给答案，" +
+          "所以词典和在线层都用不上了。先点「恢复默认顺序」。"
+      );
+    }
+    var rom = shortRomajiOf(w);
+    if (rom && dict[key] && dict[key] !== rom) {
+      out.push("两可（词典 " + dict[key] + " / 罗马音 " + rom + "）：会标成没把握，由在线层按整句语境判");
+    }
+    if (state.llm) {
+      var peek = state.llm.peek(w);
+      var st = state.llm.stats();
+      out.push("模型缓存里的读音：" + (peek ? peek : "没有（要么没问过，要么是 miss）"));
+      out.push(
+        "模型层：问过 " + st.requests + " 次，命中 " + st.hits + "，没收下 " + st.misses +
+          "（其中首音校验判掉 " + st.rejected + "），缓存里 miss 条目 " + st.missesCached +
+          "，队列 " + st.pending + "，本分钟还剩 " + st.roomThisMinute + " 次额度"
+      );
+      var rj = state.llm.rejects ? state.llm.rejects() : [];
+      var hit = [];
+      for (var i = 0; i < rj.length; i++) {
+        if (String(rj[i].word).toLowerCase() === key) hit.push(rj[i]);
+      }
+      if (hit.length) {
+        out.push("被拒记录：");
+        for (var j = 0; j < hit.length; j++) {
+          out.push("　模型说了「" + (hit[j].said || "（空）") + "」，原因：" + hit[j].why);
+        }
+        out.push("　→ 如果这是模型的正确答案：点「重试没结果的词」再问一次");
+      }
+    }
+    if (state.corrector) {
+      out.push("免费接口那层：" + (state.corrector.isWaiting(w) ? "正在等" : "没在等"));
+    }
+    out.push("页面实际用的：" + readForDisplay(w));
+    return out.join("\n");
+  }
+
   // ------------------------------------------------------------ 设置面板
 
   var REPO = REPO_URL;
@@ -749,6 +862,13 @@
       '<div class="lk-hint">只统计<b>发出去的请求</b>：命中缓存不算（省下来的量另外显示）。' +
       "token 数取自接口响应里的 <code>usage</code>；免费接口没有 token，用请求数与字符数衡量。" +
       "填了单价就会多算一行估算花费（单价按你接口的现价来，默认 0 = 不算钱）。</div>" +
+      "<h3>排障</h3>" +
+      '<div class="lk-row"><label>词 / 一段歌词 <input type="text" class="lk-diag-input" placeholder="例如 MWAH 或 the"></label></div>' +
+      '<div class="lk-row">' +
+      '<button data-a="diagWhy">查这一行为什么没注音</button> ' +
+      '<button data-a="diagWord">查这个词的读音来源</button>' +
+      "</div>" +
+      '<div class="lk-hint lk-diag-out"></div>' +
       "<h3>操作</h3>" +
       '<div class="lk-row">' +
       '<button data-a="rescan">重新扫描</button> ' +
@@ -1288,6 +1408,19 @@
             setTimeout(function () {
               b.textContent = "清除校正缓存";
             }, 1500);
+          } else if (what === "diagWhy" || what === "diagWord") {
+            /*
+             * 面板里的排障：用户报"某一行/某个词不对"时，他截图给我就行，
+             * 不用去开控制台敲命令（这一步以前是真的卡住过）。
+             */
+            var input = root.querySelector(".lk-diag-input");
+            var out = root.querySelector(".lk-diag-out");
+            var text = input ? String(input.value || "").trim() : "";
+            if (!text) {
+              if (out) out.textContent = "先在上面填一个词或一段歌词。";
+            } else if (out) {
+              out.textContent = what === "diagWhy" ? diagWhy(text) : diagWord(text);
+            }
           } else if (what === "usageReset") {
             var scope = b.dataset.scope || "session";
             if (state.usage) state.usage.reset(scope);
@@ -1585,61 +1718,7 @@
        *   3. 还在**队列里等**（模型排在最前面时请求量会撞上限流，20 次/分钟）。
        */
       word: function (w) {
-        if (!w) return "用法：LK.word('the')";
-        var out = [];
-        var local = state.reader ? state.reader.read(w) : null;
-        out.push("词：" + w);
-        out.push(
-          "本地层：" +
-            (local ? local.kana + "（" + local.source + "，confident=" + local.confident + "）" : "读不出来")
-        );
-        var dict = typeof LKDict !== "undefined" ? LKDict.words : {};
-        var key = String(w).toLowerCase();
-        out.push("离线词典：" + (dict[key] ? dict[key] : "没有"));
-        var rank = local ? effectiveRank(local) : -1;
-        out.push(
-          "按当前层序（" + config.layerOrder.join(" > ") + "）在线层有没有资格覆盖它：" +
-            (rank < 0 ? "没有（形态层/最优先）" : rank + "，排在它前面的在线层才有资格")
-        );
-        var blockedNow = ruleBlocksSync();
-        if (blockedNow.length) {
-          out.push(
-            "⚠ 但「英文音译规则」排在 " + blockedNow.join(" / ") + " 前面 —— 它会替每个词给答案，" +
-              "所以词典和在线层都用不上了。先点「恢复默认顺序」。"
-          );
-        }
-        if (state.llm) {
-          var peek = state.llm.peek(w);
-          var st = state.llm.stats();
-          out.push("模型缓存里的读音：" + (peek ? peek : "没有（要么没问过，要么是 miss）"));
-          out.push(
-            "模型层：" +
-              "问过 " + st.requests + " 次，命中 " + st.hits + "，没收下 " + st.misses +
-              "（其中首音校验判掉 " + st.rejected + "）" +
-              "，缓存里 miss 条目 " + st.missesCached + "，队列 " + st.pending +
-              "，本分钟还剩 " + st.roomThisMinute + " 次额度"
-          );
-          var rj = state.llm.rejects ? state.llm.rejects() : [];
-          var hit = [];
-          for (var i = 0; i < rj.length; i++) {
-            if (String(rj[i].word).toLowerCase() === key) hit.push(rj[i]);
-          }
-          if (hit.length) {
-            out.push("被拒记录：");
-            for (var j = 0; j < hit.length; j++) {
-              out.push(
-                "　模型说了「" + (hit[j].said || "（空）") + "」，原因：" + hit[j].why
-              );
-            }
-            out.push("　→ 如果这是模型的正确答案：点设置里的「重试没结果的词」再问一次");
-          }
-        }
-        if (state.corrector) {
-          var ci = state.corrector.isWaiting(w);
-          out.push("免费接口那层：" + (ci ? "正在等" : "没在等"));
-        }
-        out.push("页面实际用的：" + readForDisplay(w));
-        return out.join("\n");
+        return diagWord(w);
       },
       dict: function () {
         return typeof LKDict !== "undefined" ? LKDict.words : {};
@@ -1660,46 +1739,7 @@
        * （文本在动 / 认输期 / 无译文 / 切不出词 / 不在区域里…），这里直接给结论。
        */
       why: function (text) {
-        var r = state.lastResult;
-        // 带参数：查"这一行为什么没注音"（找页面上包含这段文字的地方，逐层说清）
-        if (text && state.annotator && state.annotator.explain) {
-          var mode = config.scope === "lyrics" || config.scope === "titles" ? config.scope : "safe";
-          var regions = null;
-          try {
-            regions = state.annotator.findRegions(mode);
-          } catch (e) {
-            regions = null;
-          }
-          var lines = ["查「" + text + "」："];
-          var detail = state.annotator.explain(text, regions);
-          for (var i = 0; i < detail.length; i++) lines.push(detail[i]);
-          lines.push("当前 scope=" + config.scope + "，上面认到的区域数：" + (regions ? regions.length : "?"));
-          return lines.join("\n");
-        }
-        if (!r) return "还没扫过（插件没启用？）";
-        var lines = [];
-        lines.push(
-          "上一轮：区域 " + r.scanned + "，注音 " + r.changed + "，还原 " + r.restored +
-            "，跳过 " + r.skipped + "，放弃 " + (r.unstable || 0) + "，用时 " + state.lastPassMs + "ms"
-        );
-        if (r.retryInMs) lines.push("已安排 " + Math.round(r.retryInMs) + "ms 后再扫一轮（跳过是暂时的）");
-        var skips = r.skips || [];
-        if (skips.length) {
-          // 同一种原因可能连着出现很多次（一个区域里有好几个节点），压成计数
-          var seen = {};
-          for (var i = 0; i < skips.length; i++) {
-            var key = String(skips[i]).replace(/@\S+\s+".*$/, "").trim();
-            seen[key] = (seen[key] || 0) + 1;
-          }
-          lines.push("跳过原因：");
-          for (var k in seen) {
-            if (Object.prototype.hasOwnProperty.call(seen, k)) lines.push("　× " + seen[k] + "　" + k);
-          }
-        } else if (!r.unstable) {
-          lines.push("没有跳过 —— 还有行没注音的话，看那一行是不是不在标注区域里（LK.scan('那行的文本') 看分词）");
-        }
-        if (state.error) lines.push("错误：" + state.error);
-        return lines.join("\n");
+        return diagWhy(text);
       },
       llm: {
         stats: function () {

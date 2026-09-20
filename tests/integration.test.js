@@ -1650,6 +1650,54 @@ test("设置面板：罗马音排在词典前面时给出提醒（它会把英�
   );
 });
 
+test("设置面板：排障区块能直接查「这一行为什么没注音 / 这个词的读音来源」", async () => {
+  // 用户报问题的方式是截图，不是敲控制台 —— 所以把两个诊断做成面板按钮。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric"><ul class="lyric">
+    <li class="line"><p>Shoo, Gimme more, Yeah!</p><p>（翻译）Shoo…</p></li>
+  </ul></div>
+</div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(250);
+
+  const root = env.listeners.config[0]();
+  const input = root.querySelector(".lk-diag-input");
+  const out = root.querySelector(".lk-diag-out");
+  assert.ok(input && out, "要有排障输入框和输出区");
+
+  const click = (action) => {
+    const b = [...root.querySelectorAll("[data-a]")].find((x) => x.dataset.a === action);
+    assert.ok(b, "要有按钮 " + action);
+    b.dispatchEvent(new env.window.Event("click"));
+  };
+
+  // 没填东西时的提示
+  click("diagWhy");
+  assert.ok(out.textContent.indexOf("先在上面填") >= 0, out.textContent);
+
+  // 查"已经标上的那一段"：要说清"已经注上了"，别让人以为出错
+  input.value = "more";
+  click("diagWhy");
+  assert.ok(out.textContent.indexOf("已经注上了") >= 0, "已注音的要给出明确结论：" + out.textContent);
+
+  // 查"没标的那一行"（这里的翻译层）：要给元素链和「不是」
+  input.value = "（翻译）";
+  click("diagWhy");
+  assert.ok(out.textContent.indexOf("元素链") >= 0, "要给出元素链：" + out.textContent);
+  assert.ok(out.textContent.indexOf("**不是**") >= 0, "要说清不归我们管：" + out.textContent);
+  assert.ok(out.textContent.indexOf("scope") >= 0, "要报 scope：" + out.textContent);
+
+  // 查"这个词的读音来源"
+  input.value = "Shoo";
+  click("diagWord");
+  const t = out.textContent;
+  assert.ok(t.indexOf("离线词典：シュー") >= 0, "要报词典值：" + t);
+  assert.ok(t.indexOf("本地层：") >= 0 && t.indexOf("页面实际用的：") >= 0, t);
+});
+
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
   // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
   //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；
