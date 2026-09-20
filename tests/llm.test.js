@@ -70,6 +70,77 @@ function makeClient(ctx, opts) {
   return { client, calls, updates, statuses };
 }
 
+// ============================================================ 被拒的答案要留痕
+
+/** 和 main.js 一样把首音校验注入进去（不注入的话什么答案都会被收下） */
+function withValidate(ctx, opts) {
+  const merged = Object.assign({}, opts);
+  merged.validate = (w, k) => ctx.LKReading.looksLikeTransliteration(w, k);
+  return makeClient(ctx, merged);
+}
+
+test("被拒的答案要留痕：模型原话 + 原因（不然「一直不矫正」查不出来）", async () => {
+  const ctx = loadCore();
+  // 模型对 tick 回了拟声词 カチカチ、对 kaleidoscope 回了 ダニ（蜱虫）—— 都会被首音校验判掉
+  const c = withValidate(ctx, { reply: () => ({ 1: "カチカチ", 2: "ダニ" }) });
+  c.client.lookup("tick", "tick tock");
+  c.client.lookup("kaleidoscope", "a kaleidoscope");
+  await c.client.flush();
+
+  const rj = c.client.rejects();
+  assert.strictEqual(rj.length, 2, "两条都要留痕：" + JSON.stringify(rj));
+  assert.strictEqual(rj[0].word, "tick");
+  assert.strictEqual(rj[0].said, "カチカチ", "要记住模型原话");
+  assert.strictEqual(rj[0].why, "没通过首音校验");
+  assert.strictEqual(c.client.stats().rejected, 2, "stats 里也要能看出有几个是被校验判掉的");
+  assert.ok(c.client.stats().missesCached >= 2, "miss 条目数：这些词不会再自动重问");
+});
+
+test("retryMisses：把「问过但没收下」的清掉，让它们能再问一次", async () => {
+  const ctx = loadCore();
+  let answer = "カチカチ"; // 先给一个一定被拒的
+  const c = withValidate(ctx, { reply: () => ({ 1: answer }) });
+
+  c.client.lookup("tick", "tick tock");
+  await c.client.flush();
+  assert.strictEqual(c.calls.length, 1);
+  assert.strictEqual(c.client.stats().missesCached, 1, "缓存里有一条 miss");
+
+  // 同一句再查：有结论（miss）了，不会再发请求
+  c.client.lookup("tick", "tick tock");
+  await c.client.flush();
+  assert.strictEqual(c.calls.length, 1, "有 miss 结论时不该重问");
+
+  // 用户点「重试没结果的词」之后：能再问一次，而且这次收下正确答案
+  answer = "ティック";
+  assert.strictEqual(c.client.retryMisses(), 1, "应该清掉 1 条");
+  assert.strictEqual(c.client.stats().missesCached, 0);
+  c.client.lookup("tick", "tick tock");
+  await c.client.flush();
+  assert.strictEqual(c.calls.length, 2, "重试之后要真的再问一次");
+  assert.strictEqual(c.client.peek("tick"), "ティック", "这次要收下");
+});
+
+test("被拒的答案会落盘：重启之后 rejects() 还看得出原因", async () => {
+  const ctx = loadCore();
+  const a = withValidate(ctx, { reply: () => ({ 1: "カチカチ" }) });
+  a.client.lookup("tick", "tick tock");
+  await a.client.flush();
+  a.client.saveCache(); // 正常是 2s 防抖落盘，这里手动触发
+  const saved = JSON.parse(ctx.window.localStorage.getItem("latin-katakana.llm.v1"));
+  const key = Object.keys(saved)[0];
+  assert.strictEqual(saved[key].said, "カチカチ", "原话要落盘：" + JSON.stringify(saved));
+  assert.strictEqual(saved[key].why, "没通过首音校验");
+
+  // 新客户端读同一份 localStorage（同一个窗口 = 模拟重启后读缓存）
+  const b = withValidate(ctx, { reply: () => ({}) });
+  const rj = b.client.rejects();
+  assert.ok(
+    rj.some((r) => r.word === "tick" && r.said === "カチカチ"),
+    "重启后 rejects() 要能还原：" + JSON.stringify(rj)
+  );
+});
+
 // ============================================================ key / 错误信息
 
 test("key 清洗：带引号 / 前后空格 / 整个 Bearer 都能收拾干净（这是「请求全失败」的常见元凶）", () => {

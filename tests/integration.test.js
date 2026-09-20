@@ -1314,6 +1314,63 @@ test("设置面板：把词典拖到「英文音译规则」下面会给出挡�
   );
 });
 
+test("LK.word()：一词体检直接回答「为什么这个词一直不矫正」", async () => {
+  // 用户问的「有些词大模型一直不矫正」。模型对 kaleidoscope 回了 ダニ（蜱虫）
+  // -> 被首音校验判掉 -> 缓存里留一条 miss（永久）-> 那个词就一直用本地读音。
+  // LK.word() 要把这条链子说清楚（含模型原话和原因）。
+  const env = bootPlugin(LLM_HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions", online: false },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const body = JSON.parse(init.body);
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = "ダニ";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1400);
+
+  const t = env.api.word("kaleidoscope");
+  assert.ok(t.indexOf("keidoscope") >= 0 || t.indexOf("kaleidoscope") >= 0, "要有这个词：" + t);
+  assert.ok(t.indexOf("没通过首音校验") >= 0, "要说清是被哪条判据拒的：\n" + t);
+  assert.ok(t.indexOf("ダニ") >= 0, "要带上模型原话：\n" + t);
+  assert.ok(t.indexOf("重试没结果的词") >= 0, "要告诉用户怎么办：\n" + t);
+
+  // 词典命中的词：说清"按设计就不问模型"
+  const t2 = env.api.word("light");
+  assert.ok(t2.indexOf("ライト") >= 0, "要有词典读音：\n" + t2);
+  assert.ok(t2.indexOf("离线词典：ライト") >= 0, "要点明它是词典命中：\n" + t2);
+
+  // llm.rejects() 也能列出被拒的答案
+  const rj = env.api.llm.rejects();
+  assert.ok(rj.length >= 1 && rj[0].said === "ダニ" && rj[0].why === "没通过首音校验", JSON.stringify(rj));
+
+  // 「重试没结果的词」把 miss 清掉之后，同一个词有机会再问一次
+  assert.ok(env.api.llm.stats().missesCached >= 1);
+  const cleared = env.api.llm.retryMisses();
+  assert.ok(cleared >= 1, "要清掉被拒的记录：" + cleared);
+  assert.strictEqual(env.api.llm.stats().missesCached, 0);
+});
+
+test("设置面板：有「重试没结果的词」按钮，点了不会炸", async () => {
+  const env = bootPlugin(NCM_HTML, { dev: true });
+  await env.runLoad();
+  const root = env.listeners.config[0]();
+  const btn = [...root.querySelectorAll("[data-a]")].find((b) => b.dataset.a === "retry");
+  assert.ok(btn, "要有重试按钮");
+  assert.ok(btn.textContent.indexOf("没结果") >= 0, "文案要说清它重试的是哪些：" + btn.textContent);
+  btn.dispatchEvent(new env.window.Event("click"));
+  assert.ok(btn.textContent.indexOf("已重新排队") >= 0, "点了要有反馈：" + btn.textContent);
+});
+
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
   // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
   //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；

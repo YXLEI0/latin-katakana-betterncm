@@ -254,7 +254,17 @@
     var cooldownUntil = 0;
     var requestTimes = [];
     var lastError = null;
-    var stats = { hits: 0, cacheHits: 0, misses: 0, requests: 0, failures: 0, words: 0 };
+    var stats = { hits: 0, cacheHits: 0, misses: 0, rejected: 0, requests: 0, failures: 0, words: 0 };
+    /*
+     * 最近被拒的答案（内存里留一小段，不落盘）。排障用：
+     * 「某个词一直不矫正」时，这里能看到模型当时到底回了什么、被哪条判据丢的。
+     */
+    var REJECT_KEEP = 30;
+    var rejects = [];
+    function recordReject(word, said, why) {
+      rejects.push({ word: word, said: said, why: why, at: Date.now() });
+      if (rejects.length > REJECT_KEEP) rejects.shift();
+    }
 
     for (var k in persisted) {
       if (!Object.prototype.hasOwnProperty.call(persisted, k)) continue;
@@ -262,6 +272,10 @@
       // 重建"词 -> 读音"索引：键是「词\0语境」，取 \0 前面那截
       if (persisted[k] && typeof persisted[k].k === "string") {
         byWord[k.split("\u0000")[0]] = persisted[k].k;
+      }
+      // 上次运行时被拒的答案也从缓存里恢复，重启后 LK.llm.rejects() 照样有东西看
+      if (persisted[k] && persisted[k].miss === true && persisted[k].why) {
+        recordReject(k.split("\u0000")[0], persisted[k].said || "", persisted[k].why);
       }
     }
 
@@ -279,8 +293,14 @@
           var rec = obj[key];
           if (!rec || typeof rec.t !== "number") continue;
           if (now - rec.t > CACHE_TTL_MS) continue;
-          if (rec.miss === true) out[key] = { miss: true };
-          else if (typeof rec.k === "string" && RE_KATAKANA.test(rec.k)) out[key] = { k: rec.k };
+          if (rec.miss === true) {
+            out[key] = {
+              miss: true,
+              said: typeof rec.said === "string" ? rec.said : "",
+              why: typeof rec.why === "string" ? rec.why : "",
+              at: typeof rec.at === "number" ? rec.at : rec.t,
+            };
+          } else if (typeof rec.k === "string" && RE_KATAKANA.test(rec.k)) out[key] = { k: rec.k };
         }
         return out;
       } catch (e) {
@@ -313,7 +333,13 @@
         var now = Date.now();
         var entries = [];
         mem.forEach(function (rec, word) {
-          entries.push([word, rec.miss === true ? { miss: true, t: now } : { k: rec.k, t: now }]);
+          // miss 连"模型原话 / 拒绝原因"一起存：重启之后 LK.llm.rejects() 还能看出原因
+          entries.push([
+            word,
+            rec.miss === true
+              ? { miss: true, t: now, said: rec.said || "", why: rec.why || "" }
+              : { k: rec.k, t: now },
+          ]);
         });
         if (entries.length > CACHE_MAX) entries = entries.slice(entries.length - CACHE_MAX);
         var obj = {};
@@ -406,6 +432,15 @@
       }
       requestTimes = keep;
       return MAX_REQ_PER_MIN - requestTimes.length;
+    }
+
+    /** 缓存里有多少条是"问过但没收下"的（这些词不会再自动重问） */
+    function countMisses() {
+      var n = 0;
+      mem.forEach(function (rec) {
+        if (rec && rec.miss === true) n++;
+      });
+      return n;
     }
 
     /**
@@ -535,17 +570,39 @@
         var item = batch[i];
         var v2 = byIndex[String(i + 1)];
         if (v2 === undefined) v2 = byWordKey[item.word];
-        var kana = typeof v2 === "string" ? v2.replace(/\s+/g, "").trim() : "";
-        if (kana && RE_KATAKANA.test(kana) && kana.length <= 14 && (!validate || validate(item.word, kana))) {
-          mem.set(item.key, { k: kana });
-          byWord[item.word] = kana; // 外层索引：给 peek()/控制台用
+        var said = typeof v2 === "string" ? v2.replace(/\s+/g, "").trim() : "";
+        /*
+         * 判这个答案收不收，并且**把拒绝原因和模型原话一起记下来**。
+         *
+         * 为什么必须记：以前这里只写 `{miss:true}`，于是用户反馈
+         * 「有些词大模型一直不矫正」时，我这边一点线索都没有 —— 不知道模型说了什么、
+         * 也不知道是被哪个判据丢的，只能猜。现在 LK.llm.rejects() 直接列出
+         * 「哪个词 / 模型原话 / 为什么被拒」。
+         */
+        var why = null;
+        if (!said) why = "模型没给";
+        else if (!RE_KATAKANA.test(said)) why = "不是纯片假名";
+        else if (said.length > 14) why = "太长了（>14）";
+        else if (validate && !validate(item.word, said)) why = "没通过首音校验";
+        if (!why) {
+          mem.set(item.key, { k: said });
+          byWord[item.word] = said; // 外层索引：给 peek()/控制台用
           stats.hits++;
           stats.words++;
           hits++;
         } else {
-          // 模型明说给不出的，记成终态 miss；下一轮不会再发这个词（这一句里的）
-          mem.set(item.key, { miss: true });
+          /*
+           * 记成"问过、没结果"：这一句里的这个词下一轮不会再发。
+           *
+           * 注意它是**永久**的（会落 localStorage）—— 模型当时给的答案被我们判掉了，
+           * 那个词就一直用本地读音，用户看到的就是「有些词一直不矫正」。
+           * 所以除了记原因，还提供 retryMisses()（设置面板「重试没结果的词」）
+           * 把这类条目清掉重问。
+           */
+          mem.set(item.key, { miss: true, said: said, why: why, at: Date.now() });
           stats.misses++;
+          if (why === "没通过首音校验") stats.rejected++;
+          recordReject(item.word, said, why);
           missed++;
         }
       }
@@ -769,6 +826,39 @@
       pending: function () {
         return queue.length;
       },
+      /*
+       * 「重试没结果的词」：把缓存里那些 miss（问过但没收下）清掉，让它们再问一次。
+       *
+       * 什么时候必须点它：模型当时的答案被**我们**判掉了（首音校验误伤、模型抽风、
+       * 响应格式不对……），那份 miss 是永久的、还落了盘 —— 不清掉的话那个词会一直
+       * 用本地读音，用户看到的就是「有些词大模型一直不矫正」。
+       * 修完判据（比如 the -> ザ 那次）之后也要点一下，否则旧结论还在缓存里。
+       *
+       * @returns {number} 清掉了几条
+       */
+      retryMisses: function () {
+        var removed = 0;
+        var keys = [];
+        mem.forEach(function (rec, key) {
+          if (rec && rec.miss === true) keys.push(key);
+        });
+        for (var i = 0; i < keys.length; i++) {
+          mem.delete(keys[i]);
+          removed++;
+        }
+        rejects = [];
+        if (removed) {
+          dirty = true;
+          saveCache(true);
+          if (canAsk() && queue.length) schedule(FLUSH_DELAY_MS);
+        }
+        return removed;
+      },
+      /** 最近被拒的答案（模型原话 + 原因），排障用 */
+      rejects: function (limit) {
+        var n = typeof limit === "number" ? limit : rejects.length;
+        return rejects.slice(Math.max(0, rejects.length - n));
+      },
       cached: function () {
         return mem.size;
       },
@@ -784,10 +874,14 @@
           cacheHits: stats.cacheHits,
           hits: stats.hits,
           misses: stats.misses,
+          rejected: stats.rejected, // 其中"没通过首音校验"被判掉的有几个
+          rejects: rejects.slice(0, 5),
           requests: stats.requests,
           failures: stats.failures,
           cached: mem.size,
+          missesCached: countMisses(),
           pending: queue.length,
+          roomThisMinute: roomThisMinute(),
           inflight: inflight,
           cooldownMs: Math.max(0, cooldownUntil - Date.now()),
           lastError: lastError,

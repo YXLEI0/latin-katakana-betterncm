@@ -846,6 +846,18 @@ test("首音校验：th 的两种读法都放行（the ザ / think シンク）�
   ]) {
     assert.strictEqual(LK.looksLikeTransliteration(w, k), true, w + " -> " + k + " 不该被拒");
   }
+  // 词首不发音的组合：m 不发音的 mn（memo 这种正常 m 不受影响）、
+  // p 不发音的 pn、Ng 开头的姓名
+  for (const [w, k] of [
+    ["mnemonic", "ニモニック"],
+    ["pneumonia", "ニューモニア"],
+    ["nguyen", "グエン"],
+    ["memo", "メモ"],
+    ["phone", "フォン"],
+    ["psychology", "サイコロジー"],
+  ]) {
+    assert.strictEqual(LK.looksLikeTransliteration(w, k), true, w + " -> " + k + " 不该被拒");
+  }
   // tick -> カチカチ 是拟声词/意译，仍然要拦住（这是这条校验存在的理由）
   assert.strictEqual(LK.looksLikeTransliteration("tick", "カチカチ"), false);
   assert.strictEqual(LK.looksLikeTransliteration("kaleidoscope", "ダニ"), false);

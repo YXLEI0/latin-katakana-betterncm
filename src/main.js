@@ -607,9 +607,12 @@
       "<h3>操作</h3>" +
       '<div class="lk-row">' +
       '<button data-a="rescan">重新扫描</button> ' +
-      '<button data-a="retry">重试未校正的词</button> ' +
+      '<button data-a="retry">重试没结果的词</button> ' +
       '<button data-a="clearCache">清除校正缓存</button>' +
       "</div>" +
+      '<div class="lk-hint">「重试没结果的词」清掉那些<b>问过但没收下</b>的记录（模型当时给的答案被' +
+      "首音校验或格式检查判掉、或者服务商干脆没给），让它们有机会再问一次 —— 修完判据之后点它，" +
+      "比清整个缓存温和得多。</div>" +
       '<div class="lk-status"></div>';
 
     function fmt(key) {
@@ -971,10 +974,13 @@
           if (what === "rescan") {
             rescan();
           } else if (what === "retry") {
+            // 两层一起清：免费接口那些"查过、没有"的，和模型那些"问过但没收下"的
             var n = state.corrector ? state.corrector.retryMisses() : 0;
-            b.textContent = "已重新排队 " + n + " 个";
+            var m = state.llm && state.llm.retryMisses ? state.llm.retryMisses() : 0;
+            rescan();
+            b.textContent = "已重新排队 " + n + " + " + m + " 个";
             setTimeout(function () {
-              b.textContent = "重试未校正的词";
+              b.textContent = "重试没结果的词";
             }, 1500);
           } else if (what === "clearCache") {
             if (state.corrector) state.corrector.clearCache();
@@ -1271,6 +1277,65 @@
         }
         return !!config.colorBySource;
       },
+      /*
+       * 「这个词为什么一直不矫正」——一词体检。
+       *
+       * 用户问「有些词大模型一直不矫正」时，答案通常在这几处之一：
+       *   1. 它命中了**离线词典**（默认词典排在模型前面，按设计就不问模型）；
+       *   2. 缓存里有一条 **miss**（问过但没收下）—— 比如模型的答案被首音校验判掉了，
+       *      而且 miss 是永久的、还落了盘；用 LK.llm.rejects() 看模型当时说了什么；
+       *   3. 还在**队列里等**（模型排在最前面时请求量会撞上限流，20 次/分钟）。
+       */
+      word: function (w) {
+        if (!w) return "用法：LK.word('the')";
+        var out = [];
+        var local = state.reader ? state.reader.read(w) : null;
+        out.push("词：" + w);
+        out.push(
+          "本地层：" +
+            (local ? local.kana + "（" + local.source + "，confident=" + local.confident + "）" : "读不出来")
+        );
+        var dict = typeof LKDict !== "undefined" ? LKDict.words : {};
+        var key = String(w).toLowerCase();
+        out.push("离线词典：" + (dict[key] ? dict[key] : "没有"));
+        var rank = local ? effectiveRank(local) : -1;
+        out.push(
+          "按当前层序（" + config.layerOrder.join(" > ") + "）在线层有没有资格覆盖它：" +
+            (rank < 0 ? "没有（形态层/最优先）" : rank + "，排在它前面的在线层才有资格")
+        );
+        if (state.llm) {
+          var peek = state.llm.peek(w);
+          var st = state.llm.stats();
+          out.push("模型缓存里的读音：" + (peek ? peek : "没有（要么没问过，要么是 miss）"));
+          out.push(
+            "模型层：" +
+              "问过 " + st.requests + " 次，命中 " + st.hits + "，没收下 " + st.misses +
+              "（其中首音校验判掉 " + st.rejected + "）" +
+              "，缓存里 miss 条目 " + st.missesCached + "，队列 " + st.pending +
+              "，本分钟还剩 " + st.roomThisMinute + " 次额度"
+          );
+          var rj = state.llm.rejects ? state.llm.rejects() : [];
+          var hit = [];
+          for (var i = 0; i < rj.length; i++) {
+            if (String(rj[i].word).toLowerCase() === key) hit.push(rj[i]);
+          }
+          if (hit.length) {
+            out.push("被拒记录：");
+            for (var j = 0; j < hit.length; j++) {
+              out.push(
+                "　模型说了「" + (hit[j].said || "（空）") + "」，原因：" + hit[j].why
+              );
+            }
+            out.push("　→ 如果这是模型的正确答案：点设置里的「重试没结果的词」再问一次");
+          }
+        }
+        if (state.corrector) {
+          var ci = state.corrector.isWaiting(w);
+          out.push("免费接口那层：" + (ci ? "正在等" : "没在等"));
+        }
+        out.push("页面实际用的：" + readForDisplay(w));
+        return out.join("\n");
+      },
       dict: function () {
         return typeof LKDict !== "undefined" ? LKDict.words : {};
       },
@@ -1349,6 +1414,13 @@
             "请求 " + s.requests + " 次，命中 " + s.hits + "，模型没给 " + s.misses + "，失败 " + s.failures
           );
           lines.push("缓存 " + s.cached + " 条，队列 " + s.pending + " 个词" + (s.inflight ? "（正在请求）" : ""));
+          if (s.missesCached) {
+            lines.push(
+              "问过但没收下（不会再自动重问）：" + s.missesCached + " 条，其中首音校验判掉 " + s.rejected + " 次"
+            );
+            lines.push("→ 想再问一次：点设置里的「重试没结果的词」；想查模型当时说了什么：LK.llm.rejects()");
+          }
+          if (typeof s.roomThisMinute === "number") lines.push("本分钟还剩 " + s.roomThisMinute + " 次请求额度");
           if (s.cooldownMs > 0) lines.push("退避中：还要等 " + Math.round(s.cooldownMs / 1000) + " 秒");
           if (s.lastError) lines.push("最后一次错误：" + s.lastError);
           if (!s.enabled) lines.push("→ 设置面板里把「用大模型校正」打开");
@@ -1372,6 +1444,18 @@
         },
         flush: function () {
           return state.llm ? state.llm.flush() : Promise.resolve(null);
+        },
+        /*
+         * 「模型当时到底回了什么、为什么没收下」—— 排障用。
+         * 用户说「某个词一直不矫正」时，这里通常一眼就能看出原因
+         * （首音校验误伤 / 回的不是片假名 / 服务商没给）。
+         */
+        rejects: function (limit) {
+          if (!state.llm || !state.llm.rejects) return [];
+          return state.llm.rejects(limit);
+        },
+        retryMisses: function () {
+          return state.llm && state.llm.retryMisses ? state.llm.retryMisses() : 0;
         },
         clearCache: function () {
           if (state.llm) state.llm.clearCache();
