@@ -114,7 +114,6 @@
     customSelector: "",
     rtSize: 55, // 注音字号（相对底字百分比）
     rtOpacity: 80, // 注音不透明度
-    focusDebug: false, // 给已注音区域描边，排障用
     colorBySource: false, // 按读音来源给注音上色（排障用，见设置面板的图例）
     verbose: false,
   };
@@ -943,7 +942,6 @@
       LKAnnotate.applyStyles(document, {
         rtSize: config.rtSize,
         rtOpacity: config.rtOpacity,
-        focus: config.focusDebug,
         colorBySource: !!config.colorBySource,
       });
     }
@@ -1110,7 +1108,7 @@
       "#latin-katakana-config input[type=text], #latin-katakana-config input[type=password] { width: 300px; padding: 2px 6px; }" +
       "#latin-katakana-config .lk-preview { padding: 8px 10px; border: 1px solid rgba(128,128,128,.35); border-radius: 6px; font-size: 18px; }" +
       "#latin-katakana-config .lk-preview-trans { margin-top: 2px; font-size: 14px; opacity: .6; }" +
-      "#latin-katakana-config .lk-status { white-space: pre-wrap; font-family: monospace; font-size: 12px; opacity: .8; }" +
+      "#latin-katakana-config .lk-llm-state { margin: 2px 0; }" +
       "#latin-katakana-config .lk-layer { display: flex; align-items: center; gap: 6px; line-height: 1.8; }" +
       "#latin-katakana-config .lk-layer-name { min-width: 110px; }" +
       "#latin-katakana-config .lk-layer-note { opacity: .6; font-size: 12px; flex: 1; }" +
@@ -1118,7 +1116,6 @@
       "#latin-katakana-config .lk-layer-btn[disabled] { opacity: .35; }" +
       "#latin-katakana-config .lk-layer-warn { color: #e8a33d; margin-top: 4px; }" +
       "#latin-katakana-config .lk-warn { color: #e8a33d; }" +
-      "#latin-katakana-config .lk-llm-state { margin: 2px 0; }" +
       "#latin-katakana-config .lk-links { margin-bottom: 4px; }" +
       "#latin-katakana-config .lk-links a { margin-right: 14px; }" +
       // 高级设置整块折叠：面板默认只有"开关 / 大模型 / 预览"三块，其余收起来
@@ -1131,9 +1128,9 @@
       '<a href="#" data-open="' + REPO + '/issues">反馈问题</a>' +
       "</div>" +
       "<h3>开关</h3>" +
-      '<div class="lk-row"><label><input type="checkbox" data-k="enabled"> 启用拉丁字母注音</label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="online"> 规则没把握时联网校正读音（免费接口）</label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="annotateAll"> 也标注播放栏的歌名 / 歌手</label></div>' +
+      '<div class="lk-row"><label><input type="checkbox" data-k="enabled"> 启用注音</label></div>' +
+      '<div class="lk-row"><label><input type="checkbox" data-k="online"> 规则没把握时联网校正 (免费接口)</label></div>' +
+      '<div class="lk-row"><label><input type="checkbox" data-k="annotateAll"> 也标播放栏的歌名 / 歌手</label></div>' +
       "<h3>大模型校正</h3>" +
       '<div class="lk-row"><label><input type="checkbox" data-k="llmEnabled"> 用大模型校正读音</label></div>' +
       '<div class="lk-row"><label>API Key <input type="password" data-k="llmKey" placeholder="sk-..."></label> ' +
@@ -1141,21 +1138,19 @@
       '<div class="lk-llm-state"></div>' +
       '<div class="lk-row"><span data-v="learned"></span> ' +
       '<button data-a="learnClear">清空已学会的词</button></div>' +
-      '<div class="lk-hint">Key 只存在本机 localStorage，不会进仓库。留空则这一层不工作，' +
-      "自动退回免费接口。补上 key 之后，词典里没有的词和<b>两可的短音节</b>（Do/Re/PI/ME…）都由它按整句语境判；" +
-      "模型在两个不同句子里给出同一个读音、而且和离线读音不一样的词，会自动沉淀成离线词条（见上面那行），以后不再问。</div>" +
+      '<div class="lk-hint">Key 只存本机 localStorage, 不会进仓库; 留空则这一层不工作, 自动退回免费接口<br>' +
+      "词典外的词和两可短音节 (Do / Re / PI / ME…) 由它按整句语境判; 答稳的词自动沉淀成离线词条, 以后不再问</div>" +
       "<h3>预览</h3>" +
       '<div class="lk-preview"></div>' +
-      '<details class="lk-adv"><summary>高级设置（接口地址 / 外观 / 范围 / 读音来源顺序 / 用量 / 排障）</summary>' +
+      '<details class="lk-adv"><summary>高级设置（接口 / 外观 / 范围 / 读音来源顺序 / 用量 / 排障 / 操作）</summary>' +
       "<h3>接口</h3>" +
       '<div class="lk-row"><label>接口地址 <input type="text" data-k="llmEndpoint"></label></div>' +
       '<div class="lk-row"><label>模型 <input type="text" data-k="llmModel"></label></div>' +
-      '<div class="lk-hint">粘服务商文档里的 <code>base_url</code> 也行，会自动补成 <code>/chat/completions</code>。</div>' +
+      '<div class="lk-hint">粘文档里的 <code>base_url</code> 也行, 会自动补成 <code>/chat/completions</code></div>' +
       "<h3>外观</h3>" +
       '<div class="lk-row"><label>注音字号 <input type="range" data-k="rtSize" min="30" max="120" step="1"> <span data-v="rtSize"></span></label></div>' +
       '<div class="lk-row"><label>注音不透明度 <input type="range" data-k="rtOpacity" min="10" max="100" step="1"> <span data-v="rtOpacity"></span></label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="focusDebug"> 给已注音区域描边（排障）</label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="colorBySource"> 按读音来源给注音上色（排障）</label></div>' +
+      '<div class="lk-row"><label><input type="checkbox" data-k="colorBySource"> 按读音来源给注音上色 (排障)</label></div>' +
       '<div class="lk-hint">' +
       '<span style="color:#46d17e">■ 词典</span>　' +
       '<span style="color:#2fae7a">■ 学会的词</span>　' +
@@ -1163,21 +1158,21 @@
       '<span style="color:#6f8ff0">■ 罗马音</span>　' +
       '<span style="color:#e8a33d">■ 英文规则</span>　' +
       '<span style="color:#c07ce8">■ 大模型</span>　' +
-      '<span style="color:#e0629a">■ 免费接口</span>　淡显＝暂定值</div>' +
+      '<span style="color:#e0629a">■ 免费接口</span>　淡显 = 暂定值</div>' +
       "<h3>范围</h3>" +
       '<div class="lk-row"><label>标注范围 <select data-k="scope">' +
-      '<option value="all">歌词 + 播放栏（默认）</option>' +
+      '<option value="all">歌词 + 播放栏 (默认)</option>' +
       '<option value="lyrics">只标歌词</option>' +
       '<option value="titles">只标播放栏</option>' +
       '<option value="custom">自定义选择器</option>' +
       "</select></label></div>" +
       '<div class="lk-row"><label>自定义选择器 <input type="text" data-k="customSelector" placeholder="例如 ul.lyric > li"></label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="annotateNonJapanese"> 非日语歌（纯英文 / 法语 / 中文歌）也注音</label></div>' +
-      '<div class="lk-hint">关掉它 = 只标日语歌：整首歌词里一个假名都没有的（纯英文歌、法语歌那种）整首跳过，' +
-      "连播放栏标题也不标。判据看**整首**，所以日语歌里的纯英文行照旧注音。</div>" +
+      '<div class="lk-row"><label><input type="checkbox" data-k="annotateNonJapanese"> 非日语歌也注音 (纯英文 / 法语 / 中文歌)</label></div>' +
+      '<div class="lk-hint">关掉 = 只标日语歌: 整首歌词一个假名都没有的整首跳过; ' +
+      "判据看整首, 所以日语歌里的纯英文行照旧注音</div>" +
       "<h3>读音来源顺序</h3>" +
-      '<div class="lk-hint">越靠上越优先。把<b>英文音译规则</b>提到在线层前面＝一个请求都不发（纯离线）。' +
-      "记号 / 缩写 / 字母名（<code>D/N/A</code>、<code>I'll</code>、<code>LDK</code>）不参与排序，永远最先判。</div>" +
+      '<div class="lk-hint">越靠上越优先; 把<b>英文音译规则</b>提到在线层前面 = 一个请求都不发 (纯离线)<br>' +
+      "记号 / 缩写 / 字母名 (<code>D/N/A</code>、<code>I'll</code>、<code>LDK</code>) 不参与排序, 永远最先判</div>" +
       '<div class="lk-layers"></div>' +
       '<div class="lk-row"><button data-a="layersReset">恢复默认顺序</button> <span data-v="layersReset"></span></div>' +
       "<h3>API 用量</h3>" +
@@ -1193,15 +1188,13 @@
       '<div class="lk-row"><label>词 / 一段歌词 <input type="text" class="lk-diag-input" placeholder="例如 MWAH 或 the"></label> ' +
       '<button data-a="diagWhy">查这一行为什么没注音</button> ' +
       '<button data-a="diagWord">查这个词的读音来源</button></div>' +
-      '<div class="lk-hint lk-diag-out"></div>' +
-      "<h3>操作</h3>" +
+      '<div class="lk-hint lk-diag-out"></div>' +      "<h3>操作</h3>" +
       '<div class="lk-row">' +
       '<button data-a="rescan">重新扫描</button> ' +
       '<button data-a="retry">重试没结果的词</button> ' +
       '<button data-a="exportWords">导出词库素材</button> ' +
       '<button data-a="clearCache">清除校正缓存</button>' +
       "</div>" +
-      '<div class="lk-status"></div>' +
       "</details>";
 
     function fmt(key) {
@@ -1209,18 +1202,17 @@
     }
 
     var preview = root.querySelector(".lk-preview");
-    var status = root.querySelector(".lk-status");
     var layersBox = root.querySelector(".lk-layers");
     var usageBox = root.querySelector(".lk-usage");
     var llmStateBox = root.querySelector(".lk-llm-state");
 
     /** 每一层右边那句小字：让用户一眼看出这层现在能不能用 */
     function layerNote(id) {
-      if (id === "dict") return "（" + (typeof LKDict !== "undefined" ? LKDict.count : "?") + " 条，纯离线）";
-      if (id === "romaji") return "（歌词里的日式罗马字，纯离线）";
-      if (id === "rule") return "（拼写音译，永远给得出结果）";
-      if (id === "llm") return llmAvailable() ? "（已启用）" : "（未启用 / 没填 key）";
-      if (id === "google") return googleAvailable() ? "（已开启）" : "（已关闭）";
+      if (id === "dict") return "(" + (typeof LKDict !== "undefined" ? LKDict.count : "?") + " 条, 纯离线)";
+      if (id === "romaji") return "(歌词里的日式罗马字, 纯离线)";
+      if (id === "rule") return "(拼写音译, 永远给得出结果)";
+      if (id === "llm") return llmAvailable() ? "(已启用)" : "(没启用 / 没填 key)";
+      if (id === "google") return googleAvailable() ? "(已开启)" : "(已关闭)";
       return "";
     }
 
@@ -1260,9 +1252,9 @@
         var warnEl = document.createElement("div");
         warnEl.className = "lk-hint lk-layer-warn";
         warnEl.textContent =
-          "⚠ " + blocked.join(" / ") + " 排在「英文音译规则」下面：规则对每个词都会给答案，" +
-          "这两层（还有它下面的在线层）就永远用不上了 —— the 会变成规则猜的 セ、" +
-          "I'll 会变成 イ+ル=イル。点「恢复默认顺序」即可。";
+          "⚠ " + blocked.join(" / ") + " 排在「英文音译规则」下面: 规则对每个词都会给答案, " +
+          "这几层 (还有它下面的在线层) 就永远用不上 —— the 会变成规则猜的 セ" +
+          "; 点「恢复默认顺序」即可";
         layersBox.appendChild(warnEl);
       } else if (
         config.layerOrder.indexOf("romaji") >= 0 &&
@@ -1277,9 +1269,9 @@
         var warn2 = document.createElement("div");
         warn2.className = "lk-hint lk-layer-warn";
         warn2.textContent =
-          "⚠ 「日式罗马音」排在「离线词典」前面：它同样是「能切成音节就收」，" +
-          "英文词也会被按罗马音读（Shoo→ショオ、Gimme→ギッメ、more→モレ、Do→ド）。" +
-          "除非你就是想要这样，否则点「恢复默认顺序」更稳。";
+          "⚠ 「日式罗马音」排在「离线词典」前面: 它同样是「能切成音节就收」, " +
+          "英文词也会被按罗马音读 (Shoo→ショオ、more→モレ、Do→ド); 除非你就是想要这样, " +
+          "否则点「恢复默认顺序」更稳";
         layersBox.appendChild(warn2);
       }
     }
@@ -1315,7 +1307,7 @@
       var allowed = canSwap(index, delta);
       b.disabled = !allowed;
       if (!allowed) {
-        b.title = "「英文音译规则」不能排到「离线词典 / 日式罗马音」前面：它会给每个词都出答案，那两层就永远用不上了";
+        b.title = "「英文音译规则」不能排到「离线词典 / 日式罗马音」前面: 它会给每个词都出答案, 那两层就永远用不上";
       }
       b.addEventListener("click", function () {
         moveLayer(id, delta);
@@ -1350,23 +1342,23 @@
       var box = root.querySelector('[data-v="learned"]');
       if (!box) return;
       if (!state.learned) {
-        box.textContent = "学会的词：不可用（core/learn.js 没注入）";
+        box.textContent = "学会的词: 不可用 (core/learn.js 没注入)";
         return;
       }
       var s = state.learned.stats();
       box.textContent =
-        "学会的词：" +
+        "学会的词: " +
         s.count +
         " 个" +
-        (s.pending ? "（还有 " + s.pending + " 个只听到过一次，再听一句就收）" : "") +
-        (s.usedSession ? "；本次已用上 " + s.usedSession + " 个（都省下了一次提问）" : "");
+        (s.pending ? " (还有 " + s.pending + " 个只听过一次, 再听一句就收)" : "") +
+        (s.usedSession ? "; 本次用上 " + s.usedSession + " 个 (省下同样多次提问)" : "");
     }
 
     function refreshUsage() {
       if (!usageBox) return;
       usageBox.innerHTML = "";
       if (!state.usage) {
-        usageBox.textContent = "用量统计不可用（core/usage.js 没注入）";
+        usageBox.textContent = "用量统计不可用 (core/usage.js 没注入)";
         return;
       }
       var snap = state.usage.snapshot();
@@ -1388,8 +1380,8 @@
       var llmStats = state.llm ? state.llm.stats() : null;
       var savedHits = (llmStats ? llmStats.cacheHits : 0) + (state.corrector ? state.corrector.stats().memoryHits : 0);
       saved.textContent =
-        "缓存命中 " + savedHits + " 次（这些没发请求）" +
-        (priceIn || priceOut ? "" : "；填了单价才会算花费");
+        "缓存命中 " + savedHits + " 次 (这些没发请求)" +
+        (priceIn || priceOut ? "" : "; 填了单价才会算花费");
       usageBox.appendChild(saved);
     }
 
@@ -1401,7 +1393,7 @@
         var b = bucket[kind];
         if (!b || (!b.requests && !b.failures)) continue;
         var seg = (kind === "llm" ? "大模型 " : "免费接口 ") + b.requests + " 次请求";
-        if (b.failures) seg += "（成功 " + b.ok + " / 失败 " + b.failures + "）";
+        if (b.failures) seg += " (成功 " + b.ok + " / 失败 " + b.failures + ")";
         if (b.words) seg += "・" + b.words + " 词";
         if (b.chars) seg += "・" + b.chars + " 字符";
         // 只有大模型那层有 token（Google 那两个接口不回 usage）；免费接口就算被
@@ -1477,46 +1469,14 @@
       if (!got) {
         var hint = document.createElement("div");
         hint.className = "lk-hint";
-        hint.textContent = "没能给示例词算出读音（可在控制台调 LK.read('shirt') 查看）";
+        hint.textContent = "没能给示例词算出读音 (可在控制台调 LK.read('shirt') 查看)";
         preview.appendChild(hint);
       }
     }
 
     function refreshStatus() {
-      if (!status) return;
-      if (!DEV) return; // 状态区只在开发模式显示
-      var lines = [];
-      var c = state.corrector ? state.corrector.stats() : null;
-      lines.push("BetterNCM: " + (state.betterncmVersion || "未知"));
-      lines.push("读音词典: " + (typeof LKDict !== "undefined" ? LKDict.count : "未加载") + " 条");
-      lines.push("已注音节点: " + (state.annotator ? state.annotator.injectedCount() : 0));
-      if (state.annotator && state.annotator.churnedCount && state.annotator.churnedCount() > 0) {
-        lines.push("已避让: " + state.annotator.churnedCount() + " 行（对方反复重建，见轨迹里的 churn）");
-      }
-      lines.push("上一轮: " + state.lastPassMs + "ms " + JSON.stringify(state.lastResult || {}));
-      if (state.reader) lines.push("读音来源: " + JSON.stringify(state.reader.stats()));
-      if (c) {
-        lines.push("在线校正: 命中 " + c.onlineHits + " / 请求 " + c.requests + " / 失败 " + c.failures + (c.lastError ? "（" + c.lastError + "）" : ""));
-        lines.push("待校正: " + (state.corrector ? state.corrector.pending() : 0) + "，缓存条目 " + c.cached);
-      }
-      if (state.llm) {
-        var s = state.llm.stats();
-        lines.push(
-          "大模型: " + (s.hasKey ? (s.enabled ? "已启用" : "已停用") : "未填 key") +
-            " 命中 " + s.hits + " / 缓存 " + s.cached + " / 待问 " + s.pending + " / 请求 " + s.requests +
-            " / 失败 " + s.failures + (s.lastError ? "（" + s.lastError + "）" : "")
-        );
-      }
-      if (state.error) lines.push("错误: " + state.error);
-      if (state.usage) {
-        var u = state.usage.snapshot();
-        lines.push(
-          "用量: 本次 大模型 " + u.session.llm.requests + " 次 / 免费接口 " + u.session.google.requests + " 次，" +
-            "今天 大模型 " + u.today.llm.requests + " 次（输入 " + u.today.llm.promptTokens + " / 输出 " +
-            u.today.llm.completionTokens + " tok）"
-        );
-      }
-      status.textContent = lines.join("\n");
+      // 原来的开发模式"状态转储"已经删掉: 面板上不该有这种东西, 需要数字时用控制台 LK.stats()
+      return;
     }
 
     /**
@@ -1530,7 +1490,7 @@
       if (!llmStateBox) return;
       llmStateBox.innerHTML = "";
       if (!state.llm) {
-        llmStateBox.textContent = "大模型层没加载（core/llm.js 没注入）";
+        llmStateBox.textContent = "大模型层没加载 (core/llm.js 没注入)";
         return;
       }
       var s = state.llm.stats();
@@ -1562,28 +1522,28 @@
       if (blockedHere.length) {
         // 这条要放在最前面：层序错了的话，下面所有解释都是白搭
         say(
-          "⚠ 「英文音译规则」排在 " + blockedHere.join(" / ") + " 前面 —— 规则对每个词都会给答案，" +
-            "所以词典和模型都用不上了（the 变 セ、this 变黄、I'll 变 イル 都是这个原因）。" +
-            "点「恢复默认顺序」，再把「大模型」往上提就行。",
+          "⚠ 「英文音译规则」排在 " + blockedHere.join(" / ") + " 前面 —— 规则对每个词都会给答案, " +
+            "所以词典和模型都用不上 (the 变 セ、this 变黄、I'll 变 イル 都是这个原因); " +
+            "点「恢复默认顺序」, 再把「大模型」往上提",
           "lk-warn"
         );
         sayBtn("恢复默认顺序", "layersReset");
         return;
       }
       if (!s.enabled) {
-        say("这一层没启用 —— 所有词都用本地读音，不会被矫正。");
+        say("这一层没启用 —— 所有词都用本地读音, 不会被矫正");
       } else if (!s.hasKey) {
-        say("没填 API Key —— 所有词都用本地读音，不会被矫正。");
+        say("没填 API Key —— 所有词都用本地读音, 不会被矫正");
       } else if (s.cooldownMs > 0) {
         say(
-          "⚠ 请求失败后退避中，还要等 " + Math.round(s.cooldownMs / 1000) + " 秒。" +
-            "这段时间里读音不会矫正。" + (s.lastError ? "最近错误：" + s.lastError : ""),
+          "⚠ 请求失败后退避中, 还要等 " + Math.round(s.cooldownMs / 1000) + " 秒; " +
+            "这段时间里读音不会矫正" + (s.lastError ? "; 最近错误: " + s.lastError : ""),
           "lk-warn"
         );
         sayBtn("立刻重试", "llmRetryNow");
       } else if (s.failedSinceHit >= 2) {
         say(
-          "⚠ 最近几次请求都没成功，读音不会矫正。" + (s.lastError ? "最近错误：" + s.lastError : ""),
+          "⚠ 最近几次请求都没成功, 读音不会矫正" + (s.lastError ? "; 最近错误: " + s.lastError : ""),
           "lk-warn"
         );
         sayBtn("立刻重试", "llmRetryNow");
@@ -1592,24 +1552,24 @@
         var batches = Math.ceil(s.pending / bs);
         say(
           "队列里还有 " + s.pending + " 个词在等" +
-            (s.inflight ? "（正在请求）" : "，还要发 " + batches + " 次请求，本分钟还剩 " + s.roomThisMinute + " 次额度") +
-            " —— 矫正会一批批补上，不用管它。"
+            (s.inflight ? " (正在请求)" : ", 还要发 " + batches + " 次请求, 本分钟还剩 " + s.roomThisMinute + " 次额度") +
+            " —— 矫正会一批批补上, 不用管它"
         );
         if (s.pending > bs * 2) {
           say(
-            "一次排这么多是因为「大模型」排在「离线词典」前面 —— 那样每个词都要问一遍。" +
-              "把「离线词典」放回最上面就没这么多请求了（词典命中的词本来就不需要矫正）。"
+            "一次排这么多是因为「大模型」排在「离线词典」前面 —— 那样每个词都要问一遍; " +
+              "把「离线词典」放回最上面就没这么多请求了"
           );
         }
       } else if (s.missesCached > 0) {
         say(
-          "有 " + s.missesCached + " 条「问过但没收下」（不会再自动重问），其中首音校验判掉 " +
-            s.rejected + " 次 —— 想再问一次就点「重试没结果的词」。"
+          "有 " + s.missesCached + " 条「问过但没收下」(不会再自动重问), 其中首音校验判掉 " +
+            s.rejected + " 次 —— 想再问一次就点「重试没结果的词」"
         );
       } else if (s.hits > 0) {
-        say("✓ 已生效：命中 " + s.hits + " 次（本次会话）");
+        say("✓ 已生效: 命中 " + s.hits + " 次 (本次会话)");
       } else {
-        say("还没问过任何词 —— 说明目前歌词里的拉丁词都在离线词典里，这层没活干。");
+        say("还没问过任何词 —— 说明歌词里的拉丁词都在离线词典里, 这层没活干");
       }
     }
 
@@ -1640,10 +1600,8 @@
       refreshLearned();
     }, 1000);
 
-    if (!DEV && status) status.style.display = "none";
-
     var NEEDS_RESCAN = ["annotateAll", "scope", "customSelector", "annotateNonJapanese"];
-    var NEEDS_RESTYLE = ["rtSize", "rtOpacity", "focusDebug"];
+    var NEEDS_RESTYLE = ["rtSize", "rtOpacity"];
 
     var inputs = root.querySelectorAll("[data-k]");
     for (var i = 0; i < inputs.length; i++) {

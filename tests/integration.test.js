@@ -1358,7 +1358,7 @@ test("层序：面板不让把「英文音译规则」换到词典/罗马音前�
   const root = env.listeners.config[0]();
   const warn = root.querySelector(".lk-layer-warn");
   assert.ok(warn, "要有挡路提醒：" + root.querySelector(".lk-layers").textContent);
-  assert.ok(warn.textContent.indexOf("离线词典") >= 0 && warn.textContent.indexOf("イル") >= 0, "要说清后果：" + warn.textContent);
+  assert.ok(warn.textContent.indexOf("离线词典") >= 0 && warn.textContent.indexOf("永远用不上") >= 0, "要说清后果：" + warn.textContent);
   // 而且大模型那块的告警要排在第一位（先修层序，再看别的）
   const state = root.querySelector(".lk-llm-state").textContent;
   assert.ok(state.indexOf("英文音译规则") >= 0, "大模型状态区也要提这件事：" + state);
@@ -2559,7 +2559,7 @@ test("设置面板：罗马音排在词典前面时给出提醒（它会把英�
   const box = env.listeners.config[0]().querySelector(".lk-layers");
   const warn = box.querySelector(".lk-layer-warn");
   assert.ok(warn, "要有提醒：" + box.textContent);
-  assert.ok(warn.textContent.indexOf("Gimme") >= 0, "要举例子说清后果：" + warn.textContent);
+  assert.ok(warn.textContent.indexOf("Shoo") >= 0, "要举例子说清后果：" + warn.textContent);
 
   const okEnv = bootPlugin(NCM_HTML, { dev: true });
   await okEnv.runLoad();
@@ -2655,7 +2655,6 @@ test("设置面板：默认只有三块（开关 / 大模型 / 预览），其�
     ".lk-diag-input",
     '[data-a="diagWhy"]',
     '[data-a="rescan"]',
-    ".lk-status",
   ];
   for (const sel of inside) {
     const el = root.querySelector(sel);

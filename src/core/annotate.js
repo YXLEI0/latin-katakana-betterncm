@@ -2029,7 +2029,6 @@
     opts = opts || {};
     var size = opts.rtSize == null ? 60 : opts.rtSize;
     var opacity = (opts.rtOpacity == null ? 80 : opts.rtOpacity) / 100;
-    var focus = !!opts.focus;
     var colorBySource = !!opts.colorBySource;
     return [
       "ruby.lt-ruby {",
@@ -2079,7 +2078,6 @@
        * "暂定"反而比正常还清楚），真结果回来后 relabel() 会去掉这个类。
        */
       "ruby.lt-ruby.lt-pending .lt-rt { opacity: " + Math.max(0.2, opacity * 0.6).toFixed(2) + " !important; }",
-      focus ? "[data-lt-region] { outline: 1px dashed rgba(255,80,80,.5); }" : "",
       /*
        * 排障用：把每一层的读音染成不同颜色，一眼看出"这个音到底是谁给的"。
        * 颜色只用在这两类节点上（都是我们自己的），不改任何既有元素的样式；
