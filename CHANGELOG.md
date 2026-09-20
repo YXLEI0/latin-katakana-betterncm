@@ -4,6 +4,52 @@
 
 首个版本：给日语歌歌词里的**拉丁字母**标注**片假名读音**。
 
+### 法语支持 + RNP「复制模式」不注音（本次）
+
+用户两件事：「不要再 RNP 的复制模式上注音」+「添加对法语的支持」，并给了一整首
+法语歌词当例子（`Ah, si je pouvais vivre dans l'eau, / le monde serait-il plus beau ?` 那首）。
+
+**一、RNP 的复制模式整块跳过。** 查了 RNP 3.0.2 的 bundle：那颗按钮的 title 就是
+「复制模式」（class 里带 `overview-mode`，state 是 `overviewMode`）。打开后它
+**把正常歌词整块隐藏**（`.rnp-lyrics` 加 `overview-mode-hide`），另外渲染一个
+`.rnp-lyrics-overview-container`（CSS 里写着 `user-select: text`，专门用来选中复制）。
+我们以前两边都注音 —— 复制出来就会带上 `<ruby>/<rt>` 的注音文字。
+
+- 这两块加进"整层跳过"的判据（`rnp-lyrics-overview-container` / `overview-mode-hide`）；
+- 顺带修了一个**判据够不着**的洞：区域往往是 `.rnp-lyrics-line`，而
+  `overview-mode-hide` 挂在它的**父元素**上，收集文本节点时只走到 `region.parentNode`
+  为止 —— 正好漏掉这一层。现在区域自己与祖先都会查一遍；
+- 退出复制模式后 class 消失，MutationObserver 会叫我们重扫，注音自己回来。
+
+**二、法语。** 新增 `reading.js` 里的**法语拼读**（`frenchToKatakana`）+ **整行语言判定**
+（`looksFrench`），`main.js` 在法语行上用它替掉"日语罗马音 / 英文拼读"：
+
+- **判定**：硬信号（法语专有字符 `é è ê à ç ô û œ`、省音撇号 `l'`/`d'`/`j'`/`qu'`、
+  法语排版 ` ?`）+ 功能词；没有硬信号时要求 ≥2 个功能词，且**全大写缩写多的行不算**
+  （否则 `Yes, PA PI PU PE PO… MA MI MU ME MO…` 那种罗马音节行会被误判成法语）；
+- **拼读**（近似，按"先长后短"）：元音 + r 收尾拉长（`amour` アムール、`mère` メール）、
+  鼻化元音（`dans` ダン、`mon` モン、`un` アン）、`eau`/`au` オー（`l'eau` ロー）、
+  `ou`/`eu` ウ（`doux` ドゥ、`seul` スル）、`oi` ワ（`toi` トワ）、`ch` シュ/シェ、
+  `gn` ニュ、`qu` ク，词尾辅音大多不发音，撇号与连字符直接忽略（`serait-il` 当 `seraitil`）；
+- **优先级**：词典命中的照旧优先（法语常用词人工钉过：`je` ジュ、`et` エ、`que` ク、
+  `le` ル、`suis` スィ、`serai` スレ…），但**英法同形异音**的那批走规则层 ——
+  `plus` プリュ（不是 プラス）、`son` ソン（不是 サン）、`grand` グラン（不是 グランド）；
+  专有名词（`Paris`）仍然走词典；
+- **结果一律"没把握"**：法语的联诵、哑音 e、开闭音节拼不准，所以配了 key 就交给大模型
+  按整句定（prompt 里也加了一条"词可能是法语，按那门语言音译"），判完由「学会的词」
+  自动沉淀成离线词条；没配 key 时就用规则近似值。
+- 词典 6348 → **6458 条**（新增约 110 个法语常用词）。
+
+实测用户给的那首（离线、零请求）：`si` スィ、`je` ジュ、`pouvais` プヴェ、
+`vivre` ヴィーヴル、`dans` ダン、`l'eau` ロー、`monde` モンド、`plus` プリュ、
+`beau` ボー、`son` ソン、`courant` クラン、`vies` ヴィ、`elle` エル、`amour` アムール、
+`grand` グラン、`pas` パ、`toujours` トゥジュール、`jamais` ジャメ、`changera` シャンジェラ…
+英文行（`I love you so much`）和日语行（`きらめく light と clover`）完全不受影响。
+
+测试：`reading.test.js` +1（12 行法语判定全中、5 行英文/日文不误判、18 个词拼读、非拉丁不给结果）、
+`integration.test.js` +2（法语歌词逐词核对 + 英文/日语反向断言；RNP 复制模式两块零注音），
+全套 **291 → 294 全绿**。
+
 ### 三张截图：打码碎片 `****ed`、采样署名行、大写的 `DIVA`（本次）
 
 | 截图 | 原来 | 现在 |

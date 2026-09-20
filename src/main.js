@@ -207,6 +207,18 @@
   var ROMAJI_LINE_SHORT_RATIO = 0.6;
   var romajiLineCache = new Map();
   var ROMAJI_LINE_CACHE_MAX = 200;
+  /** 法语行的判定也缓存（同一行会被问很多次） */
+  var frenchLineCache = new Map();
+  /*
+   * 英法同形异音的词：在英语词典里是英语读音，但法语行上必须走法语拼读。
+   * 词典优先的规则对它们要开个口子（其余法语常用词仍以人工词表为准）。
+   */
+  var FR_HOMOGRAPH = {
+    son: true, plus: true, grand: true, cent: true, pain: true, main: true, coin: true, fin: true,
+    long: true, or: true, fort: true, tour: true, tout: true, tous: true, temps: true, sur: true,
+    dans: true, est: true, sont: true, fait: true, cours: true, mode: true, note: true, sage: true,
+    chair: true, coin: true, laid: true, ver: true, vers: true, sol: true, son: true,
+  };
 
   /*
    * 只在**英语拼写**里出现的字母组合：日语罗马字里没有 th / wh / ck / gh / ph，
@@ -446,6 +458,25 @@
    * 场合不同），所以**只调"把握"、不改读音**：标成没把握，让大模型按整句判
    * （判完还会被自动沉淀成离线词条）。模型没开时显示的还是原来的词音，不会更差。
    */
+  /**
+   * 这一行是不是法语（缓存）。法语歌词用 reading.js 里那套**法语拼读**，
+   * 而不是日语罗马音/英文规则 —— 用户给了一整首法语歌词当例子。
+   */
+  function lineLooksFrench(line) {
+    if (!line) return false;
+    var key = String(line);
+    if (frenchLineCache.has(key)) return frenchLineCache.get(key);
+    var looks = false;
+    try {
+      looks = typeof LKReading !== "undefined" && LKReading.looksFrench ? !!LKReading.looksFrench(key) : false;
+    } catch (e) {
+      looks = false;
+    }
+    if (frenchLineCache.size > ROMAJI_LINE_CACHE_MAX) frenchLineCache.clear();
+    frenchLineCache.set(key, looks);
+    return looks;
+  }
+
   function gluedUpperCase(word, line) {
     var w = String(word == null ? "" : word);
     if (!/^[A-Z]{2,3}$/.test(w)) return false;
@@ -565,6 +596,26 @@
     }
     var r = state.reader ? state.reader.read(word) : null;
     if (!r || !r.kana) return null;
+    /*
+     * 法语行：**拼读猜出来的答案换成法语拼读**，词典命中的照旧优先。
+     *
+     * 为什么放在这里、而不是函数末尾：下面"罗马字行/两可短音节"那两支会先返回
+     * （`dans` 这种三字母词就会被它们接走），所以法语必须在它们**之前**判。
+     *
+     * 为什么词典仍然优先：法语常用词（si スィ、je ジュ、et エ、que ク…）人工钉过，
+     * 比规则近似准。**例外**是英法同形异音的那几个：plus（プラス/プリュ）、
+     * son（サン/ソン）、grand（グランド/グラン）、cent・pain・main・coin・fin・long…
+     * 它们在英语词典里是英语读音，法语行上要按法语读，所以走规则层。
+     * 结果一律 confident:false —— 法语拼读是近似，配了 key 就交给大模型按整句定。
+     */
+    if (line && typeof LKReading !== "undefined" && LKReading.frenchToKatakana && lineLooksFrench(line)) {
+      var frKey = typeof LKMatcher !== "undefined" ? LKMatcher.normalize(word) : String(word == null ? "" : word).toLowerCase();
+      var frNeedEngine = r.source === "romaji" || r.source === "rule" || FR_HOMOGRAPH[frKey] === true;
+      if (frNeedEngine) {
+        var fr = LKReading.frenchToKatakana(word);
+        if (fr && fr.kana) return { kana: fr.kana, source: "rule", confident: false };
+      }
+    }
     /*
      * 词典是**英文**词典，`PI` 会被读成 パイ、`ME` 读成 ミー、
      * `PE` 甚至读成 ピーイー（把 "P E" 当字母念）—— 在一首日语歌的罗马字行里

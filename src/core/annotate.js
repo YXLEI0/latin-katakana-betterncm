@@ -514,6 +514,20 @@
      */
     var SKIP_REGION_CLASS = new RegExp(
       "rnp-lyrics-(?:overview-)?line-(?:romaji|translated|translation|placeholder)" +
+        /*
+         * RNP 的**复制模式 / 总览视图**整块跳过。
+         *
+         * 用户要求的：「不要在 RNP 的复制模式上注音」。查了 RNP 3.0.2 的 bundle：
+         * 那颗按钮的 title 就是「复制模式」（class 里带 overview-mode，state 是
+         * overviewMode），打开后它把正常歌词整块隐藏（`.rnp-lyrics` 加
+         * `overview-mode-hide`），另渲染一个 `.rnp-lyrics-overview-container`
+         * （CSS 里写着 `user-select: text`，专门用来选中复制）。
+         * 我们以前两边都注音 —— 复制出来就会带上 <ruby>/<rt> 的注音文字。
+         * 这两块都跳过：`.rnp-lyrics-overview-container` 直接不碰，
+         * 被隐藏的那块（overview-mode-hide）也不碰；退出复制模式后 class 消失，
+         * MutationObserver 会叫我们重扫，注音自己回来。
+         */
+        "|rnp-lyrics-overview-container|overview-mode-hide" +
         "|(^|[\\s_-])(?:romaji|romanized|translated|translation|trans|transLine|transText)([\\s_-]|$)" +
         "|lyricSubLine|lyricSubText|lyricTrans",
       "i"
@@ -577,6 +591,19 @@
         var region = regions[i];
         if (!region || region.nodeType !== 1) continue;
         if (isSkippable(region)) continue;
+        /*
+         * 区域**自己或它的祖先**是"整层跳过"的（RNP 的复制模式：区域往往是
+         * `.rnp-lyrics-line`，而 `overview-mode-hide` 挂在它的**父元素**上）——
+         * 下面那个循环只走到 region.parentNode 为止，正好漏掉这一层，所以这里单独判。
+         */
+        var skipAncestor = false;
+        for (var a = region; a && a.nodeType === 1; a = a.parentNode) {
+          if (isSkippedRegion(a)) {
+            skipAncestor = true;
+            break;
+          }
+        }
+        if (skipAncestor) continue;
         var walker = doc.createTreeWalker(region, NodeFilter.SHOW_TEXT, {
           acceptNode: function (node) {
             for (var p = node.parentNode; p && p !== region.parentNode; p = p.parentNode) {

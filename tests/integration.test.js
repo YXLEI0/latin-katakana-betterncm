@@ -2082,6 +2082,98 @@ test("打码的 `****ed`、采样行、以及全大写的 `DIVA`", async () => {
   assert.strictEqual(env.api.read("DIVA").kana, "ディーヴァ");
 });
 
+test("法语歌词：整行用「法语拼读」，常用词走人工词表", async () => {
+  // 用户要求"添加对法语的支持"，并给了一整首法语歌词当例子（L'Assasymphonie 那类）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Ah, si je pouvais vivre dans l'eau,</p></li>
+  <li class="line"><p>le monde serait-il plus beau ?</p></li>
+  <li class="line"><p>L'eau dans son courant fait danser nos vies.</p></li>
+  <li class="line"><p>Et la cité, elle nourrit.</p></li>
+  <li class="line"><p>Non, le grand amour ne suffit pas.</p></li>
+  <li class="line"><p>Moi, je suis et serai toujours là,</p></li>
+  <li class="line"><p>Et ça ne changera jamais, jamais..</p></li>
+  <li class="line"><p>I love you so much</p></li>
+  <li class="line"><p>きらめく light と clover</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (i) =>
+    new Map(
+      [...ps[i].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    );
+
+  const l0 = pairsOf(0);
+  assert.strictEqual(l0.get("si"), "スィ", JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("je"), "ジュ");
+  assert.strictEqual(l0.get("vivre"), "ヴィーヴル");
+  assert.strictEqual(l0.get("dans"), "ダン");
+  assert.strictEqual(l0.get("l'eau"), "ロー");
+
+  const l1 = pairsOf(1);
+  assert.strictEqual(l1.get("monde"), "モンド");
+  assert.strictEqual(l1.get("plus"), "プリュ", "英法同形异音的词要按法语读：" + JSON.stringify([...l1]));
+  assert.strictEqual(l1.get("beau"), "ボー");
+
+  const l2 = pairsOf(2);
+  assert.strictEqual(l2.get("son"), "ソン", "son 在法语行读 ソン：" + JSON.stringify([...l2]));
+  assert.strictEqual(l2.get("courant"), "クラン");
+  assert.strictEqual(l2.get("vies"), "ヴィ");
+
+  const l4 = pairsOf(4);
+  assert.strictEqual(l4.get("grand"), "グラン");
+  assert.strictEqual(l4.get("amour"), "アムール");
+  assert.strictEqual(l4.get("pas"), "パ");
+
+  const l5 = pairsOf(5);
+  assert.strictEqual(l5.get("toujours"), "トゥジュール");
+  assert.strictEqual(l5.get("serai"), "スレ");
+
+  const l6 = pairsOf(6);
+  assert.strictEqual(l6.get("jamais"), "ジャメ");
+  assert.strictEqual(l6.get("changera"), "シャンジェラ");
+
+  // 反向：英文行和日语行不能被法语规则带歪
+  const en = pairsOf(7);
+  assert.strictEqual(en.get("love"), "ラブ", "英文行照旧：" + JSON.stringify([...en]));
+  assert.strictEqual(en.get("much"), "マッチ");
+  const jp = pairsOf(8);
+  assert.strictEqual(jp.get("light"), "ライト", "日语行照旧：" + JSON.stringify([...jp]));
+  assert.strictEqual(jp.get("clover"), "クローバー");
+});
+
+test("RNP 的复制模式（总览视图）整块不注音", async () => {
+  // 用户要求「不要在 RNP 的复制模式上注音」。RNP 3.0.2 那颗按钮的 title 就是
+  // 「复制模式」：打开后正常歌词整块隐藏（.rnp-lyrics 加 overview-mode-hide），
+  // 另渲染 .rnp-lyrics-overview-container（CSS 里是 user-select:text，用来选中复制）。
+  // 我们以前两边都注音 —— 复制出来就会带上 <ruby>/<rt> 的注音文字。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="lyric">
+    <div class="rnp-lyrics overview-mode-hide">
+      <div class="rnp-lyrics-line"><div class="rnp-lyrics-line-original">きらめく light と clover</div></div>
+    </div>
+    <div class="rnp-lyrics-overview-container">
+      <div class="rnp-lyrics-overview">
+        <div class="rnp-lyrics-overview-line">きらめく light と clover</div>
+        <div class="rnp-lyrics-overview-line current">ずっと dream を見てた</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(300);
+  const overview = env.document.querySelector(".rnp-lyrics-overview-container");
+  assert.strictEqual(rubyCount(overview), 0, "复制模式的歌词不许注音：" + overview.innerHTML);
+  const hidden = env.document.querySelector(".rnp-lyrics.overview-mode-hide");
+  assert.strictEqual(rubyCount(hidden), 0, "被复制模式隐藏的那块也不许注音：" + hidden.innerHTML);
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
