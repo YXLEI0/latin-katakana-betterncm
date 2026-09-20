@@ -1314,6 +1314,48 @@ test("设置面板：把词典拖到「英文音译规则」下面会给出挡�
   );
 });
 
+test("层序：面板不让把「英文音译规则」换到词典/罗马音前面（这个坑出过三次报告）", async () => {
+  // 用户报的：the -> セ、this 变黄、I'll -> イル、而且读数"全都没矫正"。
+  // 全都来自同一件事 —— 把词典往下拖，规则层跑到它前面：规则对每个词都给答案，
+  // 词典和在线层就永远轮不到。面板直接不让换，并给出说明。
+  const env = bootPlugin(NCM_HTML, { dev: true });
+  await env.runLoad();
+  const rows = env.listeners.config[0]().querySelectorAll(".lk-layers .lk-layer");
+  // 默认序：1 词典 2 罗马音 3 大模型 4 免费接口 5 规则
+  assert.strictEqual(rows[0].querySelector('[data-dir="down"]').disabled, false, "词典往下换（和罗马音）是允许的");
+  assert.strictEqual(rows[2].querySelector('[data-dir="up"]').disabled, false, "大模型往上换（和罗马音）是允许的");
+  assert.strictEqual(rows[3].querySelector('[data-dir="down"]').disabled, false, "免费接口和规则互换是允许的");
+
+  // 但要和"规则"互换同步层就不行：先点两次把罗马音挪到规则下面，再试
+  const click = (rowIndex, dir) =>
+    env.listeners.config[0]().querySelectorAll(".lk-layers .lk-layer")[rowIndex].querySelector('[data-dir="' + dir + '"]').dispatchEvent(new env.window.Event("click"));
+  // 现序：dict romaji llm google rule
+  assert.deepStrictEqual([...env.api.layers()], ["dict", "romaji", "llm", "google", "rule"]);
+  // 罗马音的 ↓（与 llm 换）-> dict llm romaji google rule
+  click(1, "down");
+  assert.deepStrictEqual([...env.api.layers()], ["dict", "llm", "romaji", "google", "rule"]);
+  // 罗马音再 ↓（与 google 换）-> dict llm google romaji rule
+  click(2, "down");
+  assert.deepStrictEqual([...env.api.layers()], ["dict", "llm", "google", "romaji", "rule"]);
+  // 现在罗马音紧挨着规则：它的 ↓ 必须被禁用（换了就等于把罗马音藏起来）
+  const rows2 = env.listeners.config[0]().querySelectorAll(".lk-layers .lk-layer");
+  assert.strictEqual(rows2[3].querySelector('[data-dir="down"]').disabled, true, "罗马音不能换到规则后面");
+  assert.strictEqual(rows2[4].querySelector('[data-dir="up"]').disabled, true, "规则不能换到罗马音前面");
+  assert.ok(rows2[4].querySelector('[data-dir="up"]').title.indexOf("永远用不上") >= 0, "要说清为什么禁用");
+
+  // 手改配置（控制台 LK.layers）绕过去的话，面板要报警告
+  env.api.layers(["llm", "romaji", "google", "rule", "dict"]);
+  const root = env.listeners.config[0]();
+  const warn = root.querySelector(".lk-layer-warn");
+  assert.ok(warn, "要有挡路提醒：" + root.querySelector(".lk-layers").textContent);
+  assert.ok(warn.textContent.indexOf("离线词典") >= 0 && warn.textContent.indexOf("イル") >= 0, "要说清后果：" + warn.textContent);
+  // 而且大模型那块的告警要排在第一位（先修层序，再看别的）
+  const state = root.querySelector(".lk-llm-state").textContent;
+  assert.ok(state.indexOf("英文音译规则") >= 0, "大模型状态区也要提这件事：" + state);
+  // LK.word() 也要说出来
+  assert.ok(env.api.word("the").indexOf("恢复默认顺序") >= 0, "LK.word 要给出修法：\n" + env.api.word("the"));
+});
+
 test("LK.word()：一词体检直接回答「为什么这个词一直不矫正」", async () => {
   // 用户问的「有些词大模型一直不矫正」。模型对 kaleidoscope 回了 ダニ（蜱虫）
   // -> 被首音校验判掉 -> 缓存里留一条 miss（永久）-> 那个词就一直用本地读音。

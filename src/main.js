@@ -155,8 +155,30 @@
   }
 
   /**
-   * 一个本地答案在"谁说了算"这件事上的**实际名次**。
+   * 当前层序里「英文音译规则」有没有挡住离线词典 / 日式罗马音。
    *
+   * 规则层对**每个词**都给得出答案（它就是拼写猜测），排在它下面的层永远轮不到。
+   * 用户实际就是这么踩的：把词典往下拖了几格 —— 于是
+   *   `the` -> 规则层的 セ、`this` 变黄（也是规则层）、
+   *   `I'll` 被拆成「イ + ル」= イル，而且**大模型也不再被咨询**（规则先答了）。
+   * 面板里的 ↑↓ 已经不让这么换；这个函数用来兜住"手改配置 / 老配置"，
+   * 并在设置面板和 `LK.word()` 里明确说出来。
+   *
+   * @returns {Array<string>} 被挡住的层名（空数组 = 没问题）
+   */
+  function ruleBlocksSync() {
+    var ruleIdx = config.layerOrder.indexOf("rule");
+    var out = [];
+    if (ruleIdx < 0) return out;
+    for (var i = ruleIdx + 1; i < config.layerOrder.length; i++) {
+      var id = config.layerOrder[i];
+      if (id === "dict" || id === "romaji") out.push(LAYER_NAMES[id] || id);
+    }
+    return out;
+  }
+
+  /**
+   * 一个本地答案在"谁说了算"这件事上的**实际名次**。
    * 一般情况下就是它所在层的名次，但有个例外：**没把握的答案（confident:false）
    * 一律按最低那层（英文音译规则）算** —— 于是排在它后面的在线层就有资格覆盖它。
    *
@@ -664,24 +686,43 @@
       }
       /*
        * 挡路提醒：「英文音译规则」对**每个词**都给得出答案（它就是拼写猜测），
-       * 所以排在它下面的同步层永远轮不到 —— 很容易踩的坑：
-       * 把词典拖到规则下面，`the` 就变成规则层的 セ 了（用户报过）。
-       * 只提醒、不阻止：真要"只用规则"也是合法选择。
+       * 所以排在它下面的同步层永远轮不到 —— 用户实际就是这么踩的：
+       * 把词典往下拖了几格，于是 `the` -> 规则层的 セ、`this` 变黄（也是规则层）、
+       * `I'll` 被拆成「イ + ル」= イル，而且**大模型也不再被咨询**（规则先答了）。
+       * 面板里的 ↑↓ 已经不让这么换；这里兜住"手改配置 / 老配置"的情况。
        */
-      var ruleIdx = config.layerOrder.indexOf("rule");
-      var blocked = [];
-      for (var b = 0; b < config.layerOrder.length; b++) {
-        var idb = config.layerOrder[b];
-        if (b > ruleIdx && (idb === "dict" || idb === "romaji")) blocked.push(LAYER_NAMES[idb] || idb);
-      }
+      var blocked = ruleBlocksSync();
       if (blocked.length) {
         var warnEl = document.createElement("div");
         warnEl.className = "lk-hint lk-layer-warn";
         warnEl.textContent =
           "⚠ " + blocked.join(" / ") + " 排在「英文音译规则」下面：规则对每个词都会给答案，" +
-          "这两层就永远用不上了（比如 the 会变成规则猜的 セ）。要恢复的话点「恢复默认顺序」。";
+          "这两层（还有它下面的在线层）就永远用不上了 —— the 会变成规则猜的 セ、" +
+          "I'll 会变成 イ+ル=イル。点「恢复默认顺序」即可。";
         layersBox.appendChild(warnEl);
       }
+    }
+
+    /**
+     * 这一对层能不能互换。
+     *
+     * 「英文音译规则」对**每个词**都给得出答案（它就是拼写猜测），一旦排到
+     * 离线词典 / 日式罗马音前面，那两层就**永远轮不到** —— 用户实际就是这么踩的：
+     * 把词典往下拖了几格，于是 `the` -> セ、`this` 变黄（规则层）、
+     * `I'll` 被拆成「イ + ル」= イル，而且**大模型也不再被咨询**（规则先答了）。
+     * 所以面板里直接不让这么换；真要"只用规则"就走控制台
+     * `LK.layers(['rule','dict',...])`（文档里有）。
+     */
+    function canSwap(index, delta) {
+      var to = index + delta;
+      if (to < 0 || to >= config.layerOrder.length) return false;
+      var a = config.layerOrder[index];
+      var b = config.layerOrder[to];
+      var sync = function (x) {
+        return x === "dict" || x === "romaji";
+      };
+      if ((a === "rule" && sync(b)) || (b === "rule" && sync(a))) return false;
+      return true;
     }
 
     function mkMoveBtn(index, id, delta, label) {
@@ -690,7 +731,11 @@
       b.textContent = label;
       b.setAttribute("data-layer", id);
       b.setAttribute("data-dir", delta < 0 ? "up" : "down");
-      b.disabled = delta < 0 ? index === 0 : index === config.layerOrder.length - 1;
+      var allowed = canSwap(index, delta);
+      b.disabled = !allowed;
+      if (!allowed) {
+        b.title = "「英文音译规则」不能排到「离线词典 / 日式罗马音」前面：它会给每个词都出答案，那两层就永远用不上了";
+      }
       b.addEventListener("click", function () {
         moveLayer(id, delta);
       });
@@ -900,10 +945,27 @@
           if (action === "llmRetryNow" && state.llm && state.llm.retryNow) {
             state.llm.retryNow();
             rescan();
+          } else if (action === "layersReset") {
+            config.layerOrder = normalizeLayerOrder(DEFAULTS.layerOrder);
+            saveConfig();
+            applyLayerOrder();
+            rescan();
           }
           refreshAll();
         });
         llmStateBox.appendChild(b);
+      }
+      var blockedHere = ruleBlocksSync();
+      if (blockedHere.length) {
+        // 这条要放在最前面：层序错了的话，下面所有解释都是白搭
+        say(
+          "⚠ 「英文音译规则」排在 " + blockedHere.join(" / ") + " 前面 —— 规则对每个词都会给答案，" +
+            "所以词典和模型都用不上了（the 变 セ、this 变黄、I'll 变 イル 都是这个原因）。" +
+            "点「恢复默认顺序」，再把「大模型」往上提就行。",
+          "lk-warn"
+        );
+        sayBtn("恢复默认顺序", "layersReset");
+        return;
       }
       if (!s.enabled) {
         say("这一层没启用 —— 所有词都用本地读音，不会被矫正。");
@@ -1402,6 +1464,13 @@
           "按当前层序（" + config.layerOrder.join(" > ") + "）在线层有没有资格覆盖它：" +
             (rank < 0 ? "没有（形态层/最优先）" : rank + "，排在它前面的在线层才有资格")
         );
+        var blockedNow = ruleBlocksSync();
+        if (blockedNow.length) {
+          out.push(
+            "⚠ 但「英文音译规则」排在 " + blockedNow.join(" / ") + " 前面 —— 它会替每个词给答案，" +
+              "所以词典和在线层都用不上了。先点「恢复默认顺序」。"
+          );
+        }
         if (state.llm) {
           var peek = state.llm.peek(w);
           var st = state.llm.stats();

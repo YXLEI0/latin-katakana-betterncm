@@ -1765,12 +1765,12 @@
     r: "\u30E9\u30EA\u30EB\u30EC\u30ED",
     s: "\u30B5\u30B7\u30B9\u30BB\u30BD",
     /*
-     * t：/t/ 与 th 的两种读法都要放行 ——
+     * t：/t/ 与 th 的三种读法都要放行 ——
      *   θ 的 th（think シンク、three スリー）-> サ行
-     *   ð 的 th（the ザ、this ジ、that ザッ、they ゼイ、there ゼア）-> **ザ行**
-     * 漏掉 ð 那一行会出事：模型对 `the` 回 ザ 是**对的**，却会被判成"不是音译"丢掉，
-     * 于是回落到规则层的 セ（用户报的「the 还是セ」就是这个 —— 实测真模型回的就是 ザ，
-     * 一批 7 个词里恰好只有 the 被拒）。
+     *   ð 的 th（the ザ、this ジ、that ザッ、they ゼイ、there ゼア）-> ザ行
+     * 另外 th 开头还有读成 d 系的写法（this ディス、there ディア），
+     * 那一支在 looksLikeTransliteration 里**按词首是不是 th** 单独放行 ——
+     * 不能直接写进这张表：写进来 `tick` -> ダニ（蜱虫）就拦不住了。
      */
     t: "\u30BF\u30C1\u30C4\u30C6\u30C8\u30B5\u30B7\u30B9\u30BB\u30BD\u30B6\u30B8\u30BA\u30BC\u30BE",
     v: "\u30D0\u30D3\u30D6\u30D9\u30DC\u30F4",
@@ -1783,9 +1783,17 @@
    */
   function looksLikeTransliteration(word, kana) {
     if (typeof word !== "string" || typeof kana !== "string" || !kana) return true;
-    var first = word.toLowerCase().charAt(0);
+    var w = word.toLowerCase();
+    var first = w.charAt(0);
     var row = FIRST_ROWS[first];
     if (!row) return true; // h / w / y / 元音 / 其它 -> 不校验
+    /*
+     * t + th 的 ð 有一支读成 d 系：this ディス、they ディ、there ディア。
+     * 只对 **th 开头**的词放行ダ行 —— 不然 `tick` -> ダニ（蜱虫，意译）这种
+     * 也会跟着溜进来（那正是这条校验要拦的东西）。词典里 this 就是 ディス，
+     * 所以这一支必须放行。
+     */
+    if (first === "t" && /^th/.test(w)) row += "\u30C0\u30C2\u30C5\u30C7\u30C9";
     return row.indexOf(kana.charAt(0)) >= 0;
   }
 
