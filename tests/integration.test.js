@@ -1371,6 +1371,32 @@ test("设置面板：有「重试没结果的词」按钮，点了不会炸", as
   assert.ok(btn.textContent.indexOf("已重新排队") >= 0, "点了要有反馈：" + btn.textContent);
 });
 
+test("设置面板：模型层停摆时给出大白话告警 + 「立刻重试」（不用开 dev 也能看到）", async () => {
+  // 用户报的「第四首歌时读音全都没矫正」：接口抖一下进了退避，本地读音照旧、
+  // 模型一条都没改，面板上却什么都不说 —— 看着就像插件坏了。
+  const env = bootPlugin(LLM_HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions", online: false },
+    fetch: function () {
+      return Promise.reject(new Error("offline (test)"));
+    },
+  });
+  await env.runLoad();
+  await sleep(1600); // 攒批窗口 + 失败
+
+  const root = env.listeners.config[0]();
+  const box = root.querySelector(".lk-llm-state");
+  assert.ok(box, "要有模型层状态区");
+  const text = box.textContent;
+  assert.ok(/退避|没成功/.test(text), "要说清现在为什么不矫正：" + text);
+  assert.ok(text.indexOf("不会矫正") >= 0, "要说清后果：" + text);
+
+  const btn = [...box.querySelectorAll("[data-a]")].find((b) => b.dataset.a === "llmRetryNow");
+  assert.ok(btn, "要有「立刻重试」按钮：" + box.innerHTML);
+  assert.ok(env.api.llm.stats().cooldownMs > 0, "前提：确实在退避中");
+  btn.dispatchEvent(new env.window.Event("click"));
+  assert.strictEqual(env.api.llm.stats().cooldownMs, 0, "点了之后退避要清掉");
+});
+
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
   // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
   //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；

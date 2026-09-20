@@ -538,6 +538,8 @@
       "#latin-katakana-config .lk-layer-btn { min-width: 26px; }" +
       "#latin-katakana-config .lk-layer-btn[disabled] { opacity: .35; }" +
       "#latin-katakana-config .lk-layer-warn { color: #e8a33d; margin-top: 4px; }" +
+      "#latin-katakana-config .lk-warn { color: #e8a33d; }" +
+      "#latin-katakana-config .lk-llm-state { margin: 4px 0; }" +
       "#latin-katakana-config .lk-links a { margin-right: 14px; }" +
       "</style>" +
       '<div class="lk-links">' +
@@ -588,6 +590,7 @@
       '<div class="lk-row"><label>模型 <input type="text" data-k="llmModel"></label></div>' +
       '<div class="lk-row"><label>API Key <input type="password" data-k="llmKey" placeholder="sk-..."></label></div>' +
       '<div class="lk-row"><button data-a="llmTest">测试连接</button> <span data-v="llmTest"></span></div>' +
+      '<div class="lk-llm-state"></div>' +
       '<div class="lk-hint">规则层是拼写音译（<code>hello</code> 会读成 ヘッラオ、' +
       "<code>question</code> 读成 クワエサション），所以词典之外交给大模型更准。" +
       "Key <b>只存在本机 localStorage</b>，除了你填的这个接口地址之外不会发到别处，也永远不会进仓库。" +
@@ -623,6 +626,7 @@
     var status = root.querySelector(".lk-status");
     var layersBox = root.querySelector(".lk-layers");
     var usageBox = root.querySelector(".lk-usage");
+    var llmStateBox = root.querySelector(".lk-llm-state");
 
     /** 每一层右边那句小字：让用户一眼看出这层现在能不能用 */
     function layerNote(id) {
@@ -867,10 +871,80 @@
       status.textContent = lines.join("\n");
     }
 
+    /**
+     * 大模型这一层的**当前状态**（不用开 dev 模式也能看到的告警）。
+     *
+     * 「读音全都没矫正」是最容易让人以为插件坏了的症状：本地读音照旧、模型一条都没改。
+     * 原因无非四种 —— 没配 key / 在失败退避里 / 请求全失败 / 队列还没轮上。
+     * 这块把话说清，并给一个「立刻重试」。
+     */
+    function refreshLlmState() {
+      if (!llmStateBox) return;
+      llmStateBox.innerHTML = "";
+      if (!state.llm) {
+        llmStateBox.textContent = "大模型层没加载（core/llm.js 没注入）";
+        return;
+      }
+      var s = state.llm.stats();
+      function say(text, cls) {
+        var el = document.createElement("div");
+        el.className = "lk-hint" + (cls ? " " + cls : "");
+        el.textContent = text;
+        llmStateBox.appendChild(el);
+      }
+      function sayBtn(label, action) {
+        var b = document.createElement("button");
+        b.textContent = label;
+        b.setAttribute("data-a", action);
+        b.addEventListener("click", function () {
+          if (action === "llmRetryNow" && state.llm && state.llm.retryNow) {
+            state.llm.retryNow();
+            rescan();
+          }
+          refreshAll();
+        });
+        llmStateBox.appendChild(b);
+      }
+      if (!s.enabled) {
+        say("这一层没启用 —— 所有词都用本地读音，不会被矫正。");
+      } else if (!s.hasKey) {
+        say("没填 API Key —— 所有词都用本地读音，不会被矫正。");
+      } else if (s.cooldownMs > 0) {
+        say(
+          "⚠ 请求失败后退避中，还要等 " + Math.round(s.cooldownMs / 1000) + " 秒。" +
+            "这段时间里读音不会矫正。" + (s.lastError ? "最近错误：" + s.lastError : ""),
+          "lk-warn"
+        );
+        sayBtn("立刻重试", "llmRetryNow");
+      } else if (s.failedSinceHit >= 2) {
+        say(
+          "⚠ 最近几次请求都没成功，读音不会矫正。" + (s.lastError ? "最近错误：" + s.lastError : ""),
+          "lk-warn"
+        );
+        sayBtn("立刻重试", "llmRetryNow");
+      } else if (s.pending > 0) {
+        say(
+          "队列里还有 " + s.pending + " 个词在等" +
+            (s.inflight ? "（正在请求）" : "，本分钟还剩 " + s.roomThisMinute + " 次额度") +
+            " —— 等一会儿就会矫正。"
+        );
+      } else if (s.missesCached > 0) {
+        say(
+          "有 " + s.missesCached + " 条「问过但没收下」（不会再自动重问），其中首音校验判掉 " +
+            s.rejected + " 次 —— 想再问一次就点「重试没结果的词」。"
+        );
+      } else if (s.hits > 0) {
+        say("✓ 已生效：命中 " + s.hits + " 次（本次会话）");
+      } else {
+        say("还没问过任何词 —— 说明目前歌词里的拉丁词都在离线词典里，这层没活干。");
+      }
+    }
+
     function refreshAll() {
       refreshLayers();
       refreshPreview();
       refreshUsage();
+      refreshLlmState();
       refreshStatus();
     }
 

@@ -36,7 +36,12 @@
   var REQUEST_TIMEOUT_MS = 20000;
   var MAX_REQ_PER_MIN = 20; // 限流：再准也不该把页面拖垮
   var COOLDOWN_MS = 60000; // 失败后的退避起点
-  var COOLDOWN_MAX_MS = 10 * 60 * 1000;
+  /*
+   * 退避上限。原来写的是 10 分钟 —— 真机上太伤了：接口抖一下、或者一轮限流，
+   * 就会进入"读数全都没矫正"的状态（本地读音还在，但一条都不再问模型），
+   * 用户以为插件坏了，而且一等等十分钟。3 分钟够礼貌，也能自己恢复。
+   */
+  var COOLDOWN_MAX_MS = 3 * 60 * 1000;
   var MAX_WORD_LEN = 24;
   /** 上下文（整句歌词）最长留多少字符 —— 只是为了避免把整个歌词本塞进提示词 */
   var MAX_CONTEXT_LEN = 160;
@@ -255,6 +260,12 @@
     var requestTimes = [];
     var lastError = null;
     var stats = { hits: 0, cacheHits: 0, misses: 0, rejected: 0, requests: 0, failures: 0, words: 0 };
+    /*
+     * 连续失败了几批、期间一次都没成功过。用来判断"这层现在是彻底不工作"：
+     * 用户看到的症状就是"读音全都没矫正"（本地读音照旧，模型一条都没改）。
+     * 成功一批就清零。
+     */
+    var failedSinceHit = 0;
     /*
      * 最近被拒的答案（内存里留一小段，不落盘）。排障用：
      * 「某个词一直不矫正」时，这里能看到模型当时到底回了什么、被哪条判据丢的。
@@ -494,7 +505,7 @@
           body: JSON.stringify({
             model: cfg.model,
             temperature: 0,
-            max_tokens: 2000,
+            max_tokens: 4000,
             response_format: { type: "json_object" },
             messages: [{ role: "user", content: promptFor(items) }],
           }),
@@ -610,6 +621,7 @@
       // 失败退避要复位：能正常回来就说明接口是通的
       cooldownMs = COOLDOWN_MS;
       cooldownUntil = 0;
+      failedSinceHit = 0;
       log("大模型校正回来 " + batch.length + " 个词：命中 " + hits + "，没给 " + missed);
       /*
        * **不管有没有命中都要通知上层重扫**。
@@ -644,6 +656,7 @@
       });
       cooldownUntil = Date.now() + cooldownMs;
       cooldownMs = Math.min(cooldownMs * 2, COOLDOWN_MAX_MS);
+      failedSinceHit++;
       for (var i = 0; i < batch.length; i++) {
         var item = batch[i];
         if (mem.has(item.key)) continue; // 已经有结论的不用重问
@@ -854,6 +867,20 @@
         }
         return removed;
       },
+      /**
+       * 立刻重试：把失败退避清掉，队列马上发一次。
+       *
+       * 什么时候用：接口抖了一下（或撞了一次限流）进了退避，用户看到的就是
+       * **"读音全都没矫正"** —— 本地读音还在，但一条都不再问模型，而且一等等几分钟。
+       * 这个按钮/调用就是手动把那根管子接回去；顺带把连续失败的计数也清了。
+       */
+      retryNow: function () {
+        cooldownUntil = 0;
+        cooldownMs = COOLDOWN_MS;
+        failedSinceHit = 0;
+        if (canAsk() && queue.length) schedule(0);
+        return { pending: queue.length, inflight: inflight };
+      },
       /** 最近被拒的答案（模型原话 + 原因），排障用 */
       rejects: function (limit) {
         var n = typeof limit === "number" ? limit : rejects.length;
@@ -882,8 +909,11 @@
           missesCached: countMisses(),
           pending: queue.length,
           roomThisMinute: roomThisMinute(),
+          failedSinceHit: failedSinceHit,
+          stalled: failedSinceHit >= 2 && queue.length > 0,
           inflight: inflight,
           cooldownMs: Math.max(0, cooldownUntil - Date.now()),
+          cooldownMaxMs: COOLDOWN_MAX_MS,
           lastError: lastError,
         };
       },

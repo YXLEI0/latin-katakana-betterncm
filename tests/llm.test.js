@@ -26,7 +26,14 @@ function makeClient(ctx, opts) {
     // 现在提示词里的条目是 [{i, w, line}]：w 是要注音的词，line 是它所在的整句歌词
     const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
     const words = items.map((it) => (it && typeof it === "object" ? it.w : it));
-    calls.push({ url: url, model: body.model, words: words, items: items, auth: init.headers.Authorization });
+    calls.push({
+      url: url,
+      model: body.model,
+      words: words,
+      items: items,
+      auth: init.headers.Authorization,
+      maxTokens: body.max_tokens,
+    });
     // httpFail：模拟"HTTP 有状态码的失败"（402 / 401 / 404…），走 httpError 那条路。
     // 放在 reply 之前判：这条路的重点是状态码，不是 reply 的内容。
     if (opts.httpFail) {
@@ -139,6 +146,70 @@ test("被拒的答案会落盘：重启之后 rejects() 还看得出原因", asy
     rj.some((r) => r.word === "tick" && r.said === "カチカチ"),
     "重启后 rejects() 要能还原：" + JSON.stringify(rj)
   );
+});
+
+// ============================================================ 停摆与恢复
+
+test("请求体：max_tokens 给足（4000），免得一批词回来被截断成坏 JSON", async () => {
+  const ctx = loadCore();
+  const c = makeClient(ctx, { reply: () => ({ 1: "テスト" }) });
+  c.client.lookup("clover", "clover");
+  await c.client.flush();
+  assert.strictEqual(c.calls[0].maxTokens, 4000);
+});
+
+test("退避有上限：最多 3 分钟（原来是 10 分钟：接口抖一下就有十分钟读数不矫正）", async () => {
+  const ctx = loadCore();
+  const c = makeClient(ctx, { reply: () => new Error("offline") });
+  c.client.lookup("clover", "clover");
+  await c.client.flush();
+  const s = c.client.stats();
+  assert.ok(s.cooldownMs > 0, "失败之后要在退避中");
+  assert.strictEqual(s.cooldownMaxMs, 3 * 60 * 1000, "上限就是 3 分钟");
+  assert.ok(s.cooldownMs <= s.cooldownMaxMs, "退避不能超过上限");
+});
+
+test("retryNow：把退避清掉、马上重发（用户看到「全都没矫正」时的救命按钮）", async () => {
+  const ctx = loadCore();
+  let fail = true;
+  const c = makeClient(ctx, {
+    reply: () => (fail ? new Error("offline") : { 1: "クローバー" }),
+  });
+  c.client.lookup("clover", "clover");
+  await c.client.flush();
+  assert.ok(c.client.stats().cooldownMs > 0, "先进入退避");
+  assert.strictEqual(c.client.stats().stalled, false, "只失败一次还不算 stalled");
+
+  // 退避期间再问：不该发请求
+  c.client.lookup("clover", "clover");
+  await c.client.flush();
+  const before = c.calls.length;
+
+  // 用户点「立刻重试」：退避清掉、马上再发一次，而且这次成功
+  fail = false;
+  c.client.retryNow();
+  await c.client.flush();
+  assert.strictEqual(c.client.stats().cooldownMs, 0, "退避要清掉");
+  assert.strictEqual(c.client.stats().failedSinceHit, 0, "连续失败计数也要清");
+  assert.ok(c.calls.length > before, "要真的重发（" + before + " -> " + c.calls.length + "）");
+  assert.strictEqual(c.client.peek("clover"), "クローバー", "重试之后要收下答案");
+});
+
+test("stalled：连着失败而且队列还有词 = 这层现在彻底不工作（面板据此报警告）", async () => {
+  const ctx = loadCore();
+  const c = makeClient(ctx, { reply: () => new Error("offline") });
+  c.client.lookup("alpha", "line a");
+  c.client.lookup("beta", "line b");
+  await c.client.flush();
+  assert.ok(c.client.stats().pending >= 2, "失败的词要留在队列里：" + c.client.stats().pending);
+
+  // 第二次失败：退避期间不会自己发，用 configure()（改配置会清退避，但不清连续失败计数）
+  c.client.configure({ key: "sk-test" });
+  await c.client.flush();
+  const s = c.client.stats();
+  assert.ok(s.failedSinceHit >= 2, "连续失败要累计：" + s.failedSinceHit);
+  assert.ok(s.pending >= 1, "队列里还有词：" + s.pending);
+  assert.strictEqual(s.stalled, true, "连续失败 + 队列有词 = 停摆");
 });
 
 // ============================================================ key / 错误信息
