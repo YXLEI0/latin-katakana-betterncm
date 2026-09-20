@@ -867,6 +867,32 @@ test("首音校验：th 的两种读法都放行（the ザ / think シンク）�
   assert.strictEqual(LK.looksLikeTransliteration("write", "ライト"), true);
 });
 
+// ============================================================ -ize / -yze
+
+test("词尾 -ize / -yze：读「辅音 + イズ」，不许被罗马音层抢成 メモリゼ", () => {
+  // 用户截图里的 `memorize` 被标成 メモリゼ —— 那是**罗马音层**抢答的
+  // （me-mo-ri-ze 切得干净），而日语罗马字里根本没有 -ize 结尾的动词。
+  // 现在罗马音层直接拒绝这种形状，交给规则层的 EN_IZE：辅音并入 a，读成「…イズ」。
+  const r = LK.createReader({ dict: {}, enWords: null });
+  assert.strictEqual(r.read("memorize").source, "rule", "memorize 不该走罗马音层");
+  for (const [w, kana] of [
+    ["memorize", "メモライズ"],
+    ["memorized", "メモライズド"],
+    ["memorizing", "メモライジング"],
+    ["organize", "オーガナイズ"],
+    ["apologize", "アポロジャイズ"], // 软音 g -> ジャ
+    ["criticize", "クリティサイズ"], // 软音 c -> サ
+    ["analyze", "アナライズ"],
+    ["paralyze", "パラライズ"],
+    ["fantasize", "ファンタサイズ"],
+  ]) {
+    assert.strictEqual(LK.englishToKatakana(w).kana, kana, w);
+  }
+  // 词干是空的（size / prize 这种词根）不走这条，免得把 s 当尾巴读出"サイズ"
+  assert.ok(LK.englishToKatakana("size").kana.length > 0);
+  assert.notStrictEqual(LK.englishToKatakana("size").kana, "サ\u30A4\u30BA\u30A4\u30BA");
+});
+
 // ============================================================ 不发音字母
 
 test("词首不发音的字母：kn- / wr- / gn- / ps- / pn- 不许读出来", () => {

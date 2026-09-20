@@ -4,6 +4,45 @@
 
 首个版本：给日语歌歌词里的**拉丁字母**标注**片假名读音**。
 
+### `memorize` / `relentlessly` / `awake`：-ize 一族 + 词表外常用词（本次）
+
+用户第二张截图：`Every night brings a dream but the day, relentlessly, keeps me awake`
+—— **读音都对**，但查下来 `relentlessly` / `awake` 是大模型临时给的：
+**离线时分别会读成 レレントレスライー ✗ / アワケ ✗**（后者是**罗马音层**抢的：
+a-wa-ke）。加上上一张图的 `memorize` → メモリゼ ✗，一共两类问题：
+
+**一、词尾 `-ize` / `-yze` 是一整类漏洞。**
+罗马音层的判据只是"整串切得干净"，`memorize` = me-mo-ri-ze 切得干净，就被它
+**confident 地**读成 メモリゼ —— 它排在规则层前面，于是模型没机会纠、离线也错。
+可日语罗马字里**根本没有 `-ize` 结尾的动词**，所以：
+
+- 罗马音层现在**直接拒绝**这个形状（`RE_ENGLISH_IZE`），让规则层接手；
+- 规则层新增 `EN_IZE`：词干照读，尾巴统一「辅音 + イズ」，**辅音并入 a**
+  （memorize = メモ + ラ + イズ = メモライズ），软音 g/c 走 ジャ/サ
+  （apologize アポロジャイズ、criticize クリティサイズ），变形一起管
+  （memorized メモライズド、memorizing メモライジング、analyze アナライズ、
+  paralyze パラライズ、organize オーガナイズ、fantasize ファンタサイズ）。
+  （自己踩的坑：尾巴要写「イズ」不是「アイズ」，否则成了 メモラアイズ —— 测试里锁住。）
+
+**二、词干本身读不准的、以及 `-ise` 拼法的，人工进词表**（词典 6315 → **6337 条**）：
+`memorize` メモライズ、`memorized` メモライズド、`memorizing` メモライジング、
+`memorable` メモラブル、`realize` / `realise` リアライズ、`realizing`/`realising`
+リアライジング、`realised` リアライズド、`idolize` アイドライズ、`mesmerize` メズマライズ、
+`socialize` ソーシャライズ、`sympathize` シンパサイズ、`energize` エナジャイズ、
+`advise` アドバイズ、`precise` プリサイス、`surprising` サプライジング；
+截图那一行的 `every` エブリ、`relentless` リレントレス、`relentlessly` リレントレスリー、
+`awake` アウェイク、`awaken` アウェイクン、`asleep` アスリープ。
+（`-ise` 为什么也走词表：那一支两可 —— `promise` プロミス vs `surprise` サプライズ。）
+
+**顺带记一笔已知小缺口**：英文常用词表（`core/enwords.js`，罗马音层判"像不像英文词"用的）
+来自 google-10000，`awake` / `memorize` / `relentless` 这类**不在那份频次表里**，
+所以那份守卫对它们不生效 —— 这一版靠"规则层修 + 词表补"绕过；
+真遇到词表外的词，大模型纠正一次之后会被**自动沉淀成离线词条**（见上一节），越用越准。
+
+测试：`reading.test.js` +1（`-ize` 不再走罗马音层 + 9 个词的读音）、
+`integration.test.js` +1（截图那一行逐词核对 + 断言这些词都是确定值、来源是词表或规则），
+全套 **278 → 280 全绿**。
+
 ### 音乐术语整批进词典（`Lento, presto, andante larghetto`）（本次）
 
 用户发的截图：`(Lento, presto, andante larghetto)` 标的是 レント / プレスト /

@@ -4,7 +4,7 @@
  * 两份数据源，由 tools/build-dict.js 合并（跑 npm run build:dict 重新生成）：
  *   1. tools/seed-words.js      —— 人工核过（其中大部分是从 katakana-terminator 的
  *      离线词典反转来的真实外来语写法，那份本来就是"片假名外来语 -> 英文原词"）；
- *   2. tools/seed-words-llm.js  —— 大模型按英文词频批量生成的读音（5543 条），
+ *   2. tools/seed-words-llm.js  —— 大模型按英文词频批量生成的读音（5541 条），
  *      由 tools/expand-dict-llm.js 生成，人工词表优先。
  *
  * 读音查找顺序见 core/reading.js：本词典 -> 罗马音切分 -> 英文音译规则
@@ -127,6 +127,7 @@
     "advertisers": "アドバタイザーズ",
     "advertising": "アドバタイジング",
     "advice": "アドバイス",
+    "advise": "アドバイズ",
     "advisor": "アドバイザー",
     "advisory": "アドバイザリー",
     "ae": "エーイー",
@@ -387,6 +388,7 @@
     "ask": "アスク",
     "asked": "アスクト",
     "asking": "アスキング",
+    "asleep": "アスリープ",
     "aspect": "アスペクト",
     "aspects": "アスペクツ",
     "ass": "アス",
@@ -479,6 +481,8 @@
     "average": "アベレージ",
     "aviation": "アビエーション",
     "avoid": "アボイド",
+    "awake": "アウェイク",
+    "awaken": "アウェイクン",
     "award": "アワード",
     "awarded": "アワーデッド",
     "awards": "アワーズ",
@@ -1907,6 +1911,7 @@
     "endless": "エンドレス",
     "ends": "エンズ",
     "enemy": "エネミー",
+    "energize": "エナジャイズ",
     "energy": "エナジー",
     "enforcement": "エンフォースメント",
     "eng": "エング",
@@ -2006,6 +2011,7 @@
     "events": "イベンツ",
     "eventually": "イベンチュアリー",
     "ever": "エバー",
+    "every": "エブリ",
     "everybody": "エブリバディ",
     "everyday": "エブリデイ",
     "everyone": "エブリワン",
@@ -2774,6 +2780,7 @@
     "identify": "アイデンティファイ",
     "identifying": "アイデンティファイング",
     "identity": "アイデンティティ",
+    "idolize": "アイドライズ",
     "ie": "アイイー",
     "ieee": "アイトリプルイー",
     "if": "イフ",
@@ -3530,8 +3537,12 @@
     "members": "メンバーズ",
     "membership": "メンバーシップ",
     "memorabilia": "メモラビリア",
+    "memorable": "メモラブル",
     "memorial": "メモリアル",
     "memories": "メモリーズ",
+    "memorize": "メモライズ",
+    "memorized": "メモライズド",
+    "memorizing": "メモライジング",
     "memory": "メモリー",
     "memphis": "メンフィス",
     "men": "メン",
@@ -3547,6 +3558,7 @@
     "mercury": "マーキュリー",
     "merely": "ミアリー",
     "mesh": "メッシュ",
+    "mesmerize": "メズマライズ",
     "message": "メッセージ",
     "messages": "メッセージズ",
     "messaging": "メッセージング",
@@ -4373,6 +4385,7 @@
     "practices": "プラクティシズ",
     "prayer": "プレイヤー",
     "pre": "プリ",
+    "precise": "プリサイス",
     "precision": "プリシジョン",
     "prefer": "プリファー",
     "preference": "プリファレンス",
@@ -4629,9 +4642,13 @@
     "reads": "リーズ",
     "ready": "レディ",
     "real": "リアル",
+    "realise": "リアライズ",
+    "realised": "リアライズド",
+    "realising": "リアライジング",
     "reality": "リアリティ",
     "realize": "リアライズ",
     "realized": "リアライズド",
+    "realizing": "リアライジング",
     "really": "リアリー",
     "rear": "リア",
     "reason": "リーズン",
@@ -4718,6 +4735,8 @@
     "release": "リリース",
     "released": "リリースド",
     "releases": "リリーシズ",
+    "relentless": "リレントレス",
+    "relentlessly": "リレントレスリー",
     "relevant": "レレバント",
     "reliability": "リライアビリティ",
     "reliable": "リライアブル",
@@ -5262,6 +5281,7 @@
     "soap": "ソープ",
     "soccer": "サッカー",
     "social": "ソーシャル",
+    "socialize": "ソーシャライズ",
     "society": "ソサエティ",
     "socket": "ソケット",
     "sofa": "ソファ",
@@ -5548,6 +5568,7 @@
     "surface": "サーフェス",
     "surgery": "サージェリー",
     "surprise": "サプライズ",
+    "surprising": "サプライジング",
     "surrounding": "サラウンディング",
     "surveillance": "サーベイランス",
     "survey": "サーベイ",
@@ -5571,6 +5592,7 @@
     "sydney": "シドニー",
     "symbol": "シンボル",
     "symbols": "シンボルズ",
+    "sympathize": "シンパサイズ",
     "symphony": "シンフォニー",
     "symptoms": "シンプトムズ",
     "syndrome": "シンドローム",
@@ -6337,6 +6359,6 @@
 
   return {
     words: words,
-    count: 6315,
+    count: 6337,
   };
 });

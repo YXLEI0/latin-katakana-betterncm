@@ -912,4 +912,40 @@ module.exports = [
   { en: "cello", kana: "チェロ" },
   { en: "flute", kana: "フルート" },
   { en: "trumpet", kana: "トランペット" },
+  /*
+   * 用户第二张截图：`Every night brings a dream but the day, relentlessly, keeps me awake`
+   * —— 读音都对，但 `relentlessly` / `awake` 当时是**大模型临时给的**，
+   * 离线时分别是 レレントレスライー ✗ / アワケ ✗（罗马音层抢的）。
+   *
+   * 顺带把 -ize 那一族（上一张截图的 `memorize`）也收尾：
+   * 规则层现在认得「辅音 + イズ」（见 reading.js 的 EN_IZE），
+   * 剩下的"词干本身读不准"的（idolize イドライズ✗、mesmerize メサメライズ✗、
+   * socialize ソスイアライズ✗、sympathize サインパトハイズ✗、energize エナージャイズ✗）
+   * 人工钉住。`-ise` 拼法两可（promise プロミス vs surprise サプライズ），
+   * 所以那一支也走人工词表。
+   */
+  { en: "every", kana: "エブリ" },
+  { en: "everybody", kana: "エブリバディ" },
+  { en: "relentless", kana: "リレントレス" },
+  { en: "relentlessly", kana: "リレントレスリー" },
+  { en: "awake", kana: "アウェイク" },
+  { en: "awaken", kana: "アウェイクン" },
+  { en: "asleep", kana: "アスリープ" },
+  { en: "memorize", kana: "メモライズ" },
+  { en: "memorized", kana: "メモライズド" },
+  { en: "memorizing", kana: "メモライジング" },
+  { en: "memorable", kana: "メモラブル" },
+  { en: "realize", kana: "リアライズ" },
+  { en: "realizing", kana: "リアライジング" },
+  { en: "realise", kana: "リアライズ" },
+  { en: "realised", kana: "リアライズド" },
+  { en: "realising", kana: "リアライジング" },
+  { en: "idolize", kana: "アイドライズ" },
+  { en: "mesmerize", kana: "メズマライズ" },
+  { en: "socialize", kana: "ソーシャライズ" },
+  { en: "sympathize", kana: "シンパサイズ" },
+  { en: "energize", kana: "エナジャイズ" },
+  { en: "advise", kana: "アドバイズ" },
+  { en: "precise", kana: "プリサイス" },
+  { en: "surprising", kana: "サプライジング" },
 ];

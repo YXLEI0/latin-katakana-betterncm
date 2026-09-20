@@ -1779,6 +1779,44 @@ test("音乐术语：`(Lento, presto, andante larghetto)` 离线也要读对", a
   assert.strictEqual(env.api.read("grave").source !== "dict", true, "grave 是有歧义的，不该钉死");
 });
 
+test("`Every night … keeps me awake` 这一行：读音离线也要全对", async () => {
+  // 用户第二张截图。读音都对，但 `relentlessly` / `awake` 是大模型临时给的：
+  // 离线时 relentlessly 会被规则读成 レレントレスライー、awake 被罗马音层读成 アワケ。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Every night brings a dream but the day, relentlessly, keeps me awake</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(250);
+  const p = env.document.querySelector("ul.lyric li p");
+  const got = new Map(
+    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+  for (const [w, kana] of [
+    ["Every", "エブリ"],
+    ["night", "ナイト"],
+    ["brings", "ブリングス"],
+    ["dream", "ドリーム"],
+    ["but", "バット"],
+    ["the", "ザ"],
+    ["day", "デイ"],
+    ["relentlessly", "リレントレスリー"],
+    ["keeps", "キープス"],
+    ["me", "ミー"],
+    ["awake", "アウェイク"],
+  ]) {
+    assert.strictEqual(got.get(w), kana, w + " 该是 " + kana + "：" + JSON.stringify([...got]));
+  }
+  // 这一行一个词都不该去问模型（全是离线词条/规则确定值）
+  for (const w of ["every", "relentless", "relentlessly", "awake", "asleep", "memorize", "memorable"]) {
+    const r = env.api.read(w);
+    assert.strictEqual(r.confident, true, w + " 要是确定值（不然又会去问模型）");
+    assert.ok(r.source === "dict" || r.source === "rule", w + " 的来源：" + r.source);
+  }
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

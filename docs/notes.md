@@ -194,6 +194,14 @@ opacity），它把「注音不透明度」整个压掉了 —— 于是页面�
 词中的 `mb` 修不了：`number` ナンバー 的 b 发音、`plumber` プラマー 的 b 不发音，
 分不出来 —— 这两个都只能进词典。
 
+**词尾 `-ize` / `-yze`（第三批通例）**：日语罗马字里没有以 `-ize` 结尾的动词，
+所以这类一定是英文（`memorize` / `organize` / `analyze` / `apologize`）。
+罗马音层现在直接拒绝这个形状，规则层按「辅音 + イズ」读（辅音并入 a：
+memorize = メモ + ラ + イズ），软音 g/c 走 ジャ/サ。变形一起管
+（memorized / memorizing / analyzed / paralyze）。词干本身读不准的
+（idolize アイドライズ、mesmerize メズマライズ、socialize ソーシャライズ…）
+和 `-ise` 拼法（两可：promise プロミス vs surprise サプライズ）还是进词表。
+
 ### 模型答案自动沉淀成离线词条（「学会的词」）
 
 用户要的：「让运行期模型给的答案自动沉淀进词典」。做在 `src/core/learn.js` 里。

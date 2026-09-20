@@ -51,10 +51,24 @@
   var RE_CONSONANT = /[bcdfghjklmnpqrstvwxyz]/;
 
   /*
-   * 词首不发音的字母组合（knock / wrap / gnome / psalm / pneumonia）。
+   * 词尾不发音的字母组合（knock / wrap / gnome / psalm / pneumonia）。
    * 这几组在英语里没有例外，见 convertEnglish 里的第 0 条。
    */
   var EN_SILENT_HEAD = /^(kn|wr|gn|ps|pn)/;
+
+  /*
+   * 词尾 -ize / -yze：英语里这一律读 /aɪz/（memorize・organize・analyze・realize），
+   * 所以整块读「辅音 + アイズ」，**前面的辅音要拉到 a 上**（memorize = メモ + ライズ）。
+   *
+   * 为什么单列一条：规则层原本把 -ize 当普通拼读，读成「ゼ」
+   * （用户截图里 `memorize` 被标成 メモリゼ，那还是**罗马音层**抢先给的），
+   * 一整类词（organize オーガニゼ、apologize アポロギゼ、analyze アナライゼ…）
+   * 全错。软音 g/c 要按 ジャ/サ 走（apologize アポロジャイズ、criticize クリティサイズ）。
+   */
+  var EN_IZE = /^([a-z]*?)([bcdfghjklmnpqrstvwxyz])(iz|yz)(e[sd]?|ing)$/;
+
+  /** 同一个形状，但用来在罗马音层**拒绝**它（见 LAYER_FN.romaji 的第一条） */
+  var RE_ENGLISH_IZE = /^[a-z]+[bcdfghjklmnpqrstvwxyz](iz|yz)(e[sd]?|ing)$/;
 
   // ------------------------------------------------------------ 罗马音表
 
@@ -1011,6 +1025,44 @@
    * 保证不死循环、不吐空串。
    */
   function convertEnglish(word) {
+    /*
+     * ---- -ize / -yze 收尾（见 EN_IZE 的说明）。
+     *
+     * 词干照原样交给规则读，尾巴统一读「辅音 + アイズ」（含 -d/-s/-ing 变形）：
+     *   memorize   メモ + ライズ   = メモライズ
+     *   memorized  メモ + ライズド = メモライズド
+     *   memorizing メモ + ライジング = メモライジング（-ing 的 s 要浊化）
+     *   organize   オーガ + ナイズ = オーガナイズ
+     *   apologize  アポロ + ジャイズ = アポロジャイズ（软音 g）
+     *   criticize  クリティ + サイズ = クリティサイズ（软音 c）
+     *   analyze    アナ + ライズ   = アナライズ
+     * 词干是空的（size / prize 这类词根本身就是 "…ize"）就交给下面普通那条路，
+     * 免得把 s 当尾巴的辅音读出个"サイズ"来。
+     */
+    var ize = EN_IZE.exec(word);
+    if (ize && ize[1]) {
+      var stem = convertEnglish(ize[1]);
+      var cons = ize[2];
+      var head = cons === "g" ? "\u30B8\u30E3" : cons === "c" ? "\u30B5" : enConsonantVowel(cons, "a");
+      if (head) {
+        var ending = ize[4];
+        /*
+         * 注意这里拼的是「head + イズ」—— head 本身已经带 a 了
+         * （メモ + **ラ** + イズ = メモライズ）。写成 head + アイズ 会多一个元音
+         * （メモラアイズ ✗），这个坑我第一版就踩了。
+         */
+        var body =
+          ending === "ed" ? "\u30A4\u30BA\u30C9" // イズド
+            : ending === "es" ? "\u30A4\u30B8\u30BA" // イジズ（-es 的 s 浊化）
+              : ending === "ing" ? "\u30A4\u30B8\u30F3\u30B0" // イジング
+                : "\u30A4\u30BA"; // イズ
+        return {
+          kana: stem.kana + head + body,
+          confident: stem.confident && !hasUnsureSpelling(word),
+        };
+      }
+    }
+
     var kana = "";
     // 拼写本身就定不下读音的组合（th/gh/ow/... ）先标上不放心
     var confident = !hasUnsureSpelling(word);
@@ -1948,6 +2000,13 @@
         return null;
       },
       romaji: function (c) {
+        /*
+         * 词尾 -ize / -yze 的**不是**日语罗马字（日语里没有以 ぜ 收尾的动词），
+         * 一定是英文：memorize / organize / analyze / apologize。
+         * 交给规则层的 EN_IZE 那条读成「辅音 + アイズ」—— 否则罗马音会抢答成
+         * メモリゼ（用户截图里的 `memorize` 就是这么来的）。
+         */
+        if (RE_ENGLISH_IZE.test(c.shown)) return null;
         var res = null;
         // 用 shown（已小写、去了首尾标点）而不是 stripNonLetters，
         // 因为 "saka-" 词尾的连字符是长音符，不能被吃掉。
