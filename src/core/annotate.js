@@ -1449,6 +1449,17 @@
       var changed = 0;
       var skipped = 0;
       var unstable = 0;
+      /*
+       * 这一轮里"要等一会儿再试"的最短时间。有节点因为
+       * 「文本在动」（MOTION_WINDOW_MS 滑动窗口）或「认输期」（churn 退避）
+       * 被跳过时记下来，最后交给上层安排下一次扫描 —— 页面自己不动的时候，
+       * 没有这一手那行就永远不注音了（见 pass() 返回值的说明）。
+       */
+      var retryInMs = 0;
+      function noteRetry(ms) {
+        if (!(ms > 0)) return;
+        if (retryInMs === 0 || ms < retryInMs) retryInMs = ms;
+      }
       for (var i = 0; i < candidates.length; i++) {
         var node = candidates[i];
 
@@ -1483,6 +1494,8 @@
         if (churnSuppressed(node.nodeValue || "")) {
           unstable++;
           noteSkip("认输期", node.nodeValue, region);
+          var untilChurn = churnUntil.get(node.nodeValue || "");
+          if (untilChurn) noteRetry(untilChurn - Date.now() + 20);
           continue;
         }
 
@@ -1519,6 +1532,8 @@
             unstable++;
             // 这一条以前不留痕，"某一行不注音"时轨迹里什么都看不到 —— 必须记
             noteSkip("文本在动 " + motion.changes + " 次/" + Math.round(MOTION_WINDOW_MS / 1000) + "s", visibleNow, region);
+            // 窗口一过就该重试：算准剩余时间，让上层安排下一次扫描
+            noteRetry(MOTION_WINDOW_MS - (nowMs - motion.since) + 50);
             continue;
           }
         }
@@ -1630,6 +1645,7 @@
       if (options.log && skipNotes.length) {
         options.log("未注音 " + skipNotes.join(" | "));
       }
+      var notes = skipNotes;
       skipNotes = [];
       return {
         scanned: list.length,
@@ -1637,6 +1653,18 @@
         restored: restored,
         skipped: skipped,
         unstable: unstable,
+        // 跳过原因（上层会写进 LK.stats()，排障时一眼看到"为什么这行没注音"）
+        skips: notes,
+        /*
+         * 这一轮有节点是因为"文本在动 / 认输期"被跳过的，那就要**自己安排下一轮**。
+         *
+         * 为什么必须这样（用户报的「换歌的时候…还是没注音」）：如果换歌之后页面
+         * 不再发生变动（典型情况是**歌是暂停的**：歌词列表渲染一次就不动了），
+         * 就再也没有事件来触发下一轮扫描 —— 被跳过的那一行会**永远**空着，
+         * 直到用户点一下播放/滚动才补上（看着就像"插件坏了"）。
+         * 返回 0 表示这一轮没有需要重试的节点。
+         */
+        retryInMs: retryInMs,
       };
     }
 

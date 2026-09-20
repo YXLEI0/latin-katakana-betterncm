@@ -827,6 +827,35 @@ test("边界：数字、符号、空格混排", () => {
   assert.strictEqual(r.read("ａｂｃ"), null);
 });
 
+// ============================================================ 首音校验
+
+test("首音校验：th 的两种读法都放行（the ザ / think シンク），拟声词照样拦", () => {
+  // 用户报的「把模型提到最前面，the 还是セ」：真模型对 the 回的就是 **ザ**（实测），
+  // 但校验表里 t 开头只放了サ行（θ 的 think/three），漏了 ð 的 the/this/that/they ——
+  // 于是唯一被拒的答案就是 the，回落到规则层的 セ。
+  for (const [w, k] of [
+    ["the", "ザ"],
+    ["this", "ジ"],
+    ["that", "ザッ"],
+    ["they", "ゼイ"],
+    ["there", "ゼア"],
+    ["think", "シンク"],
+    ["three", "スリー"],
+    ["tick", "ティック"],
+    ["take", "テイク"],
+  ]) {
+    assert.strictEqual(LK.looksLikeTransliteration(w, k), true, w + " -> " + k + " 不该被拒");
+  }
+  // tick -> カチカチ 是拟声词/意译，仍然要拦住（这是这条校验存在的理由）
+  assert.strictEqual(LK.looksLikeTransliteration("tick", "カチカチ"), false);
+  assert.strictEqual(LK.looksLikeTransliteration("kaleidoscope", "ダニ"), false);
+  // 没把握的首字母（h/w/y/元音）一律不校验
+  assert.strictEqual(LK.looksLikeTransliteration("hour", "アワー"), true);
+  assert.strictEqual(LK.looksLikeTransliteration("write", "ライト"), true);
+});
+
+// ============================================================ 边界
+
 test("边界：stats 初值都是 0", () => {
   const r = LK.createReader({ dict: {} });
   assert.deepStrictEqual(r.stats(), {

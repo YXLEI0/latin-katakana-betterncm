@@ -173,6 +173,44 @@ test("换歌：同一个元素被快速复用很多次，跳过只是暂时的�
   assert.deepStrictEqual(pairs, [["sky", "スカイ"]], "窗口过后要恢复正常注音：" + JSON.stringify(pairs));
 });
 
+test("跳过要自己安排重试：pass() 报出 retryInMs，别等页面再动", async () => {
+  // 用户报的「换歌的时候…还是没注音」：换歌那几下文本在动 -> 这一轮跳过。
+  // 如果之后页面不再变动（**歌是暂停的**，歌词渲染一次就不动了），
+  // 就没有任何事件来触发下一轮 —— 那行会永远空着。所以 pass() 必须告诉我们
+  // "过多久可以重试"，由上层排下一次扫描。
+  const ctx = newCtx(`<!doctype html><html><body>
+<ul class="lyric"><li class="line"><p>きらめく light と clover</p></li></ul>
+</body></html>`);
+  forceRubyLayout(ctx, true);
+  const ann = makeAnnotator(ctx, { annotator: { motionWindowMs: 200 } });
+  const p = ctx.document.querySelector("p");
+  const setText = (t) => {
+    while (p.firstChild) p.removeChild(p.firstChild);
+    p.appendChild(ctx.document.createTextNode(t));
+  };
+
+  const clean = ann.pass();
+  assert.strictEqual(clean.retryInMs, 0, "没被跳过时不该安排重试");
+
+  let last = null;
+  for (const t of ["新しい歌の light", "そして clover", "遠くの dream", "最後の sky"]) {
+    setText(t);
+    last = ann.pass();
+  }
+  assert.ok(last.unstable > 0, "窗口内变太快确实被跳过了");
+  assert.ok(last.retryInMs > 0 && last.retryInMs <= 260, "要给出「多久后重试」：" + last.retryInMs);
+  assert.ok((last.skips || []).join(" ").indexOf("文本在动") >= 0, "跳过原因要带在结果里：" + JSON.stringify(last.skips));
+
+  // 窗口过了，下一次扫描必须补上
+  await new Promise((r) => setTimeout(r, 260));
+  ann.pass();
+  assert.deepStrictEqual(
+    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    ["sky"],
+    "窗口过后要自动补上"
+  );
+});
+
 test("单字母：a / I 要标，其它单字母不标", () => {
   // 用户报的：`Tell me a story` 里的 a 空着。a 和 I 是真正的英文单词，要标；
   // x 这种首字母缩写/排版噪声仍然跳过。

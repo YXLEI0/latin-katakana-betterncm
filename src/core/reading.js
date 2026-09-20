@@ -1762,8 +1762,15 @@
     q: "\u30AB\u30AD\u30AF\u30B1\u30B3",
     r: "\u30E9\u30EA\u30EB\u30EC\u30ED",
     s: "\u30B5\u30B7\u30B9\u30BB\u30BD",
-    // t：/t/ 与 th 的 サ行（think シンク、three スリー）
-    t: "\u30BF\u30C1\u30C4\u30C6\u30C8\u30B5\u30B7\u30B9\u30BB\u30BD",
+    /*
+     * t：/t/ 与 th 的两种读法都要放行 ——
+     *   θ 的 th（think シンク、three スリー）-> サ行
+     *   ð 的 th（the ザ、this ジ、that ザッ、they ゼイ、there ゼア）-> **ザ行**
+     * 漏掉 ð 那一行会出事：模型对 `the` 回 ザ 是**对的**，却会被判成"不是音译"丢掉，
+     * 于是回落到规则层的 セ（用户报的「the 还是セ」就是这个 —— 实测真模型回的就是 ザ，
+     * 一批 7 个词里恰好只有 the 被拒）。
+     */
+    t: "\u30BF\u30C1\u30C4\u30C6\u30C8\u30B5\u30B7\u30B9\u30BB\u30BD\u30B6\u30B8\u30BA\u30BC\u30BE",
     v: "\u30D0\u30D3\u30D6\u30D9\u30DC\u30F4",
     z: "\u30B6\u30B8\u30BA\u30BC\u30BE",
   };

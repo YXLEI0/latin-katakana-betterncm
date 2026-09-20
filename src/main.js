@@ -386,6 +386,15 @@
         regions = state.annotator.findRegions("lyrics");
       }
       state.lastResult = state.annotator.pass(regions);
+      /*
+       * 这一轮有节点因为「文本在动」（换歌/滚动把手抖的那几轮）或「认输期」被跳过时，
+       * 注音层会告诉我们**过多久可以重试**。必须自己排下一次扫描：
+       * 换歌之后如果页面不再变动（最典型的是**歌处于暂停**，歌词渲染一次就不动了），
+       * 就再也没有事件来触发下一轮 —— 那一行会一直空着，看着就像插件坏了。
+       */
+      if (state.lastResult && state.lastResult.retryInMs > 0) {
+        schedule(state.lastResult.retryInMs);
+      }
     } catch (e) {
       state.error = (e && e.message) || String(e);
       warn("扫描异常", e);
@@ -528,6 +537,7 @@
       "#latin-katakana-config .lk-layer-note { opacity: .6; font-size: 12px; flex: 1; }" +
       "#latin-katakana-config .lk-layer-btn { min-width: 26px; }" +
       "#latin-katakana-config .lk-layer-btn[disabled] { opacity: .35; }" +
+      "#latin-katakana-config .lk-layer-warn { color: #e8a33d; margin-top: 4px; }" +
       "#latin-katakana-config .lk-links a { margin-right: 14px; }" +
       "</style>" +
       '<div class="lk-links">' +
@@ -644,6 +654,26 @@
           row.appendChild(mkMoveBtn(index, id, 1, "↓"));
           layersBox.appendChild(row);
         })(i);
+      }
+      /*
+       * 挡路提醒：「英文音译规则」对**每个词**都给得出答案（它就是拼写猜测），
+       * 所以排在它下面的同步层永远轮不到 —— 很容易踩的坑：
+       * 把词典拖到规则下面，`the` 就变成规则层的 セ 了（用户报过）。
+       * 只提醒、不阻止：真要"只用规则"也是合法选择。
+       */
+      var ruleIdx = config.layerOrder.indexOf("rule");
+      var blocked = [];
+      for (var b = 0; b < config.layerOrder.length; b++) {
+        var idb = config.layerOrder[b];
+        if (b > ruleIdx && (idb === "dict" || idb === "romaji")) blocked.push(LAYER_NAMES[idb] || idb);
+      }
+      if (blocked.length) {
+        var warnEl = document.createElement("div");
+        warnEl.className = "lk-hint lk-layer-warn";
+        warnEl.textContent =
+          "⚠ " + blocked.join(" / ") + " 排在「英文音译规则」下面：规则对每个词都会给答案，" +
+          "这两层就永远用不上了（比如 the 会变成规则猜的 セ）。要恢复的话点「恢复默认顺序」。";
+        layersBox.appendChild(warnEl);
       }
     }
 
@@ -1247,10 +1277,44 @@
       stats: function () {
         return {
           layers: config.layerOrder.slice(), // 当前层序（LK.layers() 改的就是它）
+          lastPass: state.lastResult || null, // 含 skips：这一轮"为什么有行没注音"
           reading: state.reader ? state.reader.stats() : null,
           correct: state.corrector ? state.corrector.stats() : null,
           llm: state.llm ? state.llm.stats() : null,
         };
+      },
+      /*
+       * 「这一行/这几行为什么没注音」——一句话回答。
+       *
+       * 排障时最难受的就是"某行没注音"不留痕：现在每一轮扫描都会带上跳过原因
+       * （文本在动 / 认输期 / 无译文 / 切不出词 / 不在区域里…），这里直接给结论。
+       */
+      why: function () {
+        var r = state.lastResult;
+        if (!r) return "还没扫过（插件没启用？）";
+        var lines = [];
+        lines.push(
+          "上一轮：区域 " + r.scanned + "，注音 " + r.changed + "，还原 " + r.restored +
+            "，跳过 " + r.skipped + "，放弃 " + (r.unstable || 0) + "，用时 " + state.lastPassMs + "ms"
+        );
+        if (r.retryInMs) lines.push("已安排 " + Math.round(r.retryInMs) + "ms 后再扫一轮（跳过是暂时的）");
+        var skips = r.skips || [];
+        if (skips.length) {
+          // 同一种原因可能连着出现很多次（一个区域里有好几个节点），压成计数
+          var seen = {};
+          for (var i = 0; i < skips.length; i++) {
+            var key = String(skips[i]).replace(/@\S+\s+".*$/, "").trim();
+            seen[key] = (seen[key] || 0) + 1;
+          }
+          lines.push("跳过原因：");
+          for (var k in seen) {
+            if (Object.prototype.hasOwnProperty.call(seen, k)) lines.push("　× " + seen[k] + "　" + k);
+          }
+        } else if (!r.unstable) {
+          lines.push("没有跳过 —— 还有行没注音的话，看那一行是不是不在标注区域里（LK.scan('那行的文本') 看分词）");
+        }
+        if (state.error) lines.push("错误：" + state.error);
+        return lines.join("\n");
       },
       llm: {
         stats: function () {

@@ -1256,6 +1256,64 @@ test("罗马音像英文词：用户把「英文规则」提到在线层前面�
   assert.strictEqual(rubyCount(p), 2);
 });
 
+test("换歌且页面不再变动时：被跳过的行会自己补回来（不用等用户操作）", async () => {
+  // 用户报的「换歌的时候 KiLLKiSS… 还是没注音」。
+  // 换歌那几下文本在动 -> 这一轮按"别追着重注"跳过；如果之后页面不再变动
+  // （**歌是暂停的**，歌词只渲染一次），就没有事件来触发下一轮扫描 ——
+  // 老版本那行会永远空着。现在 pass() 会报出重试时间，插件自己排下一轮。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+<li class="line"><p>きらめく light</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML);
+  await env.runLoad();
+  await sleep(150);
+  const p = env.document.querySelector("ul.lyric li p");
+  assert.strictEqual(rubyCount(p), 1, "前提：第一轮注上了");
+
+  // 连着换 4 次（都在 motion 窗口内），每次只扫一轮 —— 模拟"框架渲染完就不动了"
+  for (const t of ["そして clover", "遠くの dream", "KiLLKiSS judy", "最後の sky"]) {
+    p.textContent = t;
+    env.api.pass();
+    await sleep(20);
+  }
+  assert.strictEqual(rubyCount(p), 0, "前提：窗口内变太快，这几轮被跳过");
+  assert.ok(env.api.stats().lastPass.retryInMs > 0, "要安排下一轮：", JSON.stringify(env.api.stats().lastPass));
+  assert.ok(env.api.why().indexOf("文本在动") >= 0, "LK.why() 要说清为什么跳过：\n" + env.api.why());
+
+  // 关键：接下来**一个 DOM 事件都不发生**，只等 —— 注音必须自己出现
+  await sleep(3600);
+  assert.deepStrictEqual(
+    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    ["sky"],
+    "窗口过后必须自己补上来（暂停时换歌就是这个场景）：" + p.innerHTML
+  );
+});
+
+test("设置面板：把词典拖到「英文音译规则」下面会给出挡路提醒", async () => {
+  // 规则层对每个词都给得出答案，排在它下面的层就永远轮不到 ——
+  // 用户把层序拖乱之后 `the` 变成规则层的 セ 就是这么来的（提示要指出来）。
+  const env = bootPlugin(NCM_HTML, {
+    config: { layerOrder: ["llm", "romaji", "google", "rule", "dict"] },
+  });
+  await env.runLoad();
+  const box = env.listeners.config[0]().querySelector(".lk-layers");
+  const warn = box.querySelector(".lk-layer-warn");
+  assert.ok(warn, "要有挡路提醒：" + box.textContent);
+  assert.ok(warn.textContent.indexOf("离线词典") >= 0, "要点名被挡住的层：" + warn.textContent);
+  assert.ok(warn.textContent.indexOf("セ") >= 0, "要说明后果（the 会变成 セ）：" + warn.textContent);
+
+  // 默认顺序下不该有这条提醒
+  const okEnv = bootPlugin(NCM_HTML, { dev: true });
+  await okEnv.runLoad();
+  assert.strictEqual(
+    okEnv.listeners.config[0]().querySelector(".lk-layer-warn"),
+    null,
+    "默认顺序不该出现提醒"
+  );
+});
+
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
   // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
   //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；
