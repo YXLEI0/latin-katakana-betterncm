@@ -1640,6 +1640,89 @@ test("不发音字母的英文词：直接进词典（用户问的「没歧义�
   assert.strictEqual(env.api.read("knock").confident, true);
 });
 
+test("know 一族：know ノウ 本身是对的，同族那几个错读也一起修正", async () => {
+  // 用户问「know 的读音是否正确」——`know` 一直是对的（词典 ノウ，确定值）。
+  // 顺手把同族核对了一遍，发现四个确实错的（都在这次补进人工词表）：
+  //   knowing → ノーイング✗（该 ノウイング）／know-how → ノワアウ✗（该 ノウハウ）
+  //   throwing → スロウィン✗（throw 是 スロー）／flowing、blowing 同理
+  //   unforgettable → ウンフォーゲタタブブル✗（该 アンフォーゲタブル）
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>You know, knowing, know-how, throwing</p></li>
+  <li class="line"><p>flowing blowing unforgettable knowledge</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(250);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const got = new Map();
+  for (const p of ps) {
+    for (const [k, v] of [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+      r.childNodes[0].nodeValue,
+      r.querySelector(".lt-rt").textContent,
+    ])) {
+      got.set(k, v);
+    }
+  }
+  for (const [w, kana] of [
+    ["You", "ユー"],
+    ["know", "ノウ"],
+    ["knowing", "ノウイング"],
+    ["know-how", "ノウハウ"],
+    ["throwing", "スローイング"],
+    ["flowing", "フロウイング"],
+    ["blowing", "ブロウイング"],
+    ["unforgettable", "アンフォーゲタブル"],
+    ["knowledge", "ナレッジ"],
+  ]) {
+    assert.strictEqual(got.get(w), kana, w + " 该是 " + kana + "：" + JSON.stringify([...got]));
+  }
+  // know 是词典给的**确定**答案（所以永远不会去问模型、也不会被别的层改掉）
+  assert.strictEqual(env.api.read("know").source, "dict");
+  assert.strictEqual(env.api.read("know").confident, true);
+});
+
+test("notes 一族：复数/变形形的读音（notes→ノーツ，不是单数 ノート）", async () => {
+  // 用户问「notes 的读音」。`note` ノート 一直是对的，但**复数**被写成了单数读音
+  // （notes ノート ✗，该 ノーツ），同族的 dates デイツ / rates レーツ 反而是对的。
+  // 一起修的还有"词尾哑 e + s/ing"那一类：bites ビテス✗ → バイツ、noting ノティン✗
+  // → ノーティング，以及 footnote フォオタノテ✗ → フットノート。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>little notes, noting bites and kites</p></li>
+  <li class="line"><p>footnote keynote bones zones mates</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(250);
+  const got = new Map();
+  for (const p of env.document.querySelectorAll("ul.lyric li p")) {
+    for (const [k, v] of [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+      r.childNodes[0].nodeValue,
+      r.querySelector(".lt-rt").textContent,
+    ])) {
+      got.set(k, v);
+    }
+  }
+  for (const [w, kana] of [
+    ["notes", "ノーツ"],
+    ["noting", "ノーティング"],
+    ["bites", "バイツ"],
+    ["kites", "カイツ"],
+    ["mates", "メイツ"],
+    ["bones", "ボーンズ"],
+    ["zones", "ゾーンズ"],
+    ["footnote", "フットノート"],
+    ["keynote", "キーノート"],
+  ]) {
+    assert.strictEqual(got.get(w), kana, w + " 该是 " + kana + "：" + JSON.stringify([...got]));
+  }
+  // 单数照旧
+  assert.strictEqual(env.api.read("note").kana, "ノート");
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

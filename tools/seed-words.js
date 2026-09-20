@@ -452,7 +452,7 @@ module.exports = [
   { en: "never", kana: "ネバー" },
   { en: "news", kana: "ニュース" },
   { en: "night", kana: "ナイト" },
-  { en: "notes", kana: "ノート" },
+  { en: "notes", kana: "ノーツ" },
   { en: "office", kana: "オフィス" },
   { en: "offline", kana: "オフライン" },
   { en: "online", kana: "オンライン" },
@@ -784,4 +784,44 @@ module.exports = [
   { en: "foreign", kana: "フォーリン" },
   { en: "who", kana: "フー" },
   { en: "whole", kana: "ホール" },
+  /*
+   * 用户问「know 的读音是否正确」时顺手把 -ow 这一族核对了一遍。
+   * `know` ノウ 本身是对的（词典给的就对），但下面这几个是错的：
+   *   knowing  ノーイング  ✗（要和 know 一致：ノウイング）
+   *   know-how ノワアウ    ✗（词典里没有，规则层把 w 当辅音读了：ノウハウ）
+   *   throwing スロウィン  ✗（throw 词典里是 スロー）：スローイング
+   *   flowing  フロウィン  ✗（flow 词典里是 フロウ）：フロウイング
+   *   blowing  ブロウィン  ✗（blow 词典里是 ブロウ）：ブロウイング
+   *   unforgettable ウンフォーゲタタブブル ✗（规则层的 un- 处理很差）：アンフォーゲタブル
+   * 顺带说明：/oʊ/ 在日语外来语里 **ウ 和 ー 两种都通行**（know ノウ、show ショー、
+   * snow スノウ、slow スロー），所以判据是"**和同族的词保持一致**"，不是谁更"正确"。
+   */
+  { en: "knowing", kana: "ノウイング" },
+  { en: "knowhow", kana: "ノウハウ" },
+  { en: "throwing", kana: "スローイング" },
+  { en: "flowing", kana: "フロウイング" },
+  { en: "blowing", kana: "ブロウイング" },
+  { en: "unforgettable", kana: "アンフォーゲタブル" },
+  /*
+   * 用户问「notes 的读音」时核出来的：**复数/变形形的读音**是大模型词表最容易错的地方。
+   *   notes  ノート  ✗（那是单数；复数该 ノーツ，同族的 dates デイツ / rates レーツ 都对）
+   *   noting ノティン ✗（该 ノーティング）
+   *   bites  ビテス ✗（词尾哑 e + s：该 バイツ）—— kites キテス / mates マテス /
+   *          bones ボネス / zones ゾネス 都是同一个病：把哑 e 当元音读了
+   *   footnote フォオタノテ ✗（该 フットノート）／keynote ケイノテ ✗（该 キーノート）
+   * 规则层那边也有同一个洞（词尾哑 e 后面再跟 s / ing 时不再判长音），
+   * 但常见变形词基本都在词表里，人工钉这一批就够用；模型纠正过的词还会被
+   * 自动沉淀成离线词条（见 core/learn.js），所以这类词会越用越准。
+   * （`notes` 的老条目在上面那份字母序表里，这里就直接改掉、不再补一条 ——
+   *   同一个词两种写法构建器会中止，见 tools/build-dict.js。）
+   */
+  { en: "noting", kana: "ノーティング" },
+  { en: "bites", kana: "バイツ" },
+  { en: "kites", kana: "カイツ" },
+  { en: "mates", kana: "メイツ" },
+  { en: "bones", kana: "ボーンズ" },
+  { en: "zones", kana: "ゾーンズ" },
+  { en: "footnote", kana: "フットノート" },
+  { en: "footnotes", kana: "フットノーツ" },
+  { en: "keynote", kana: "キーノート" },
 ];

@@ -4,7 +4,7 @@
  * 两份数据源，由 tools/build-dict.js 合并（跑 npm run build:dict 重新生成）：
  *   1. tools/seed-words.js      —— 人工核过（其中大部分是从 katakana-terminator 的
  *      离线词典反转来的真实外来语写法，那份本来就是"片假名外来语 -> 英文原词"）；
- *   2. tools/seed-words-llm.js  —— 大模型按英文词频批量生成的读音（5544 条），
+ *   2. tools/seed-words-llm.js  —— 大模型按英文词频批量生成的读音（5543 条），
  *      由 tools/expand-dict-llm.js 生成，人工词表优先。
  *
  * 读音查找顺序见 core/reading.js：本词典 -> 罗马音切分 -> 英文音译规则
@@ -631,6 +631,7 @@
     "bishop": "ビショップ",
     "bit": "ビット",
     "bite": "バイト",
+    "bites": "バイツ",
     "bits": "ビッツ",
     "biz": "ビズ",
     "black": "ブラック",
@@ -647,6 +648,7 @@
     "blonde": "ブロンド",
     "blood": "ブラッド",
     "blow": "ブロウ",
+    "blowing": "ブロウイング",
     "blowjob": "ブロージョブ",
     "blowjobs": "ブロージョブズ",
     "blue": "ブルー",
@@ -666,6 +668,7 @@
     "bondage": "ボンデージ",
     "bonds": "ボンズ",
     "bone": "ボーン",
+    "bones": "ボーンズ",
     "bonus": "ボーナス",
     "boobs": "ブーブス",
     "book": "ブック",
@@ -2229,6 +2232,7 @@
     "flow": "フロウ",
     "flower": "フラワー",
     "flowers": "フラワーズ",
+    "flowing": "フロウイング",
     "flows": "フローズ",
     "flu": "フルー",
     "fluid": "フルード",
@@ -2250,6 +2254,8 @@
     "foods": "フーズ",
     "foot": "フット",
     "football": "フットボール",
+    "footnote": "フットノート",
+    "footnotes": "フットノーツ",
     "for": "フォー",
     "force": "フォース",
     "forced": "フォースド",
@@ -3055,6 +3061,7 @@
     "kevin": "ケビン",
     "key": "キー",
     "keyboard": "キーボード",
+    "keynote": "キーノート",
     "keys": "キーズ",
     "keyword": "キーワード",
     "keywords": "キーワーズ",
@@ -3078,6 +3085,7 @@
     "kisses": "キッシズ",
     "kit": "キット",
     "kitchen": "キッチン",
+    "kites": "カイツ",
     "kits": "キッツ",
     "km": "キロメートル",
     "knee": "ニー",
@@ -3092,7 +3100,8 @@
     "knocking": "ノッキング",
     "knot": "ノット",
     "know": "ノウ",
-    "knowing": "ノーイング",
+    "knowhow": "ノウハウ",
+    "knowing": "ノウイング",
     "knowledge": "ナレッジ",
     "known": "ノウン",
     "knows": "ノウズ",
@@ -3430,6 +3439,7 @@
     "mate": "メイト",
     "material": "マテリアル",
     "materials": "マテリアルズ",
+    "mates": "メイツ",
     "math": "マス",
     "mathematical": "マセマティカル",
     "mathematics": "マセマティックス",
@@ -3800,13 +3810,14 @@
     "notebook": "ノートブック",
     "notebooks": "ノートブックス",
     "noted": "ノーテッド",
-    "notes": "ノート",
+    "notes": "ノーツ",
     "nothing": "ナッシング",
     "notice": "ノーティス",
     "noticed": "ノーティスド",
     "notices": "ノーティシズ",
     "notification": "ノーティフィケーション",
     "notify": "ノーティファイ",
+    "noting": "ノーティング",
     "nov": "ノブ",
     "nova": "ノヴァ",
     "novel": "ノベル",
@@ -5654,6 +5665,7 @@
     "throat": "スロート",
     "throughout": "スルーアウト",
     "throw": "スロー",
+    "throwing": "スローイング",
     "thru": "スルー",
     "thu": "サーズデー",
     "thumb": "サム",
@@ -5858,6 +5870,7 @@
     "understood": "アンダースタッド",
     "underwear": "アンダーウェア",
     "undo": "アンドゥ",
+    "unforgettable": "アンフォーゲタブル",
     "unfortunately": "アンフォーチュナトリー",
     "uniform": "ユニフォーム",
     "union": "ユニオン",
@@ -6240,6 +6253,7 @@
     "zimbabwe": "ジンバブエ",
     "zip": "ジップ",
     "zone": "ゾーン",
+    "zones": "ゾーンズ",
     "zoo": "ズー",
     "zoom": "ズーム",
     "zum": "ズム",
@@ -6248,6 +6262,6 @@
 
   return {
     words: words,
-    count: 6226,
+    count: 6240,
   };
 });
