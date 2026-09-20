@@ -1150,6 +1150,22 @@ test("注音不透明度真的生效（老版本被一条 !important 压掉了�
   ctx.window.close();
 });
 
+test("设置面板：粘进来的 key 会自动洗掉引号 / 空格 / Bearer，并写回输入框", async () => {
+  // 用户报的「大模型请求怎么全失败了」里最常见的一种：key 粘进来时带了多余字符，
+  // 请求头不合法 -> 401 -> 满屏失败。这里确认面板当场洗掉并写回，落盘的也是干净的。
+  const env = bootPlugin(NCM_HTML, { dev: true });
+  await env.runLoad();
+  const root = env.listeners.config[0]();
+  const input = root.querySelector('[data-k="llmKey"]');
+  input.value = ' Bearer "sk-abc123456789012345" ';
+  input.dispatchEvent(new env.window.Event("change"));
+
+  assert.strictEqual(input.value, "sk-abc123456789012345", "输入框里要写成干净的值");
+  assert.strictEqual(env.api.config.llmKey, "sk-abc123456789012345");
+  const saved = JSON.parse(env.window.localStorage.getItem("latin-katakana.config"));
+  assert.strictEqual(saved.llmKey, "sk-abc123456789012345", "落盘的也要是干净的");
+});
+
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
   // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
   //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；

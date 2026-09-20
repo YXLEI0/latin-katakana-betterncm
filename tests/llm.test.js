@@ -27,6 +27,17 @@ function makeClient(ctx, opts) {
     const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
     const words = items.map((it) => (it && typeof it === "object" ? it.w : it));
     calls.push({ url: url, model: body.model, words: words, items: items, auth: init.headers.Authorization });
+    // httpFail：模拟"HTTP 有状态码的失败"（402 / 401 / 404…），走 httpError 那条路。
+    // 放在 reply 之前判：这条路的重点是状态码，不是 reply 的内容。
+    if (opts.httpFail) {
+      return Promise.resolve({
+        ok: false,
+        status: opts.httpFail.status,
+        text: function () {
+          return Promise.resolve(opts.httpFail.body || "");
+        },
+      });
+    }
     const reply = typeof opts.reply === "function" ? opts.reply(words, items) : opts.reply || {};
     if (reply instanceof Error) return Promise.reject(reply);
     return Promise.resolve({
@@ -58,6 +69,60 @@ function makeClient(ctx, opts) {
   });
   return { client, calls, updates, statuses };
 }
+
+// ============================================================ key / 错误信息
+
+test("key 清洗：带引号 / 前后空格 / 整个 Bearer 都能收拾干净（这是「请求全失败」的常见元凶）", () => {
+  const ctx = loadCore();
+  for (const raw of ['"sk-abc123456789012345"', "  sk-abc123456789012345  ", "Bearer sk-abc123456789012345", "Bearer  'sk-abc123456789012345'"]) {
+    assert.strictEqual(ctx.LKLLM.normalizeKey(raw), "sk-abc123456789012345", "洗不干净：" + JSON.stringify(raw));
+  }
+  assert.strictEqual(ctx.LKLLM.normalizeKey(""), "");
+  assert.strictEqual(ctx.LKLLM.normalizeKey(null), "");
+  assert.strictEqual(ctx.LKLLM.normalizeKey("sk-abc"), "sk-abc", "本来就是干净的别乱动");
+});
+
+test("key 清洗：真的发出去的 Authorization 里不能有多余字符", async () => {
+  const ctx = loadCore();
+  const { client, calls } = makeClient(ctx, { key: ' "sk-abc123456789012345" ', reply: () => ({ 1: "テスト" }) });
+  client.lookup("clover", "clover");
+  await client.flush();
+  assert.strictEqual(calls[0].auth, "Bearer sk-abc123456789012345");
+});
+
+test("402（余额用完）要说清楚是余额，不是让用户去查 key", async () => {
+  const ctx = loadCore();
+  const { client, statuses, updates } = makeClient(ctx, {
+    // 走 httpError 那条路：响应非 2xx
+    httpFail: { status: 402, body: '{"error":{"message":"Insufficient Balance"}}' },
+  });
+  client.lookup("clover", "clover");
+  await client.flush();
+  const text = statuses.join(" | ");
+  assert.ok(text.indexOf("402") >= 0 && text.indexOf("余额") >= 0, "要提示余额：" + text);
+  assert.ok(text.indexOf("Insufficient Balance") >= 0, "服务端原话也要带上：" + text);
+  assert.ok(updates.length >= 1, "失败也要叫 onUpdate");
+});
+
+test("没有状态码的失败（Failed to fetch）要翻译成人话：网络/跨域", async () => {
+  const ctx = loadCore();
+  const boom = new TypeError("Failed to fetch");
+  const { client, statuses } = makeClient(ctx, { reply: () => boom });
+  client.lookup("clover", "clover");
+  await client.flush();
+  const text = statuses.join(" | ");
+  assert.ok(text.indexOf("Failed to fetch") >= 0, "原话保留：" + text);
+  assert.ok(text.indexOf("跨域") >= 0 || text.indexOf("网络不通") >= 0, "要给出人话提示：" + text);
+});
+
+test("stats 里带 key 体检信息（长度 / 形状 / 有没有被洗过）", () => {
+  const ctx = loadCore();
+  const { client } = makeClient(ctx, { key: '"sk-abc123456789012345"' });
+  const s = client.stats();
+  assert.strictEqual(s.keyShape, "sk-");
+  assert.strictEqual(s.keyLength, 21);
+  assert.strictEqual(s.keyCleaned, true, "粘的时候带了引号，要记一笔");
+});
 
 // ============================================================ 失败也要通知上层
 

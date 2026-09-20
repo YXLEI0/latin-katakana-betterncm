@@ -147,6 +147,27 @@
   }
 
   /**
+   * 把用户粘进来的 key 收拾干净。
+   *
+   * 真机上最常见的三种"全失败"就是这个（都不是服务端的问题）：
+   *   1. 粘的时候把**引号**一起带进来了：`"sk-xxx"`；
+   *   2. 前后有**空格/换行**（从网页上复制很容易带上）；
+   *   3. 直接把整个请求头粘进来了：`Bearer sk-xxx`。
+   * 这三种都会让 Authorization 头不合法 → 401，用户看到的就是"请求全失败"。
+   */
+  function normalizeKey(raw) {
+    var k = typeof raw === "string" ? raw.trim() : "";
+    // 引号和 Bearer 可能叠着来（"Bearer 'sk-x'"），所以循环剥几轮
+    for (var i = 0; i < 3; i++) {
+      var before = k;
+      k = k.replace(/^Bearer\s+/i, "").trim();
+      if (k.length > 1 && /^["']/.test(k) && /["']$/.test(k)) k = k.slice(1, -1).trim();
+      if (k === before) break;
+    }
+    return k;
+  }
+
+  /**
    * 把"HTTP 4xx/5xx"变成**能照着修**的错误信息：地址 + 服务端原话。
    *
    * 为什么值得单独写一个：404 最常见的原因是地址少了 `/chat/completions`
@@ -160,7 +181,9 @@
         ? "（地址不对：服务端不认识这个路径）"
         : "（地址不对：接口地址一般以 /chat/completions 结尾，别只填 base_url）";
     } else if (status === 401 || status === 403) hint = "（Key 不对或没权限）";
+    else if (status === 402) hint = "（余额/额度用完，去服务商那边充值或换 key）";
     else if (status === 429) hint = "（被限流了，等一会儿再试）";
+    else if (status === 400) hint = "（请求被拒：多半是模型名不对，或者这家接口不认 response_format）";
     else if (status >= 500) hint = "（服务端出错，稍后再试）";
     var msg = "HTTP " + status + hint + " @ " + url;
     var s = String(body || "")
@@ -172,6 +195,21 @@
     err.status = status;
     err.url = url;
     return err;
+  }
+
+  /**
+   * 连 HTTP 状态码都没有的失败（fetch 直接 reject）：几乎都是**网络/跨域**，
+   * 而这句话本身（"Failed to fetch"）对用户毫无信息量，得翻译一下。
+   */
+  function networkHint(err) {
+    var name = (err && err.name) || "";
+    var text = ((err && err.message) || "") + " " + name;
+    if (!/fetch|network|load failed|abort|timeout|ECONN|ENOTFOUND|CORS/i.test(text)) return "";
+    if (/abort/i.test(text)) return "（请求超时/被取消）";
+    return (
+      "（网络不通或被跨域拦住：这个接口地址要在网易云里能直接访问，" +
+      "并且允许 https://music.163.com 这个来源；换成服务商的官方地址试试）"
+    );
   }
 
   function createClient(options) {
@@ -192,9 +230,11 @@
       enabled: options.enabled !== false,
       endpoint: normalizeEndpoint(options.endpoint),
       model: options.model || DEFAULT_MODEL,
-      key: options.key || "",
+      key: normalizeKey(options.key),
       batchSize: options.batchSize || BATCH_SIZE,
     };
+    // 粘进来的 key 被我们收拾过（去了引号/空格/Bearer）就记一笔，check() 里会说明
+    var keyCleaned = typeof options.key === "string" && options.key !== cfg.key && !!cfg.key;
 
     var mem = new Map(); // key(词+语境) -> { k: kana } 命中，{ miss: true } 问过但没有
     /*
@@ -532,7 +572,11 @@
      *                        那次不算 API 用量（只记一次失败）
      */
     function fail(batch, err, usage) {
-      lastError = (err && err.message) || String(err);
+      // 有状态码的失败（httpError 已经写清了地址和该改哪儿）原样留着；
+      // 连状态码都没有的（fetch 直接 reject）补一句人话，否则用户只看到 "Failed to fetch"
+      var raw = (err && err.message) || String(err);
+      var hint = err && err.status ? "" : networkHint(err);
+      lastError = hint ? raw + " " + hint : raw;
       stats.failures++;
       var u = usage || { words: batch.length, chars: 0, sent: true };
       onUsage({
@@ -704,7 +748,11 @@
         if (next.enabled !== undefined) cfg.enabled = !!next.enabled;
         if (next.endpoint !== undefined) cfg.endpoint = normalizeEndpoint(next.endpoint);
         if (next.model) cfg.model = String(next.model);
-        if (next.key !== undefined) cfg.key = String(next.key || "");
+        if (next.key !== undefined) {
+          var before = String(next.key || "");
+          cfg.key = normalizeKey(before);
+          if (before !== cfg.key && cfg.key) keyCleaned = true;
+        }
         if (next.batchSize) cfg.batchSize = Math.max(1, Math.min(60, next.batchSize | 0));
         // 改配置等于用户手动动过了（多半是刚填好 key），把失败退避清掉，别让他等十分钟
         cooldownUntil = 0;
@@ -728,6 +776,9 @@
         return {
           enabled: cfg.enabled,
           hasKey: !!cfg.key,
+          keyLength: cfg.key.length,
+          keyShape: !cfg.key ? "none" : /^sk-/.test(cfg.key) ? "sk-" : "other",
+          keyCleaned: keyCleaned,
           endpoint: cfg.endpoint,
           model: cfg.model,
           cacheHits: stats.cacheHits,
@@ -748,6 +799,7 @@
   return {
     createClient: createClient,
     normalizeEndpoint: normalizeEndpoint,
+    normalizeKey: normalizeKey,
     DEFAULT_ENDPOINT: DEFAULT_ENDPOINT,
     DEFAULT_MODEL: DEFAULT_MODEL,
     RE_KATAKANA: RE_KATAKANA,

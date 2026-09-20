@@ -851,6 +851,18 @@
               el.value = fixed;
             }
           }
+          /*
+           * key 也当场洗一遍：从网页上复制 key 很容易带上引号、空格，甚至整个
+           * "Bearer xxx"。这些都会让请求 401（用户看到的就是"大模型请求全失败"），
+           * 洗完之后写回输入框，免得每次都要自己盯着看有没有多余字符。
+           */
+          if (key === "llmKey" && typeof LKLLM !== "undefined" && LKLLM.normalizeKey) {
+            var clean = LKLLM.normalizeKey(config.llmKey);
+            if (clean !== config.llmKey) {
+              config.llmKey = clean;
+              el.value = clean;
+            }
+          }
           saveConfig();
           var out = root.querySelector('[data-v="' + key + '"]');
           if (out) out.textContent = fmt(key);
@@ -1236,6 +1248,18 @@
           var lines = [];
           lines.push("启用：" + (s.enabled ? "是" : "否"));
           lines.push("API Key：" + (s.hasKey ? "已填" : "没填"));
+          if (s.hasKey) {
+            /*
+             * Key 体检：真机上"请求全失败"最常见的原因不是服务端，而是粘进来的 key
+             * 不干净（带引号 / 前后空格 / 整个 "Bearer xxx"）。这三样我们在配置阶段
+             * 就收拾掉了，顺手在这里说清楚 —— 否则用户只能看到一句 401。
+             */
+            var odd = [];
+            if (s.keyShape !== "sk-") odd.push("形状不像（一般以 sk- 开头）");
+            if (s.keyLength < 20) odd.push("太短（只有 " + s.keyLength + " 个字符）");
+            lines.push("Key 体检：" + (odd.length ? "⚠ " + odd.join("；") : "✓ 长度 " + s.keyLength));
+            if (s.keyCleaned) lines.push("　（粘进去时带了引号/空格/Bearer，已自动去掉）");
+          }
           lines.push("接口：" + s.endpoint + "　模型：" + s.model);
           lines.push(
             "请求 " + s.requests + " 次，命中 " + s.hits + "，模型没给 " + s.misses + "，失败 " + s.failures
@@ -1245,13 +1269,17 @@
           if (s.lastError) lines.push("最后一次错误：" + s.lastError);
           if (!s.enabled) lines.push("→ 设置面板里把「用大模型校正」打开");
           else if (!s.hasKey) lines.push("→ 设置面板里填 API Key，然后点「测试连接」");
-          else if (s.failures > 0 && s.hits === 0) lines.push("→ 请求都没成功，照上面的错误信息排查");
-          else if (s.hits > 0) lines.push("→ 已经生效 ✓（想看某个词是谁给的：LK.display('词') 对比 LK.read('词')）");
+          else if (s.failures > 0 && s.hits === 0) {
+            lines.push("→ 请求都没成功，照上面的错误信息对号入座：");
+            lines.push("　 401/403 = key 不对；402 = 余额用完；429 = 被限流；404 = 地址少了 /chat/completions；400 = 模型名不对");
+            lines.push("　 没有状态码的那句（Failed to fetch 之类）= 网络不通，或被跨域拦住（服务商得允许 music.163.com 这个来源）");
+          } else if (s.hits > 0) lines.push("→ 已经生效 ✓（想看某个词是谁给的：LK.display('词') 对比 LK.read('词')）");
           else if (s.requests > 0) lines.push("→ 请求发出去了但一个都没命中，看上面「模型没给 / 失败」的数字");
           else
             lines.push(
-              "→ 还没问过任何词：说明到目前为止歌词里的拉丁词**全在离线词典里**（6046 条），这一层没活干。" +
-                "想立刻验证：点设置里的「测试连接」，或找一首带生僻词/英文人名的歌"
+              "→ 还没问过任何词：说明到目前为止歌词里的拉丁词**全在离线词典里**（" +
+                (typeof LKDict !== "undefined" ? LKDict.count : "?") +
+                " 条），这一层没活干。想立刻验证：点设置里的「测试连接」，或找一首带生僻词/英文人名的歌"
             );
           return lines.join("\n");
         },
