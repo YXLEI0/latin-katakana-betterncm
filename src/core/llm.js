@@ -241,6 +241,12 @@
      * 校验不过就按 miss 处理（记下来，别再问同一个词）。
      */
     var validate = typeof options.validate === "function" ? options.validate : null;
+    /*
+     * 「收下了一个模型答案」的回调：main.js 用它把答案沉淀成离线词条
+     * （见 core/learn.js）。参数是 (词, 读音, 它所在的整句)。
+     * 由上层决定收不收：词是不是"两可"、本地层是不是本来就对，这些只有上层知道。
+     */
+    var onAnswer = typeof options.onAnswer === "function" ? options.onAnswer : null;
 
     var cfg = {
       enabled: options.enabled !== false,
@@ -646,6 +652,17 @@
           stats.hits++;
           stats.words++;
           hits++;
+          /*
+           * 通知上层"这个答案收下了"（它可能把它沉淀成离线词条）。
+           * 回调是上层的东西，抛错不能影响这一层 —— 包起来。
+           */
+          if (onAnswer) {
+            try {
+              onAnswer(item.word, said, item.context);
+            } catch (e) {
+              /* 学词失败不影响注音 */
+            }
+          }
         } else {
           /*
            * 记成"问过、没结果"：这一句里的这个词下一轮不会再发。

@@ -297,6 +297,8 @@
    */
   function effectiveRank(r) {
     if (!r) return -1;
+    // 「学会的词」是离线词条，名次按离线词典算（在线层不再覆盖它 —— 省的就是这一笔）
+    if (r.source === "learned") return layerRank("dict");
     if (r.source !== "letters" && r.confident === false) return layerRank("rule");
     return layerRank(r.source);
   }
@@ -389,6 +391,7 @@
     corrector: null,
     llm: null,
     usage: null,
+    learned: null,
     annotator: null,
     observer: null,
     timer: null,
@@ -436,6 +439,15 @@
    * "页面上显示得很确定、其实正在问模型"这种不同步。
    */
   function localReading(word, line) {
+    /*
+     * 先看「学会的词」（core/learn.js）：模型在两个不同句子里答过同一个读音、
+     * 而且和本地层不一样 —— 这种已经沉淀成离线词条了，**不再问模型**（省钱就在这）。
+     * 它的名次按离线词典算（见 effectiveRank），所以在线层不会再覆盖它。
+     */
+    if (state.learned) {
+      var learned = state.learned.get(word);
+      if (learned) return { kana: learned, source: "learned", confident: true };
+    }
     var r = state.reader ? state.reader.read(word) : null;
     if (!r || !r.kana) return null;
     /*
@@ -465,8 +477,28 @@
     return r;
   }
 
-  function resolveReading(word, line) {
-    if (!state.reader) return null;
+  /**
+   * 这个词是不是"两可"的短音节：词典给的是**英文**读音，而这一串同时也能读成
+   * 罗马音节（`do` ドゥー/ド、`me` ミー/メ、`pi` パイ/ピ、`no` ノー/ノ…）。
+   *
+   * 两处用它：
+   *   1. 显示时标成"没把握"（confident:false），交给大模型按整句语境判；
+   *   2. **不把模型答案沉淀成离线词条** —— 它的正确读音取决于那句话，
+   *      钉死一个只会错（这条规矩见 core/learn.js 的说明）。
+   */
+  function isTwoWayShort(word, dictKana) {
+    var rom = shortRomajiOf(word);
+    if (!rom) return false;
+    var kana = dictKana;
+    if (kana === undefined) {
+      var d = typeof LKDict !== "undefined" ? LKDict.words : {};
+      var key = typeof LKMatcher !== "undefined" ? LKMatcher.normalize(word) : String(word || "").toLowerCase();
+      kana = d[key];
+    }
+    return !!kana && kana !== rom;
+  }
+
+  function resolveReading(word, line) {    if (!state.reader) return null;
     var r = localReading(word, line);
     if (!r || !r.kana) return null;
 
@@ -758,6 +790,22 @@
     }
     var local = state.reader ? state.reader.read(w) : null;
     out.push("词：" + w);
+    /*
+     * 「学会的词」要排在最前面说：它是**自己攒出来的**离线词条，很容易被当成
+     * 词典里本来就有的东西（用户报"某个词读错了"，结果发现是模型当初答错、
+     * 被我们沉淀下来了 —— 那就得忘掉它）。
+     */
+    if (state.learned) {
+      var learnedKey = typeof LKMatcher !== "undefined" ? LKMatcher.normalize(w) : String(w).toLowerCase();
+      var lrec = state.learned.peek(w);
+      if (lrec) {
+        out.push("学会的词：" + lrec + "（模型在两个句子里都这么答、已当离线词条用，所以不会再问模型）");
+        out.push("　读音不对就忘掉它：LK.learn.forget('" + learnedKey + "')");
+      } else {
+        var pend = state.learned.stats().pending;
+        if (pend) out.push("学会的词：没有（待定的有 " + pend + " 个，模型在别的句子里再答一次同样的读音就会收下）");
+      }
+    }
     out.push(
       "本地层：" + (local ? local.kana + "（" + local.source + "，confident=" + local.confident + "）" : "读不出来")
     );
@@ -854,8 +902,11 @@
       '<div class="lk-row"><label>API Key <input type="password" data-k="llmKey" placeholder="sk-..."></label> ' +
       '<button data-a="llmTest">测试连接</button> <span data-v="llmTest"></span></div>' +
       '<div class="lk-llm-state"></div>' +
+      '<div class="lk-row"><span data-v="learned"></span> ' +
+      '<button data-a="learnClear">清空已学会的词</button></div>' +
       '<div class="lk-hint">Key 只存在本机 localStorage，不会进仓库。留空则这一层不工作，' +
-      "自动退回免费接口。补上 key 之后，词典里没有的词和<b>两可的短音节</b>（Do/Re/PI/ME…）都由它按整句语境判。</div>" +
+      "自动退回免费接口。补上 key 之后，词典里没有的词和<b>两可的短音节</b>（Do/Re/PI/ME…）都由它按整句语境判；" +
+      "模型在两个不同句子里给出同一个读音、而且和离线读音不一样的词，会自动沉淀成离线词条（见上面那行），以后不再问。</div>" +
       "<h3>预览</h3>" +
       '<div class="lk-preview"></div>' +
       '<details class="lk-adv"><summary>高级设置（接口地址 / 外观 / 范围 / 读音来源顺序 / 用量 / 排障）</summary>' +
@@ -870,6 +921,7 @@
       '<div class="lk-row"><label><input type="checkbox" data-k="colorBySource"> 按读音来源给注音上色（排障）</label></div>' +
       '<div class="lk-hint">' +
       '<span style="color:#46d17e">■ 词典</span>　' +
+      '<span style="color:#2fae7a">■ 学会的词</span>　' +
       '<span style="color:#3fb6d8">■ 记号/字母名</span>　' +
       '<span style="color:#6f8ff0">■ 罗马音</span>　' +
       '<span style="color:#e8a33d">■ 英文规则</span>　' +
@@ -1047,6 +1099,28 @@
     }
 
     /** 用量区块：把 usage 模块的账本渲染成几行 */
+    /*
+     * 「学会的词」那一行：模型答案沉淀成的离线词条。
+     *
+     * 用户问的就是这个 —— 让模型答过的词自动进词库、以后不再花钱问。
+     * 这里只说数量：具体哪些词用 `LK.learn.list()` 看（面板塞不下一长串）。
+     */
+    function refreshLearned() {
+      var box = root.querySelector('[data-v="learned"]');
+      if (!box) return;
+      if (!state.learned) {
+        box.textContent = "学会的词：不可用（core/learn.js 没注入）";
+        return;
+      }
+      var s = state.learned.stats();
+      box.textContent =
+        "学会的词：" +
+        s.count +
+        " 个" +
+        (s.pending ? "（还有 " + s.pending + " 个只听到过一次，再听一句就收）" : "") +
+        (s.usedSession ? "；本次已用上 " + s.usedSession + " 个（都省下了一次提问）" : "");
+    }
+
     function refreshUsage() {
       if (!usageBox) return;
       usageBox.innerHTML = "";
@@ -1302,6 +1376,7 @@
       refreshLayers();
       refreshPreview();
       refreshUsage();
+      refreshLearned();
       refreshLlmState();
       refreshStatus();
     }
@@ -1321,6 +1396,7 @@
       }
       refreshUsage();
       refreshLlmState();
+      refreshLearned();
     }, 1000);
 
     if (!DEV && status) status.style.display = "none";
@@ -1451,6 +1527,15 @@
               if (out) out.textContent = "先在上面填一个词或一段歌词。";
             } else if (out) {
               out.textContent = what === "diagWhy" ? diagWhy(text) : diagWord(text);
+            }
+          } else if (what === "learnClear") {
+            if (state.learned) {
+              var gone = state.learned.clear();
+              rescan();
+              b.textContent = "已清掉 " + gone + " 个";
+              setTimeout(function () {
+                b.textContent = "清空已学会的词";
+              }, 1500);
             }
           } else if (what === "usageReset") {
             var scope = b.dataset.scope || "session";
@@ -1587,6 +1672,18 @@
         },
       });
       applyLayerOrder();
+      /*
+       * 「学会的词」：把模型答过两次、而且纠正了本地读音的词沉淀成离线词条
+       * （见 core/learn.js）。它压在最前面、按离线词典的名次参与层序 ——
+       * 这些词以后**不会再问模型**，用户要的"自动沉淀进词典"就是这个。
+       */
+      if (typeof LKLearn !== "undefined") {
+        state.learned = LKLearn.createLearned({
+          normalize: function (word) {
+            return typeof LKMatcher !== "undefined" ? LKMatcher.normalize(word) : String(word == null ? "" : word).toLowerCase();
+          },
+        });
+      }
       // 大模型校正：没填 key 就整层不工作（lookup 一律返回 null），自动退回上面的 Google 路子
       if (typeof LKLLM !== "undefined") {
         state.llm = LKLLM.createClient({          enabled: config.llmEnabled !== false,
@@ -1596,6 +1693,35 @@
           // 用量：token 数由接口响应里的 usage 给（没给就只记次数）
           onUsage: function (fields) {
             if (state.usage) state.usage.add("llm", fields);
+          },
+          /*
+           * 收下了一个模型答案 -> 试着沉淀成离线词条。
+           * 规矩（宁缺毋滥，理由见 core/learn.js）：
+           *   - 本地层本来就对的不学（学了也没用）；
+           *   - "两可"的短音节不学（读音取决于那句话）；
+           *   - 要在**两个不同的句子**里答出同一个读音才收（learn.js 记账）。
+           */
+          onAnswer: function (word, kana, line) {
+            if (!state.learned) return;
+            var local = state.reader ? state.reader.read(word) : null;
+            if (!local || !local.kana) return;
+            if (isTwoWayShort(word, local.kana)) return;
+            var r = state.learned.note(word, kana, line, local.kana);
+            if (r === "learned" || r === "drop") {
+              log(
+                (r === "learned" ? "学会一个词：" : "撤销一个学会的词（模型改口）：") +
+                  word +
+                  " -> " +
+                  kana +
+                  "（已学会 " +
+                  state.learned.stats().count +
+                  " 个）"
+              );
+              // 让页面立刻用上这个读音，并把面板上的数字刷新
+              if (state.annotator && state.annotator.relabel) state.annotator.relabel();
+              schedule(0);
+              notifyConfigUI();
+            }
           },
           // 同上：拦住"意译/拟声词"（用户报的 tick -> カチカチ）
           validate: function (word, kana) {
@@ -1717,6 +1843,37 @@
         // 本地那几层的读音（不含大模型/联网校正）—— 看 source 就知道是谁给的
         return state.reader ? state.reader.read(word) : null;
       },
+      /*
+       * 「学会的词」：模型答过两次、且纠正了本地读音的词，已经沉淀成离线词条
+       * （它们不再走模型，省钱就在这里）。面板上那一行显示的就是这份东西。
+       *   LK.learn.list()        看学会了哪些（按最近用到的排前面）
+       *   LK.learn.stats()       数量 / 待定数量 / 本次用上几个
+       *   LK.learn.forget('xxx') 忘掉一个（读音不对时用）
+       *   LK.learn.clear()       全清（等于回到"每次都得问模型"）
+       */
+      learn: {
+        list: function () {
+          return state.learned ? state.learned.list() : [];
+        },
+        stats: function () {
+          return state.learned ? state.learned.stats() : null;
+        },
+        forget: function (word) {
+          return state.learned ? state.learned.forget(word) : false;
+        },
+        clear: function () {
+          var n = state.learned ? state.learned.clear() : 0;
+          rescan();
+          return n;
+        },
+        flush: function () {
+          if (state.learned) state.learned.flush();
+        },
+      },
+      learned: function () {
+        // 短别名：LK.learned() 直接看列表
+        return state.learned ? state.learned.list() : [];
+      },
       display: function (word) {
         /*
          * **页面上实际用的**那个读音：按用户排的层序取（默认
@@ -1761,6 +1918,7 @@
           reading: state.reader ? state.reader.stats() : null,
           correct: state.corrector ? state.corrector.stats() : null,
           llm: state.llm ? state.llm.stats() : null,
+          learned: state.learned ? state.learned.stats() : null,
         };
       },
       /*

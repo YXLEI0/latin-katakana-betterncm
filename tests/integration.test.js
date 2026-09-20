@@ -118,6 +118,12 @@ function rubyCount(root) {
   return root.querySelectorAll("ruby.lt-ruby").length;
 }
 
+/** 离线词典里有没有这个词（写测试前提用；直接读 src/core/dict.js） */
+function envDictHas(word) {
+  const D = require("../src/core/dict.js");
+  return Object.prototype.hasOwnProperty.call(D.words, word);
+}
+
 /** 底字文本（剔掉注音）——标准 ruby 里 <rt> 的文本也算 textContent，必须显式去掉 */
 function baseText(el) {
   const clone = el.cloneNode(true);
@@ -1739,6 +1745,142 @@ test("Shoo / Gimme / Yeah：词典里补上，不再被罗马音层抢走", asyn
   assert.strictEqual(got.get("Gimme"), "ギミー", "Gimme 该是 ギミー");
   assert.strictEqual(got.get("more"), "モア", "more 该是 モア");
   assert.strictEqual(got.get("Yeah"), "イェイ", "Yeah 该是 イェイ");
+});
+
+test("学会的词：模型在两个句子里答同一个读音 -> 沉淀成离线词条，重启后不再问", async () => {
+  // 用户要的：「让运行期模型给的答案自动沉淀进词典」。
+  // 模型那层是按「词 + 那一句」缓存的，换首歌同一句再来就得**重新花钱问**；
+  // 沉淀之后它就是离线词条（source: learned），以后一个请求都不发。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>serendipity の 夜</p></li>
+  <li class="line"><p>また serendipity を 探して</p></li>
+</ul></div></div>
+</body></html>`;
+  // 前提：这个词词典里没有（不然根本不会去问模型）
+  assert.strictEqual(envDictHas("serendipity"), false, "前提：serendipity 不在离线词典里");
+
+  const asked = [];
+  const fakeLlm = (answer) =>
+    function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const items = JSON.parse(JSON.parse(init.body).messages[0].content.slice(JSON.parse(init.body).messages[0].content.indexOf("[")));
+      asked.push(items.map((it) => String(it.w).toLowerCase()));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = answer(it.w);
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    };
+  const CONFIG = {
+    llmEnabled: true,
+    llmKey: "sk-test",
+    llmEndpoint: "https://api.example.com/v1/chat/completions",
+    online: false,
+  };
+
+  const env = bootPlugin(HTML, { config: CONFIG, fetch: fakeLlm(() => "セレンディピティ") });
+  await env.runLoad();
+  await sleep(1600);
+
+  // 页面用的是模型答案
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  for (const p of ps) {
+    const rt = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.querySelector(".lt-rt").textContent);
+    assert.deepStrictEqual(rt, ["セレンディピティ"], "两句都要用模型答案：" + p.innerHTML);
+  }
+  // 两句 -> 收下
+  const learned = env.api.learn.list();
+  assert.deepStrictEqual(
+    [...learned].map((x) => [x.word, x.kana]),
+    [["serendipity", "セレンディピティ"]],
+    "两句答同一个读音就该沉淀：" + JSON.stringify(learned)
+  );
+  // 沉淀之后页面上的来源就是 learned（排障上色会显示成"学会的词"）
+  assert.strictEqual(env.api.state.learned.peek("serendipity"), "セレンディピティ");
+
+  /*
+   * 重开一次（模拟重启网易云）：把沉淀下来的那份 localStorage 搬到新的页面里，
+   * 换成"什么都不许问"的 fetch —— 只要还在注音，就说明它没再花请求。
+   */
+  const saved = env.window.localStorage.getItem("latin-katakana.learned.v1");
+  assert.ok(saved && saved.indexOf("セレンディピティ") >= 0, "要落盘：" + saved);
+
+  let calls = 0;
+  const env2 = bootPlugin(HTML, {
+    config: CONFIG,
+    fetch: function () {
+      calls++;
+      return Promise.reject(new Error("不该有任何请求"));
+    },
+  });
+  env2.window.localStorage.setItem("latin-katakana.learned.v1", saved);
+  await env2.runLoad();
+  await sleep(600);
+
+  const ps2 = env2.document.querySelectorAll("ul.lyric li p");
+  const got2 = [...ps2[0].querySelectorAll("ruby.lt-ruby")].map((r) => r.querySelector(".lt-rt").textContent);
+  assert.deepStrictEqual(got2, ["セレンディピティ"], "重启后离线也要读对：" + ps2[0].innerHTML);
+  assert.strictEqual(calls, 0, "已经学会的词一个字都不该再问模型（这就是省钱的地方）");
+  // 来源标记也要是 learned（按来源上色时显示成"学会的词"）
+  assert.ok(ps2[0].querySelector("ruby.lt-src-learned"), "要标成 learned 来源：" + ps2[0].innerHTML);
+  // 面板上那一行也要报出来
+  assert.ok(
+    env2.api.learn.stats().count === 1 && env2.api.learn.stats().usedSession >= 1,
+    "本次用上了几个要能数出来：" + JSON.stringify(env2.api.learn.stats())
+  );
+
+  // 读音不对时能忘掉：忘掉之后它又变成"要问模型"的词
+  assert.strictEqual(env2.api.learn.forget("serendipity"), true);
+  assert.strictEqual(env2.api.learn.stats().count, 0);
+  assert.strictEqual(env2.api.learn.list().length, 0);
+});
+
+test("学会的词：只答过一次不收、两可的短音节不收、模型改口就撤销", async () => {
+  // 收词的边界（收错了就是"错读音被钉成离线权威"）。三种都过一遍：
+  //   1. 只在一个句子里答过 -> 不收；
+  //   2. 两可的短音节（do/re/mi…）-> 不收（读音取决于那句话）；
+  //   3. 后来改成别的读音 -> 把已收的撤销。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>serendipity の 夜</p></li>
+  <li class="line"><p>「Do」を 重ねて</p></li>
+</ul></div></div>
+</body></html>`;
+  const CONFIG = {
+    llmEnabled: true,
+    llmKey: "sk-test",
+    llmEndpoint: "https://api.example.com/v1/chat/completions",
+    online: false,
+  };
+  const answerFor = (w) => (String(w).toLowerCase() === "do" ? "ド" : "セレンディピティ");
+  const env = bootPlugin(HTML, {
+    config: CONFIG,
+    fetch: function (url, init) {
+      const items = JSON.parse(JSON.parse(init.body).messages[0].content.slice(JSON.parse(init.body).messages[0].content.indexOf("[")));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = answerFor(it.w);
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1600);
+
+  const learned = [...env.api.learn.list()].map((x) => x.word);
+  assert.deepStrictEqual(learned, [], "只答过一次的不收；do 是两可的不收：" + JSON.stringify(learned));
+  assert.ok(env.api.learn.stats().pending >= 1, "serendipity 要记成'待定'：" + JSON.stringify(env.api.learn.stats()));
+  // do 连待定都不该有（两可词由上层直接挡掉）
+  assert.strictEqual(env.api.state.learned.peek("do"), null);
 });
 
 test("设置面板：罗马音排在词典前面时给出提醒（它会把英文词按罗马音读）", async () => {

@@ -93,6 +93,7 @@ console.log("[0/7] 运行时版本");
     "tests/correct.test.js",
     "tests/llm.test.js",
     "tests/usage.test.js",
+    "tests/learn.test.js",
     "tests/integration.test.js",
     "tests/patch.test.js",
   ];
@@ -168,6 +169,7 @@ const WANT_ORDER = [
   "core/correct.js",
   "core/llm.js",
   "core/usage.js",
+  "core/learn.js",
   "core/annotate.js",
   "main.js",
 ];

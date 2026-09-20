@@ -1973,6 +1973,7 @@
       colorBySource
         ? [
             "ruby.lt-src-dict > .lt-rt { color: #46d17e !important; }", // 离线词典：最可信，绿
+            "ruby.lt-src-learned > .lt-rt { color: #2fae7a !important; }", // 模型答案沉淀成的词条：深绿（同属"离线词条"）
             "ruby.lt-src-letters > .lt-rt { color: #3fb6d8 !important; }", // 记号 / 字母名：青
             "ruby.lt-src-romaji > .lt-rt { color: #6f8ff0 !important; }", // 罗马音：蓝
             "ruby.lt-src-rule > .lt-rt { color: #e8a33d !important; }", // 英文音译规则：橙
