@@ -1522,8 +1522,23 @@
        * 排障时最难受的就是"某行没注音"不留痕：现在每一轮扫描都会带上跳过原因
        * （文本在动 / 认输期 / 无译文 / 切不出词 / 不在区域里…），这里直接给结论。
        */
-      why: function () {
+      why: function (text) {
         var r = state.lastResult;
+        // 带参数：查"这一行为什么没注音"（找页面上包含这段文字的地方，逐层说清）
+        if (text && state.annotator && state.annotator.explain) {
+          var mode = config.scope === "lyrics" || config.scope === "titles" ? config.scope : "safe";
+          var regions = null;
+          try {
+            regions = state.annotator.findRegions(mode);
+          } catch (e) {
+            regions = null;
+          }
+          var lines = ["查「" + text + "」："];
+          var detail = state.annotator.explain(text, regions);
+          for (var i = 0; i < detail.length; i++) lines.push(detail[i]);
+          lines.push("当前 scope=" + config.scope + "，上面认到的区域数：" + (regions ? regions.length : "?"));
+          return lines.join("\n");
+        }
         if (!r) return "还没扫过（插件没启用？）";
         var lines = [];
         lines.push(

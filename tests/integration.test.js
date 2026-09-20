@@ -1439,6 +1439,43 @@ test("设置面板：模型层停摆时给出大白话告警 + 「立刻重试�
   assert.strictEqual(env.api.llm.stats().cooldownMs, 0, "点了之后退避要清掉");
 });
 
+test("LK.why('文本')：说清「那一行为什么没注音」（区域外 / 被当翻译层）", async () => {
+  // 用户报的「Love, bluh bluh bluh 和 MWAH! 一直没注音」。读音层其实没问题
+  // （实测 Love→ラブ、bluh→ブルー、MWAH→ンワー 都有），所以问题一定在
+  // "那一行不在我们的区域里"。这个诊断把元素链和原因直接说出来。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>Love, bluh bluh bluh</p><p>爱、bluh bluh bluh</p></li>
+      <li class="line"><p>MWAH!</p></li>
+    </ul>
+  </div>
+  <div class="lyric-elsewhere"><p>MWAH! 在歌词区外面</p></div>
+</div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(200);
+
+  // 原文那行标上了（前提）
+  const first = env.document.querySelector("ul.lyric li p");
+  assert.ok(rubyCount(first) >= 3, "原文行要标上：" + first.innerHTML);
+
+  const t = env.api.why("MWAH");
+  assert.ok(t.indexOf("查「MWAH」") >= 0, t);
+  assert.ok(t.indexOf("元素链") >= 0, "要给出元素链：" + t);
+  assert.ok(t.indexOf("lyric-elsewhere") >= 0 || t.indexOf("li.line") >= 0, "链上要能看出它在哪：" + t);
+  assert.ok(t.indexOf("**不是**") >= 0, "区域外的要说清不归我们管：" + t);
+  assert.ok(t.indexOf("当前 scope") >= 0, "要报一下 scope 和区域数：" + t);
+
+  const t2 = env.api.why("bluh");
+  assert.ok(t2.indexOf('"bluh"') >= 0, "要列出这一段的词：" + t2);
+
+  assert.ok(env.api.why("绝不存在的文本").indexOf("没找到") >= 0, "找不到也要有话说");
+  assert.ok(env.api.why().indexOf("上一轮") >= 0, "不带参数还是原来的跳过统计");
+});
+
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
   // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
   //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；

@@ -1672,6 +1672,94 @@
       return records.size;
     }
 
+    /**
+     * 「这段文字为什么没注音」——排障用（`LK.why('MWAH')`）。
+     *
+     * 用户报「某些词一直没注音」时，读音层其实往往是好的（本地层一定给得出），
+     * 真正的原因通常是"那一行压根不在我们认的标注区域里"，或者"它的某个祖先
+     * 被判定成要跳过"（别的插件的注音节点、罗马音/翻译层、隐藏副本…）。
+     * 这个函数把整条链子逐层说出来：祖先元素链（带 class，好照着改选择器）、
+     * 在不在区域里、哪一层被跳过、可不可见、有没有被当成制作信息行。
+     *
+     * @param {string} text 要找的文字片段
+     * @param {Array} regions 当前认定的标注区域（由上层按 scope 算好传进来）
+     * @returns {Array<string>} 报告（每行一条）
+     */
+    function explain(text, regions) {
+      var out = [];
+      if (!text) return out;
+      var needle = String(text);
+      var list = regions || [];
+      var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
+      var found = 0;
+      var ours = 0;
+      while (walker.nextNode()) {
+        var node = walker.currentNode;
+        if ((node.nodeValue || "").indexOf(needle) < 0) continue;
+        // 我们自己插进去的注音节点（底字的 <ruby> 里）不算"页面上的原文"，
+        // 否则报告里全是"祖先被跳过：RUBY.lt-ruby"这种噪声
+        var inOurs = false;
+        for (var a = node.parentNode; a && a.nodeType === 1; a = a.parentNode) {
+          // 我们自己的 <ruby class="lt-ruby">、别人的 kt-ruby/fg-ruby、<rt> 都算进来
+          if (isAnnotationNode(a) || isSkippable(a)) {
+            inOurs = true;
+            break;
+          }
+        }
+        if (inOurs) {
+          ours++;
+          continue;
+        }
+        found++;
+        if (found > 5) break;
+        var host = node.parentNode;
+        var chain = [];
+        for (var p = host, d = 0; p && p.nodeType === 1 && d < 5; p = p.parentNode, d++) {
+          var cls = typeof p.className === "string" && p.className ? "." + p.className.trim().split(/\s+/).join(".") : "";
+          chain.push(p.tagName.toLowerCase() + cls);
+        }
+        out.push("第 " + found + " 处文本节点，元素链：" + chain.join(" < "));
+
+        var inRegion = false;
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].contains(node)) {
+            inRegion = true;
+            break;
+          }
+        }
+        var skippedByClass = null;
+        var skippable = null;
+        for (var q = host; q && q.nodeType === 1; q = q.parentNode) {
+          if (!skippedByClass && isSkippedRegion(q)) skippedByClass = idOf(q);
+          if (!skippable && isSkippable(q)) skippable = idOf(q);
+        }
+        out.push("  在标注区域里：" + (inRegion ? "是" : "**不是** ← 这行不归我们管"));
+        if (skippedByClass) out.push("  祖先被整层跳过（罗马音/翻译层等）：" + skippedByClass);
+        if (skippable) out.push("  祖先被跳过（别的插件的注音节点 / 表单等）：" + skippable);
+        if (host && !isVisible(host)) out.push("  不可见（隐藏的原生播放页副本？）");
+        try {
+          if (host && RE_CREDIT.test(visibleText(host))) out.push("  这行被当成制作信息行（作词/作曲/编曲…）");
+        } catch (e) {
+          /* 诊断不该因为读文本失败而中断 */
+        }
+        out.push("  已经有注音记录：" + (records.get(node) ? "有" : "没有"));
+        var toks = [];
+        try {
+          toks = matcher.scan(node.nodeValue || "").map(function (t) {
+            return t.text;
+          });
+        } catch (e2) {
+          /* ignore */
+        }
+        out.push("  这一段的词：" + JSON.stringify(toks));
+      }
+      if (!found) {
+        out.push("页面里没找到包含「" + needle + "」的原文文本节点 —— 是不是在桌面歌词/其它窗口？");
+      }
+      if (ours) out.push("（另外 " + ours + " 处是我们已经标好的注音，忽略）");
+      return out;
+    }
+
     /** 当前处于"认输期"的行数 —— 这些行是**故意**不注音的，不是漏了 */
     function churnedCount() {
       return churnUntil.size;
@@ -1710,6 +1798,7 @@
       findRegions: findRegions,
       customRegions: customRegions,
       injectedCount: injectedCount,
+      explain: explain,
       churnedCount: churnedCount,
       repairLine: repairLine,
       cleanup: cleanup,
