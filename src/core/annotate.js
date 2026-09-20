@@ -567,6 +567,8 @@
 
       var hostMaybe = node.parentNode;
       var glosses = [];
+      // 每个词的来源（dict / romaji / rule / llm / google / letters），给"按来源着色"用
+      var sources = [];
       var any = false;
       var missing = [];
       /*
@@ -581,6 +583,7 @@
       var context = hostMaybe && hostMaybe.isConnected ? visibleText(hostMaybe) : text;
       for (var i = 0; i < tokens.length; i++) {
         var g = null;
+        var src = null;
         if (matcher.looksReadable(tokens[i])) {
           /*
            * 传**原始写法**（tk.text）而不是 tk.norm：
@@ -591,11 +594,20 @@
            * 第二个参数是**整句原文**：大模型那一层靠它消歧
            * （read リード/レッド、人名地名、记号）。同一个词在不同句子里
            * 读音不同，所以语境要跟着词一起传下去。
+           *
+           * 返回两种形状都认：字符串（老约定）或 { kana, source }（带来源，给着色用）。
            */
-          g = lookup(tokens[i].text, context);
+          var got = lookup(tokens[i].text, context);
+          if (typeof got === "string") {
+            g = got;
+          } else if (got && got.kana) {
+            g = got.kana;
+            src = got.source || null;
+          }
           if (!g) missing.push(tokens[i].norm);
         }
         glosses.push(g);
+        sources.push(src);
         if (g) any = true;
       }
       if (!any) {
@@ -644,7 +656,7 @@
               isPending = false;
             }
           }
-          var ruby = buildRuby(tk.text, glosses[j], isPending);
+          var ruby = buildRuby(tk.text, glosses[j], isPending, sources[j]);
           pieces.push({ text: tk.text, ruby: ruby });
           inserted.push(ruby);
         }
@@ -789,10 +801,15 @@
      * provisional=true 时加一个 `lt-pending` 类：这个读音还是"暂定"的
      * （在线那层还在问，先拿规则结果顶上），样式上会淡一点，
      * 等真结果回来由 relabel() 改写并把类去掉。
+     *
+     * source 是"这个读音是谁给的"（dict / romaji / rule / letters / llm / google），
+     * 只用来打一个 `lt-src-*` 类 —— 排障时打开「按来源着色」就能一眼看出
+     * 哪个词是词典给的、哪个是规则猜的、哪个是模型换过的。类名一直在，
+     * 不给它上色而已（这样开关一开立刻生效，不用重扫）。
      */
-    function buildRuby(base, gloss, provisional) {
+    function buildRuby(base, gloss, provisional, source) {
       var ruby = doc.createElement("ruby");
-      ruby.className = provisional ? "lt-ruby lt-pending" : "lt-ruby";
+      ruby.className = "lt-ruby" + (provisional ? " lt-pending" : "") + (source ? " lt-src-" + source : "");
       ruby.appendChild(doc.createTextNode(base));
       if (hasRubyLayout(doc)) {
         var rt = doc.createElement("rt");
@@ -806,6 +823,21 @@
         ruby.appendChild(span);
       }
       return ruby;
+    }
+
+    /**
+     * 换掉 ruby 上的 `lt-src-*` 类（读音换来源时用：规则 -> 大模型就是这么变的）。
+     * 只动我们自己的节点，而且**只动这一类**，不碰别人给这行加的任何 class。
+     */
+    function setSourceClass(el, source) {
+      if (!el || !el.classList) return;
+      var drop = [];
+      for (var i = 0; i < el.classList.length; i++) {
+        var cn = el.classList[i];
+        if (cn.indexOf("lt-src-") === 0 && cn !== "lt-src-" + source) drop.push(cn);
+      }
+      for (var j = 0; j < drop.length; j++) el.classList.remove(drop[j]);
+      if (source && !el.classList.contains("lt-src-" + source)) el.classList.add("lt-src-" + source);
     }
 
     /**
@@ -993,12 +1025,19 @@
           var word = baseNode.nodeValue;
           if (!word) continue;
           var gloss = null;
+          var src = null;
           try {
             /*
              * 语境要和注音时用的一致（那次用的是宿主的可见原文）——
              * 换别的东西当语境会让缓存键对不上、白白重问一次。
              */
-            gloss = lookup(word, visibleText(host));
+            var got = lookup(word, visibleText(host));
+            if (typeof got === "string") {
+              gloss = got;
+            } else if (got && got.kana) {
+              gloss = got.kana;
+              src = got.source || null;
+            }
           } catch (e) {
             gloss = null;
           }
@@ -1008,6 +1047,8 @@
             rt.textContent = gloss;
             updated++;
           }
+          // 来源变了（规则 -> 大模型）连类名一起换，不然"按来源着色"会一直显示旧颜色
+          if (src) setSourceClass(el, src);
           /*
            * 真结果回来了就把"暂定"标记去掉（样式上不再淡）。
            * 判断依据交给上层：pending() 为假 = 这个词已经有确定结论。
@@ -1603,6 +1644,7 @@
     var size = opts.rtSize == null ? 60 : opts.rtSize;
     var opacity = (opts.rtOpacity == null ? 80 : opts.rtOpacity) / 100;
     var focus = !!opts.focus;
+    var colorBySource = !!opts.colorBySource;
     return [
       "ruby.lt-ruby {",
       "  ruby-position: over;",
@@ -1634,16 +1676,40 @@
       "  display: block;",
       "  pointer-events: none;",
       "}",
-      // 这几条是为了对抗 RefinedNowPlaying 之类的逐字歌词插件：它给嵌套 span 打
-      // opacity，嵌套相乘会把注音压得几乎看不见，所以对注音强制不透明。
-      "ruby.lt-ruby, rt.lt-rt { opacity: 1 !important; }",
+      // 这几条是为了对抗 RefinedNowPlaying 之类的逐字歌词插件：它会给**自己插的
+      // 节点**打 opacity，嵌套相乘会把注音压得几乎看不见，所以对注音强制不透明。
+      //
+      // 但底字和注音要分开对待（用户报的「这句不透明度怎么这么低」就是这么来的）：
+      //   - ruby.lt-ruby 是**底字**在外面那层，锁死 1，永远不许别人把它压淡；
+      //   - rt.lt-rt 是**注音**，它要用用户设的那个不透明度 ——
+      //     老版本这里写死 `rt.lt-rt { opacity: 1 !important }`，把设置面板里的
+      //     「注音不透明度」整个压掉了（拖了没反应，页面上只有"暂定"那 45% 看得见，
+      //     于是所有待判定的行都显得特别淡）。
+      "ruby.lt-ruby { opacity: 1 !important; }",
+      "rt.lt-rt, .lt-rt { opacity: " + opacity + " !important; }",
       /*
        * 「暂定读音」：在线那层还在问，先用规则结果顶上。
-       * 淡一点提示"这个还不一定"，真结果回来后 relabel() 会去掉这个类。
-       * 放在上面那条 !important 之后，靠类选择器 + 透明度再压一档。
+       * 比上面的值再淡一档（跟着用户的设置走，不然把不透明度调到 30% 时
+       * "暂定"反而比正常还清楚），真结果回来后 relabel() 会去掉这个类。
        */
-      "ruby.lt-ruby.lt-pending .lt-rt { opacity: .45 !important; }",
+      "ruby.lt-ruby.lt-pending .lt-rt { opacity: " + Math.max(0.2, opacity * 0.6).toFixed(2) + " !important; }",
       focus ? "[data-lt-region] { outline: 1px dashed rgba(255,80,80,.5); }" : "",
+      /*
+       * 排障用：把每一层的读音染成不同颜色，一眼看出"这个音到底是谁给的"。
+       * 颜色只用在这两类节点上（都是我们自己的），不改任何既有元素的样式；
+       * 关掉这个开关就一条都不注入（类名照旧挂着，随时能开）。
+       */
+      colorBySource
+        ? [
+            "ruby.lt-src-dict > .lt-rt { color: #46d17e !important; }", // 离线词典：最可信，绿
+            "ruby.lt-src-letters > .lt-rt { color: #3fb6d8 !important; }", // 记号 / 字母名：青
+            "ruby.lt-src-romaji > .lt-rt { color: #6f8ff0 !important; }", // 罗马音：蓝
+            "ruby.lt-src-rule > .lt-rt { color: #e8a33d !important; }", // 英文音译规则：橙
+            "ruby.lt-src-llm > .lt-rt { color: #c07ce8 !important; }", // 大模型：紫
+            "ruby.lt-src-google > .lt-rt { color: #e0629a !important; }", // 免费接口：品红
+            "ruby.lt-src-online > .lt-rt { color: #e0629a !important; }", // 老名字，同上
+          ].join("\n")
+        : "",
     ]
       .filter(Boolean)
       .join("\n");

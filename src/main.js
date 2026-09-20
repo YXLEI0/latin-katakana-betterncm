@@ -108,6 +108,7 @@
     rtSize: 55, // 注音字号（相对底字百分比）
     rtOpacity: 80, // 注音不透明度
     focusDebug: false, // 给已注音区域描边，排障用
+    colorBySource: false, // 按读音来源给注音上色（排障用，见设置面板的图例）
     verbose: false,
   };
 
@@ -257,7 +258,10 @@
   // ------------------------------------------------------------ 读音
 
   /*
-   * 取一个词的显示读音。**层序由用户在设置面板里定**，默认：
+   * 取一个词的显示读音，连同"这个读音最终是谁给的"一起返回：
+   *   { kana, source }   source ∈ dict / romaji / rule / letters / llm / google
+   *
+   * 层序由用户在设置面板里定，默认：
    *
    *   离线词典 > 罗马音 > 大模型校正 > 免费接口 > 英文音译规则
    *
@@ -274,8 +278,11 @@
    * 底线不变：**绝不返回 null 让这行空着**。高优先的在线层还在问的时候，用现成的
    * 答案顶上并标成"暂定"（`lt-pending`，样式淡一点），结果回来由 annotate.relabel()
    * 就地改写 —— 用户报过的"全英文行标注后有概率消失"就是这么修的。
+   *
+   * source 是给排障用的（「按来源着色」把每一层染成不同颜色），
+   * 单独一个 readForDisplay() 只返回 kana，控制台 LK.display() 用它。
    */
-  function readForDisplay(word, line) {
+  function resolveReading(word, line) {
     if (!state.reader) return null;
     var r = state.reader.read(word);
     if (!r || !r.kana) return null;
@@ -291,20 +298,28 @@
       if (id === "llm") {
         if (line !== undefined && line !== null) {
           var llm = state.llm.lookup(word, line);
-          if (llm) return llm;
+          if (llm) return { kana: llm, source: "llm" };
         }
         // 这个词还没问到结果：先用在别的句子里拿到的读音，其次用当前这层的读音顶上
-        return state.llm.peek(word) || r.kana;
+        var seen = state.llm.peek(word);
+        if (seen) return { kana: seen, source: "llm" };
+        return { kana: r.kana, source: r.source };
       }
 
       // 免费接口（Google）
       var fixed = state.corrector.lookup(word);
-      if (fixed) return fixed;
-      return r.kana;
+      if (fixed) return { kana: fixed, source: "google" };
+      return { kana: r.kana, source: r.source };
     }
 
     // 没有更高优先的在线层可用 —— 当前这层的答案就是最终答案
-    return r.kana;
+    return { kana: r.kana, source: r.source };
+  }
+
+  /** 只要读音字符串的调用方（控制台 LK.display / 老代码）走这个 */
+  function readForDisplay(word, line) {
+    var got = resolveReading(word, line);
+    return got ? got.kana : null;
   }
 
   /**
@@ -468,6 +483,7 @@
         rtSize: config.rtSize,
         rtOpacity: config.rtOpacity,
         focus: config.focusDebug,
+        colorBySource: !!config.colorBySource,
       });
     }
   }
@@ -512,6 +528,16 @@
       '<div class="lk-row"><label>注音字号 <input type="range" data-k="rtSize" min="30" max="120" step="1"> <span data-v="rtSize"></span></label></div>' +
       '<div class="lk-row"><label>注音不透明度 <input type="range" data-k="rtOpacity" min="10" max="100" step="1"> <span data-v="rtOpacity"></span></label></div>' +
       '<div class="lk-row"><label><input type="checkbox" data-k="focusDebug"> 给已注音区域描边（排障）</label></div>' +
+      '<div class="lk-row"><label><input type="checkbox" data-k="colorBySource"> 按读音来源给注音上色（排障）</label></div>' +
+      '<div class="lk-hint">' +
+      '<span style="color:#46d17e">■ 离线词典</span>　' +
+      '<span style="color:#3fb6d8">■ 记号 / 字母名</span>　' +
+      '<span style="color:#6f8ff0">■ 罗马音</span>　' +
+      '<span style="color:#e8a33d">■ 英文规则（拼写猜的）</span>　' +
+      '<span style="color:#c07ce8">■ 大模型</span>　' +
+      '<span style="color:#e0629a">■ 免费接口</span><br>' +
+      "淡显（暂定）的是在线层还在问、先拿低优先层的读音顶着的词；等结果回来会换成对应颜色。" +
+      "</div>" +
       "<h3>范围</h3>" +
       '<div class="lk-row"><label>标注范围 <select data-k="scope">' +
       '<option value="all">歌词 + 播放栏（默认）</option>' +
@@ -1064,8 +1090,9 @@
         });
       }
       state.annotator = LKAnnotate.createAnnotator({
+        // 返回 { kana, source }：source 用来给"按来源着色"的排障功能打标
         lookup: function (word, line) {
-          return readForDisplay(word, line);
+          return resolveReading(word, line);
         },
         // 暂定读音（在线那层还在问）会在注音上打一个淡一点的标记
         pending: function (word, line) {
@@ -1168,6 +1195,19 @@
          * 不一样就说明被大模型（或联网）换过了。
          */
         return readForDisplay(word);
+      },
+      /*
+       * 排障：按读音来源上色。LK.colorize(true) 开、LK.colorize(false) 关、
+       * 不带参数就是看当前状态。只改 CSS（lt-src-* 类名一直挂在注音节点上），
+       * 所以不用重扫，开了立刻就变。
+       */
+      colorize: function (on) {
+        if (on !== undefined) {
+          config.colorBySource = !!on;
+          saveConfig();
+          updateStyles();
+        }
+        return !!config.colorBySource;
       },
       dict: function () {
         return typeof LKDict !== "undefined" ? LKDict.words : {};

@@ -553,6 +553,16 @@
       }
       log("大模型请求失败（" + lastError + "），" + Math.round(cooldownMs / 1000) + "s 后再试");
       onStatus("大模型请求失败：" + lastError);
+      /*
+       * **失败也必须叫一次 onUpdate**（和 correct.js 那边同一个道理，那边一直有）。
+       *
+       * 不叫会怎样（用户报的「这句不透明度怎么这么低」）：请求还在飞的时候那一轮
+       * 是**暂定**（`lt-pending`，淡到 45%），失败后进入退避、isWaiting 变成 false，
+       * 但没人通知注音层重新判定 —— 那行就一直淡着，直到页面因为别的原因重扫
+       * （实测能淡整整一个退避周期，60 秒起）。真机歌词一行行滚动时不容易看出来，
+       * 停在某一句上就很显眼。
+       */
+      onUpdate();
       if (queue.length) schedule(cooldownMs);
     }
 

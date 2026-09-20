@@ -1039,6 +1039,117 @@ test("用量：core/usage.js 没注入时注音照常，只是没有账本", asy
   assert.strictEqual(rubyCount(env.document.querySelector("ul.lyric li p")), 2, "注音不受影响");
 });
 
+test("暂定标记不会卡住：大模型失败后那一行立刻恢复成确定值", async () => {
+  // 用户报的「这句不透明度怎么这么低」。等待期间是暂定（淡），失败后必须**马上**不再淡 ——
+  // 老版本失败路径没叫 onUpdate，那行会淡一整个退避周期（60 秒起）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>KiLLKiSS judy jude juda</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+  const env = bootPlugin(HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions" },
+    fetch: function () {
+      return Promise.reject(new Error("offline (test)"));
+    },
+  });
+  await env.runLoad();
+  // 攒批窗口 400ms 之后才发请求，失败立刻回来
+  await sleep(1500);
+
+  const p = env.document.querySelector("ul.lyric li p");
+  assert.strictEqual(rubyCount(p), 4, "四个词都要标上：" + p.innerHTML);
+  assert.strictEqual(
+    p.querySelectorAll("ruby.lt-ruby.lt-pending").length,
+    0,
+    "失败之后不该还淡着（lt-pending 会一直挂着就是那个 bug）：" + p.innerHTML
+  );
+  // 退避期间再扫一轮，也不能又淡上
+  env.api.pass();
+  await sleep(80);
+  assert.strictEqual(p.querySelectorAll("ruby.lt-ruby.lt-pending").length, 0, "重扫也不许再淡");
+});
+
+test("按来源着色：类名一直在，颜色只由开关决定（开了立刻生效，不用重扫）", async () => {
+  const env = bootPlugin(NCM_HTML, { dev: true });
+  await env.runLoad();
+  await sleep(200);
+  const p = env.document.querySelector("ul.lyric li p");
+  assert.ok(p.querySelector("ruby.lt-src-dict"), "词典给的词要带 lt-src-dict：" + p.innerHTML);
+
+  const styleText = () => env.document.getElementById("latin-katakana-style").textContent;
+  assert.strictEqual(env.api.colorize(), false, "默认不开");
+  assert.strictEqual(styleText().indexOf("lt-src-dict"), -1, "没开的时候一条颜色规则都不注入");
+
+  assert.strictEqual(env.api.colorize(true), true);
+  const css = styleText();
+  for (const src of ["dict", "letters", "romaji", "rule", "llm", "google"]) {
+    assert.ok(css.indexOf("lt-src-" + src) >= 0, "开了之后要有 " + src + " 的颜色规则");
+  }
+  assert.ok(css.indexOf("#46d17e") >= 0, "词典是绿色");
+
+  assert.strictEqual(env.api.colorize(false), false);
+  assert.strictEqual(styleText().indexOf("lt-src-dict"), -1, "关掉就撤掉颜色规则");
+  // 但类名还在（下次开开关不用重扫）
+  assert.ok(p.querySelector("ruby.lt-src-dict"), "类名不该跟着开关消失");
+});
+
+test("按来源着色：大模型换过的词，颜色跟着来源一起变", async () => {
+  const env = bootPlugin(LLM_HTML, {
+    config: {
+      llmEnabled: true,
+      llmKey: "sk-test",
+      llmEndpoint: "https://api.example.com/v1/chat/completions",
+      colorBySource: true,
+    },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const body = JSON.parse(init.body);
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = "カレイドスコープ";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1400);
+
+  const p = env.document.querySelector("ul.lyric li p");
+  const rubies = [...p.querySelectorAll("ruby.lt-ruby")];
+  const light = rubies.find((r) => r.childNodes[0].nodeValue === "light");
+  const kaleido = rubies.find((r) => r.childNodes[0].nodeValue === "kaleidoscope");
+  assert.ok(light.classList.contains("lt-src-dict"), "词典命中的词是词典色：" + light.className);
+  assert.ok(
+    kaleido.classList.contains("lt-src-llm"),
+    "被大模型换过的词要变成大模型色（lt-src-llm），类名不能再留着 lt-src-rule：" + kaleido.className
+  );
+  assert.strictEqual(kaleido.className.indexOf("lt-src-rule"), -1, "旧来源的类名要换掉");
+});
+
+test("注音不透明度真的生效（老版本被一条 !important 压掉了）", () => {
+  const ctx = loadCore(NCM_HTML);
+  ctx.LKAnnotate.applyStyles(ctx.document, { rtSize: 55, rtOpacity: 40, colorBySource: false });
+  const css = ctx.document.getElementById("latin-katakana-style").textContent;
+  assert.ok(/rt\.lt-rt,\s*\.lt-rt\s*\{\s*opacity:\s*0\.4\s*!important/.test(css), "注音要用用户设的 40%：" + css);
+  assert.ok(
+    css.indexOf("ruby.lt-ruby { opacity: 1 !important; }") >= 0,
+    "底字仍要锁死 1（别人的 opacity 不许把它压淡）"
+  );
+  // 暂定按比例再淡一档（40% * 0.6 = 24%），不是写死的 45%
+  assert.ok(css.indexOf("opacity: 0.24 !important") >= 0, "暂定要跟着设置走：" + css);
+  ctx.window.close();
+});
+
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
   // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
   //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；

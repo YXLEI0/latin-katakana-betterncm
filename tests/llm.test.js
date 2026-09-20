@@ -59,6 +59,25 @@ function makeClient(ctx, opts) {
   return { client, calls, updates, statuses };
 }
 
+// ============================================================ 失败也要通知上层
+
+test("请求失败必须叫 onUpdate：否则「暂定」标记会一直挂在页面上", async () => {
+  // 用户报的「这句不透明度怎么这么低」：请求还在飞的时候那一轮是暂定的（淡到 45%），
+  // 失败后进入退避、isWaiting 变成 false，但如果没人通知注音层重新判定，
+  // 那行就一直淡着，直到页面因为别的原因重扫（实测能淡一个完整退避周期）。
+  const ctx = loadCore();
+  const { client, updates, statuses } = makeClient(ctx, { reply: () => new Error("offline") });
+
+  assert.strictEqual(client.lookup("kaleidoscope", "きらめく kaleidoscope"), null, "先入队");
+  await client.flush();
+  assert.ok(updates.length >= 1, "失败也要叫一次 onUpdate（现在有 " + updates.length + " 次）");
+  assert.ok(
+    statuses.join(" ").indexOf("失败") >= 0,
+    "顺带要有失败提示：" + statuses.join(" | ")
+  );
+  assert.strictEqual(client.isWaiting("kaleidoscope", "きらめく kaleidoscope"), false, "退避期间不算在等");
+});
+
 // ============================================================ 没配 key
 
 test("没填 key：整层不工作，一个请求都不发", async () => {
