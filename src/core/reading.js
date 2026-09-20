@@ -1708,6 +1708,9 @@
     return out || null;
   }
 
+  /** 同一个元音重复成串时用的那一拍（AAAAA -> アアアアア） */
+  var VOWEL_KANA = { a: "\u30A2", i: "\u30A4", u: "\u30A6", e: "\u30A8", o: "\u30AA" };
+
   /** 原始写法 -> 逐字母读音（不是记号返回 null）。分隔符不发音，`&` 读 アンド。 */
   function notationToKatakana(raw) {
     if (typeof raw !== "string") return null;
@@ -1717,7 +1720,7 @@
   }
 
   /**
-   * 全大写的无元音缩写 -> 逐字母读音（不是这种缩写返回 null）。
+   * 全大写的缩写 -> 逐字母读音（不是缩写返回 null）。
    *
    * 用户报的 `LDK` 一类。判据刻意收得紧，免得误伤真词：
    *   - 原文**全大写**（缩写就是这么写的；`my` / `sky` / `why` 这些真词是小写）；
@@ -1725,14 +1728,29 @@
    *   - 一个元音都没有，而且 **y 也算元音**（否则 my / sky / why / fly 会被逐字母念）。
    * 于是 LDK / NHK / CD / TV / BGM / RPG / DVD / CM / DJ 都逐字母读，
    * 而 hmm / tsk / shh 这类小写感叹词不受影响。
+   *
+   * 用户后面又报了**有元音的**缩写（截图里的 `SOS` 被读成 ソス、`QTE` 读成 クテ）——
+   * 所以再放两条进来，但都要过两道闸门，缺一不可：
+   *   - **不是词典里的词**：LOVE / DREAM / YES / OK / KISS 这些真词全大写也常见，
+   *     逐字母念就毁了（エルオーブイイー ✗）；
+   *   - **罗马音也切不出来**：`SORA` / `KIMI` / `YUKI` 这类全大写日语罗马字要留给
+   *     罗马音层（它们切得出来），不能念成字母名；
+   *   - **不在英文常用词表里**（`enWords`）：MY / WHY / SKY / FLY 这些真词全大写也常见。
+   * 于是 SOS -> エスオーエス、QTE -> キューティーイー、YY -> ワイワイ 都对，
+   * 而 SORA / LOVE / MY 不受影响。
    */
-  function spellOutAcronym(raw) {
+  function spellOutAcronym(raw, dict, enWords) {
     if (typeof raw !== "string") return null;
     var s = raw.trim();
     if (s.length < 2 || s.length > 6) return null;
     if (!/^[A-Z]+$/.test(s)) return null;
-    if (/[AEIOUY]/.test(s)) return null;
-    return lettersToKatakana(s.toLowerCase());
+    if (!/[AEIOUY]/.test(s)) return lettersToKatakana(s.toLowerCase());
+    var low = s.toLowerCase();
+    if (dict && dict[low] !== undefined) return null;
+    // 英文常用词表里有的（MY / WHY / SKY / FLY…）：真词，不能念字母
+    if (enWords && enWords[low]) return null;
+    if (romajiToKatakana(low)) return null;
+    return lettersToKatakana(low);
   }
 
   // ------------------------------------------------------------ 变音符号折叠
@@ -1987,12 +2005,13 @@
           }
         }
         /*
-         * 全大写的无元音缩写（LDK / NHK / CD / TV / BGM / RPG / DVD …）：按字母名逐个念。
+         * 全大写的缩写（LDK / NHK / CD / TV / BGM / RPG / DVD …，以及 SOS / QTE / YY
+         * 这种有元音但"既不是词、也切不成罗马音"的）：按字母名逐个念。
          * 挂在词典这一层里（而不是单独一层）：它和词典一样是"查表就有确定答案"，
          * 而且必须排在规则层前面 —— 规则会把它当词拼（LDK -> ラダク、TV -> タブ）。
          * 词典里已有的（CM -> シーエム、DJ -> ディージェイ）在上面就返回了，不受影响。
          */
-        var spelledAcronym = spellOutAcronym(c.raw);
+        var spelledAcronym = spellOutAcronym(c.raw, dict, enWords);
         if (spelledAcronym) {
           trace("letters（缩写）命中：" + c.raw + " -> " + spelledAcronym);
           return { kana: spelledAcronym, source: "letters", confident: true };
@@ -2134,6 +2153,28 @@
           var merged = mergeContraction(baseRes.kana, contr.suffix);
           trace("缩写命中：" + raw + " = " + contr.base + " + " + contr.suffix + " -> " + merged);
           return { kana: merged, source: baseRes.source, confident: baseRes.confident };
+        }
+      }
+
+      /*
+       * ①.2 同一个**元音**重复成串（`AAAAA` / `OOO` / `aaa`）：那是喊叫/拖长音，
+       *      不是词，直接按那个元音叠出来。用户截图：
+       *      `邪魔者は成敗いたAAAAAす！` 里的 AAAAA —— 词典里 `aaa` 是
+       *      トリプルエー、规则层也会读成别的，都不对。
+       *      只认元音串：辅音串（XX / YY）另有规矩（见 matcher.looksReadable）。
+       */
+      var vowelRun = /^([aeiou])\1+$/i.exec(shown);
+      if (vowelRun && vowelRun[0].length <= 12) {
+        var oneKana = VOWEL_KANA[vowelRun[1].toLowerCase()];
+        if (oneKana) {
+          var runKana = "";
+          for (var vi = 0; vi < vowelRun[0].length; vi++) runKana += oneKana;
+          trace("元音串命中：" + shown + " -> " + runKana);
+          /*
+           * source 用 letters：它和记号/字母名一样属于**形态层**的确定答案 ——
+           * 名次算最优先（在线层不会再问一遍，省一次请求）。
+           */
+          return { kana: runKana, source: "letters", confident: true };
         }
       }
 

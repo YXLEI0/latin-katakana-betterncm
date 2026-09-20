@@ -1817,6 +1817,73 @@ test("`Every night … keeps me awake` 这一行：读音离线也要全对", as
   }
 });
 
+test("缩写 / 喊叫 / 署名行：SOS・QTE・AAAAA 读对，署名行的碎片不注音", async () => {
+  // 用户一口气发了七张截图，这里是其中五类：
+  //   1. `混音&母带处理：宫奇Gon` 的 `Gon` 被注音（同一个署名行拆成两个节点）；
+  //   2. `対バンにはATフィールド` 的 AT 被读成词典里的"at"アット（该 エーティー）；
+  //   3. `空中散歩のSOS` 读成 ソス（该 エスオーエス）；
+  //   4. `邪魔者は成敗いたAAAAAす！` 的 AAAAA 一个音都没有（该 アアアアア）；
+  //   5. `QTE` 读成 クテ（该 キューティーイー）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>対バンにはATフィールド</p></li>
+  <li class="line"><p>空中散歩のSOS</p></li>
+  <li class="line"><p>邪魔者は成敗いたAAAAAす！</p></li>
+  <li class="line"><p>(A, B) 退屈に打つ QTE (Why?)</p></li>
+  <li class="line"><p>混音&母带处理：宫奇Gon</p></li>
+  <li class="line"><p>制作人：蔡近翰Zoe</p></li>
+  <li class="line"><p>Music と light の 中</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(300);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    );
+
+  assert.strictEqual(pairsOf(ps[1]).get("SOS"), "エスオーエス", "SOS 要逐字母：" + ps[1].innerHTML);
+  assert.strictEqual(pairsOf(ps[2]).get("AAAAA"), "アアアアア", "喊叫要按元音叠出来：" + ps[2].innerHTML);
+  assert.strictEqual(pairsOf(ps[3]).get("QTE"), "キューティーイー", "QTE 要逐字母：" + ps[3].innerHTML);
+  // 署名行整行不注音 —— 包括被拆到另一个节点里的名字
+  assert.strictEqual(rubyCount(ps[4]), 0, "`混音&母带处理：宫奇Gon` 整行都不该注音：" + ps[4].innerHTML);
+  assert.strictEqual(rubyCount(ps[5]), 0, "`制作人：蔡近翰Zoe` 整行都不该注音：" + ps[5].innerHTML);
+  // 反向：只是带 Music 这个词头的正常歌词，照标（这条有老测试，这里再守一次）
+  assert.strictEqual(pairsOf(ps[6]).get("Music"), "ミュージック", "正常歌词行不能被误杀");
+
+  /*
+   * 第二遍：配一个假模型。`AT` 离线还是词典的 アット（我们只把它标成"没把握"），
+   * 模型看到「対バンにはATフィールド」就该给 エーティー —— 这正是截图里的期望。
+   */
+  const asked = [];
+  const env2 = bootPlugin(HTML, {
+    config: { online: false, llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions" },
+    fetch: function (url, init) {
+      const items = JSON.parse(JSON.parse(init.body).messages[0].content.slice(JSON.parse(init.body).messages[0].content.indexOf("[")));
+      asked.push(items.map((it) => String(it.w).toLowerCase()));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = String(it.w).toLowerCase() === "at" ? "エーティー" : "テスト";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env2.runLoad();
+  await sleep(1600);
+  const p2 = env2.document.querySelector("ul.lyric li p");
+  assert.strictEqual(pairsOf(p2).get("AT"), "エーティー", "贴假名的全大写缩写要交给模型判：" + p2.innerHTML);
+  const words = [].concat.apply([], asked).map((w) => String(w).toLowerCase());
+  assert.ok(words.indexOf("at") >= 0, "AT 要问模型：" + words.join(","));
+  assert.ok(words.indexOf("sos") < 0, "SOS 有确定答案（字母名），不该问：" + words.join(","));
+  assert.ok(words.indexOf("gon") < 0, "署名行的名字不该问：" + words.join(","));
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

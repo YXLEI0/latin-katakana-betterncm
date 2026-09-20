@@ -54,7 +54,15 @@
    *      Music/Words 开头（"Music by the lake"），所以英文那一支要求后面跟
    *      分隔符或 by；中文那一支要求冒号（中文歌词行不会以「编曲：」开头）。
    */
-  var RE_CREDIT = /^\s*(?:作[词詞曲編编]|编曲|編曲|混音|录音|録音|母带|母帶|制作人|製作人|出品|监制|監製|吉他|贝斯|貝斯|鼓手|键盘|鍵盤|弦乐|弦樂|和声|和聲|合声|合聲|(?:Lyric|Music|Melody|Arrang|Compos|Produc|Written|Words|Guitar|Bass|Drum|Piano|Keyboard|Vocal|Mixing|Mastering|Recorded|Engineer|Strings|Synthesizer|Programming|Chorus)[a-z]*)\s*(?:[:：]|by\b|-)/i;
+  /*
+   * 制作信息行（作词 / 作曲 / 编曲 / 混音&母带处理 / 制作人：…）。
+   *
+   * 结尾那个"冒号/`by`/连字符"是必须的：不然 `Music と light の 中` 这种
+   * 正常歌词会被误杀（有测试守着）。中间那段填充是给**组合写法**用的：
+   * RNP 的署名常写成 `混音&母带处理：宫奇`、`制作人：蔡近翰` ——
+   * 关键词后面跟 `&`/别的词/几个汉字都算同一行署名。
+   */
+  var RE_CREDIT = /^\s*(?:作[词詞曲編编]|编曲|編曲|混音|录音|録音|母带|母帶|制作人|製作人|出品|监制|監製|吉他|贝斯|貝斯|鼓手|键盘|鍵盤|弦乐|弦樂|和声|和聲|合声|合聲|(?:Lyric|Music|Melody|Arrang|Compos|Produc|Written|Words|Guitar|Bass|Drum|Piano|Keyboard|Vocal|Mixing|Mastering|Recorded|Engineer|Strings|Synthesizer|Programming|Chorus)[a-z]*)[\u4e00-\u9fa5A-Za-z&]{0,6}\s*(?::|：|by\b|-)/i;
 
   // ---------------------------------------------------------------- 注入
 
@@ -585,6 +593,29 @@
           JSON.stringify(String(text == null ? "" : text).slice(0, 24)) +
           (words && words.length ? " 词=" + words.slice(0, 3).join("/") : "")
       );
+    }
+
+    /**
+     * 宿主所在的**一整行歌词**的文字（用来判"是不是制作信息行"）。
+     *
+     * 为什么要往上找：RNP 会把一行拆成好几个 div（逐字/分段），于是
+     * `混音&母带处理：宫奇` 和 `Gon` 是两个节点 —— 只看节点自己的文字，
+     * `Gon` 就不像制作信息，会被注上音（用户截图里正是这样，而同一张图里
+     * 另一行的 `Zoe` 因为和 `制作人：` 在同一个节点里，反而被正确跳过了）。
+     * 往上找到最近的 `li` / `.rnp-lyrics-line` 就是那一行。
+     */
+    function enclosingLineText(el) {
+      var best = null;
+      for (var p = el, d = 0; p && p.nodeType === 1 && d < 6; p = p.parentNode, d++) {
+        var cls = typeof p.className === "string" ? p.className : "";
+        if (p.tagName === "LI" || /(^|\s)rnp-lyrics-line(\s|$)/.test(cls)) best = p;
+      }
+      if (!best) return null;
+      try {
+        return visibleText(best);
+      } catch (e) {
+        return null;
+      }
     }
 
     function annotateNode(node, region) {
@@ -1624,6 +1655,16 @@
         var text = node.nodeValue || "";
         if (text.length < 2) continue;
         if (RE_CREDIT.test(text)) continue; // 制作信息行跳过
+        /*
+         * 制作信息行被拆成好几个节点时（RNP 常见），碎片本身不像制作信息 ——
+         * 往上拿整行的文字再判一次，否则 `混音&母带处理：宫奇` 旁边的 `Gon`
+         * 会被注上音（用户截图）。判到了就记一笔跳过原因，方便排障。
+         */
+        var lineForCredit = enclosingLineText(hostEl);
+        if (lineForCredit && lineForCredit !== text && RE_CREDIT.test(lineForCredit)) {
+          noteSkip("制作信息行（同行的另一个片段）", text, region);
+          continue;
+        }
         try {
           if (annotateNode(node, region)) {
             changed++;

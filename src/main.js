@@ -438,6 +438,24 @@
    * resolveReading 和 isProvisional 必须用**同一个**答案，否则会出现
    * "页面上显示得很确定、其实正在问模型"这种不同步。
    */
+  /**
+   * 全大写的 2~3 字母**紧贴着假名**出现（`ATフィールド`、`のSOS`、`BGMオン`）。
+   *
+   * 用户截图里的 `対バンにはATフィールド` 把 `AT` 读成了词典里的英文词"at"アット ——
+   * 正确是 エーティー。这一条我们自己分不清（`AT`/`NO`/`GO`/`UP` 拼写一样、
+   * 场合不同），所以**只调"把握"、不改读音**：标成没把握，让大模型按整句判
+   * （判完还会被自动沉淀成离线词条）。模型没开时显示的还是原来的词音，不会更差。
+   */
+  function gluedUpperCase(word, line) {
+    var w = String(word == null ? "" : word);
+    if (!/^[A-Z]{2,3}$/.test(w)) return false;
+    var s = String(line == null ? "" : line);
+    if (!s) return false;
+    var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    var KANA = "[\\u3041-\\u3096\\u30A1-\\u30FA]";
+    return new RegExp("(?:" + KANA + esc + "|" + esc + KANA + ")").test(s);
+  }
+
   function localReading(word, line) {
     /*
      * 先看「学会的词」（core/learn.js）：模型在两个不同句子里答过同一个读音、
@@ -473,6 +491,10 @@
          */
         return { kana: r.kana, source: r.source, confident: false };
       }
+    }
+    // 全大写缩写紧贴假名的（ATフィールド…）：标成没把握，交给大模型按整句判
+    if (r.source === "dict" && r.confident !== false && gluedUpperCase(word, line)) {
+      return { kana: r.kana, source: r.source, confident: false };
     }
     return r;
   }

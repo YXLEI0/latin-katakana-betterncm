@@ -163,7 +163,7 @@
     // 记号：整体逐字母读（D/N/A -> ディーエヌエー）
     if (token.notation === true) return token.norm.replace(/[^a-z]/g, "").length >= 2;
     /*
-     * 同一个字母重复的整词（`XX`、`XXX`、`AA`）不标。
+     * 同一个**辅音**字母重复的整词（`XX`、`XXX`、`YY`）不标。
      *
      * 用户报的：`ねえあたし知ってるよ きみがひとり“XX”してるの知ってるよ`
      * 里的 `XX` 被按"全大写缩写"逐字母念成了「エックスエックス」。
@@ -173,8 +173,11 @@
      * 真实的缩写几乎都是不同字母（TV / DJ / LDK / MC），所以这里一刀切不标。
      * 注意必须放在记号判断**之后**：`A-A`、`X-X` 那种是记号（エーエー），
      * 逐字母读是对的，不能一起挡掉。
+     *
+     * **元音串是例外**（`AAAAA` / `OOO` / `aaa`）：那是喊叫/拖长音，
+     * 要按那个元音叠出来（アアアアア），所以只挡辅音串。
      */
-    if (/^(.)\1+$/.test(token.norm)) return false;
+    if (/^([bcdfghjklmnpqrstvwxyz])\1+$/i.test(token.norm)) return false;
     if (token.norm.length === 1) {
       // 粘在分隔符上的单字母还是不算词（`&A&`、`A.`）
       if (token.glued === true) return false;

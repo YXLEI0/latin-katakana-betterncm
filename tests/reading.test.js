@@ -530,10 +530,20 @@ test("逐字母缩写的判据不能误伤真词（my / sky / why / hmm / Ldk）
   const A = LK.spellOutAcronym;
   assert.strictEqual(A("LDK"), "エルディーケー");
   assert.strictEqual(A("TV"), "ティーブイ");
-  // y 也算元音：my / sky / why / fly 这些是真词
-  assert.strictEqual(A("MY"), null);
-  assert.strictEqual(A("SKY"), null);
-  assert.strictEqual(A("WHY"), null);
+  /*
+   * y 也算元音：my / sky / why / fly 这些是真词。
+   * 有元音的缩写要多过两道闸门（不在词典里、不在英文常用词表里），
+   * 所以这里把两张表都递进去 —— 真机就是这样的（reading 层从 reader 拿到它们）。
+   */
+  const dict = { my: "マイ", sky: "スカイ", why: "ワイ" };
+  const en = { fly: true };
+  assert.strictEqual(A("MY", dict, en), null);
+  assert.strictEqual(A("SKY", dict, en), null);
+  assert.strictEqual(A("WHY", dict, en), null);
+  assert.strictEqual(A("FLY", dict, en), null, "英文词表里的也不算缩写");
+  // 有元音、两张表都没有、也切不成罗马音的才是缩写（用户报的 SOS / QTE）
+  assert.strictEqual(A("SOS", dict, en), "エスオーエス");
+  assert.strictEqual(A("QTE", dict, en), "キューティーイー");
   // 小写感叹词不算缩写（hmm / tsk / shh）
   assert.strictEqual(A("hmm"), null);
   assert.strictEqual(A("tsk"), null);
@@ -891,6 +901,53 @@ test("词尾 -ize / -yze：读「辅音 + イズ」，不许被罗马音层抢�
   // 词干是空的（size / prize 这种词根）不走这条，免得把 s 当尾巴读出"サイズ"
   assert.ok(LK.englishToKatakana("size").kana.length > 0);
   assert.notStrictEqual(LK.englishToKatakana("size").kana, "サ\u30A4\u30BA\u30A4\u30BA");
+});
+
+// ============================================================ 缩写与元音串
+
+test("全大写缩写：无元音的照旧，有元音但既不是词、也切不成罗马音的也逐字母", () => {
+  // 用户截图里 `SOS` 被读成 ソス、`QTE` 读成 クテ —— 都错。
+  // 新判据放两条进来（都要过两道闸门）：不是词典里的词、罗马音也切不出来。
+  const r = LK.createReader({ dict: {} });
+  for (const [w, kana] of [
+    ["SOS", "エスオーエス"],
+    ["QTE", "キューティーイー"],
+    ["YY", "ワイワイ"],
+    ["LDK", "エルディーケー"],
+    ["TV", "ティーブイ"],
+  ]) {
+    const got = r.read(w);
+    assert.strictEqual(got.kana, kana, w);
+    assert.strictEqual(got.source, "letters", w + " 该走字母名那条");
+  }
+  // 反向：全大写但罗马音切得出来的日语罗马字（SORA / KIMI）不能念字母
+  assert.strictEqual(r.read("SORA").source, "romaji", "SORA 是日语罗马字，不能念字母");
+  assert.strictEqual(r.read("SORA").kana, "ソラ");
+  assert.strictEqual(r.read("KIMI").kana, "キミ");
+  // 全大写但词典里有这个词的（LOVE / OK）：也不念字母
+  const r2 = LK.createReader({ dict: { love: "ラブ", ok: "オーケー" } });
+  assert.strictEqual(r2.read("LOVE").kana, "ラブ");
+  assert.strictEqual(r2.read("OK").kana, "オーケー");
+});
+
+test("同一个元音重复成串：按那个元音叠出来（AAAAA -> アアアアア）", () => {
+  // 用户截图：`邪魔者は成敗いたAAAAAす！` 里的 AAAAA 一个音都没标。
+  // 它是喊叫/拖长音，不是词 —— 词典里 `aaa` 是 トリプルエー、规则也会读歪。
+  const r = LK.createReader({ dict: { aaa: "トリプルエー" } });
+  const cases = [
+    ["AAAAA", "アアアアア"],
+    ["aaa", "アアア"],
+    ["OOO", "オオオ"],
+    ["ii", "イイ"],
+  ];
+  for (const [w, kana] of cases) {
+    const got = r.read(w);
+    assert.strictEqual(got.kana, kana, w);
+    assert.strictEqual(got.source, "letters", w + " 是形态层的确定答案，不该去问模型");
+  }
+  // 辅音串仍然不标（XX 是打码）—— 这条在 matcher 那一层（latin.test.js 里锁着），
+  // 这里的 reader 只负责"有读音就给出"，插不插到页面上由 annotate 层决定。
+  assert.strictEqual(r.read("XX").kana, "エックスエックス");
 });
 
 // ============================================================ 不发音字母
