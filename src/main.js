@@ -198,8 +198,13 @@
    * 3 个 / 4 个都不行：常见英文短词凑到四个太容易（实测那两行就是这么被判进去的，
    * 结果 go/to/no/you 被读成 ゴ/ト/ノ/ヨウ）。5 个才真正是"罗马音节练习"。
    * 而且命中之后这些词会标成**没把握** —— 在线层（大模型）拿到整句语境还能改回去。
+   *
+   * 另外还要**整行几乎都是短词**（≤3 字母占 60% 以上）：只数"打架几个"的话，
+   * `Shoo, Gimme more` 这种长词句也可能被算进去。真正的罗马字行短词占比很高
+   * （实测用户那行 83%、`Shoo, Gimme more` 0%）。
    */
   var ROMAJI_LINE_MIN = 5;
+  var ROMAJI_LINE_SHORT_RATIO = 0.6;
   var romajiLineCache = new Map();
   var ROMAJI_LINE_CACHE_MAX = 200;
 
@@ -225,17 +230,29 @@
       var dict = typeof LKDict !== "undefined" ? LKDict.words : {};
       var seen = {};
       var distinct = 0;
+      var latin = 0;
+      var short = 0;
       for (var i = 0; i < tokens.length; i++) {
-        var w = String(tokens[i].text || "").toLowerCase();
-        if (seen[w]) continue;
-        seen[w] = true;
-        var rom = shortRomajiOf(w);
+        var w0 = String(tokens[i].text || "").toLowerCase();
+        if (!/^[a-z]+$/.test(w0)) continue;
+        latin++;
+        if (/^[a-z]{1,3}$/.test(w0)) short++;
+        if (seen[w0]) continue;
+        seen[w0] = true;
+        var rom = shortRomajiOf(w0);
         if (!rom) continue;
-        var dictKana = dict[w];
+        var dictKana = dict[w0];
         // 词典里有、而且和罗马音读音不一样 —— 这才是"会读歪"的那种词
         if (dictKana && dictKana !== rom) distinct++;
       }
-      looks = distinct >= ROMAJI_LINE_MIN;
+      /*
+       * 光看"打架的短音节有几个"不够：英文行也能凑够（实测
+       * `No, no, no, I need you so` 凑到 4、`Shoo, Gimme more` 这种句子更长）。
+       * 真正的罗马字行还有个特征：**整行几乎都是短词**（`PA PI PU PE PO POP UP` 83%）。
+       * 所以再加一条"拉丁词里 ≤3 字母的占 60% 以上"。
+       */
+      var shortRatio = latin ? short / latin : 0;
+      looks = distinct >= ROMAJI_LINE_MIN && shortRatio >= ROMAJI_LINE_SHORT_RATIO;
     } catch (e) {
       looks = false; // 判断失败就当它不是罗马字行，绝不因此影响注音
     }
@@ -407,8 +424,19 @@
      */
     if (line && r.source === "dict") {
       var rom = shortRomajiOf(word);
-      if (rom && rom !== r.kana && lineLooksRomaji(line)) {
-        return { kana: rom, source: "romaji", confident: false };
+      if (rom && rom !== r.kana) {
+        if (lineLooksRomaji(line)) {
+          // 罗马字行：直接按罗马音显示（离线也对：PA PI PU PE PO -> パピプペポ）
+          return { kana: rom, source: "romaji", confident: false };
+        }
+        /*
+         * 不是罗马字行，但这个词**两可**：词典给的是英文读音（`Do` ドゥー、
+         * `Re` リー、`MI` ミー、`PE` ピーイー…），而同一串也可能是唱名/罗马音节
+         * （ド/レ/ミ/ペ）。光看拼写分不出来（`do`/`re`/`no` 真是英文词），
+         * 只能靠**整句语境** —— 所以这里保留词典读音先显示，但标成"没把握"，
+         * 让在线层（大模型）按那句话决定；离线时就用词典读音，不会被读歪。
+         */
+        return { kana: r.kana, source: r.source, confident: false };
       }
     }
     return r;
@@ -792,6 +820,23 @@
           "这两层（还有它下面的在线层）就永远用不上了 —— the 会变成规则猜的 セ、" +
           "I'll 会变成 イ+ル=イル。点「恢复默认顺序」即可。";
         layersBox.appendChild(warnEl);
+      } else if (
+        config.layerOrder.indexOf("romaji") >= 0 &&
+        config.layerOrder.indexOf("romaji") < config.layerOrder.indexOf("dict")
+      ) {
+        /*
+         * 罗马音排在词典前面 —— 它同样"能切成音节就收"，英文词也会被按罗马音读：
+         * Shoo→ショオ、Gimme→ギッメ、more→モレ、Do→ド、Re→レ。
+         * 罗马字歌多的库这么排确实有道理（能切的都按罗马音），但要知道这个代价；
+         * 不改也能用：罗马音行我们本来就会按罗马音读（lineLooksRomaji）。
+         */
+        var warn2 = document.createElement("div");
+        warn2.className = "lk-hint lk-layer-warn";
+        warn2.textContent =
+          "⚠ 「日式罗马音」排在「离线词典」前面：它同样是「能切成音节就收」，" +
+          "英文词也会被按罗马音读（Shoo→ショオ、Gimme→ギッメ、more→モレ、Do→ド）。" +
+          "除非你就是想要这样，否则点「恢复默认顺序」更稳。";
+        layersBox.appendChild(warn2);
       }
     }
 

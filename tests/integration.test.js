@@ -1561,8 +1561,93 @@ test("罗马音节行：这些短音节标成「没把握」，会送去问大�
   }
   // 「PA」没有词典条目、罗马音本来就是对的，不必浪费请求
   assert.ok(words.indexOf("pa") < 0, "PA 不用问：" + words.join(","));
-  // 英文行里的短词不进队列（那一行没被判成罗马字行）
-  assert.ok(words.indexOf("no") < 0, "英文行的 no 不该被问：" + words.join(","));
+  // 两可的英文短词也要问：`no` 既可能是 ノー（英文）也可能是 ノ（唱名/罗马字），
+  // 只能靠整句语境 —— 模型给不出来就保持词典读音。
+  assert.ok(words.indexOf("no") >= 0, "no 两可，要问模型：" + words.join(","));
+  // 确定的英文词不问
+  assert.ok(words.indexOf("need") < 0, "need 是确定的，不该问：" + words.join(","));
+});
+
+test("两可的短音节：大模型按整句语境判（Do→ド / Re→レ），英文里仍是 ドゥー/リー", async () => {
+  // 用户报的：「Do」「Re」「Meet」 を重ねて 效果差 —— 词典给的是英文读音
+  // （Do ドゥー、Re リー），但唱名/罗马音节要 ド/レ。光看拼写分不出来，
+  // 所以这些词标成"没把握"，交给模型按那句话决定。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>「Do」「Re」「Meet」 を重ねて</p></li>
+</ul></div></div>
+</body></html>`;
+  const asked = [];
+  const env = bootPlugin(HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions", online: false },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const body = JSON.parse(init.body);
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      asked.push(items.map((it) => it.w));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = it.w === "Do" || it.w === "do" ? "ド" : it.w === "Re" || it.w === "re" ? "レ" : "テスト";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1500);
+
+  const words = [].concat.apply([], asked).map((w) => String(w).toLowerCase());
+  assert.ok(words.indexOf("do") >= 0 && words.indexOf("re") >= 0, "do/re 要问模型：" + words.join(","));
+
+  const p = env.document.querySelector("ul.lyric li p");
+  const got = new Map(
+    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+  assert.strictEqual(got.get("Do"), "ド", "唱名要按语境读成 ド：" + JSON.stringify([...got]));
+  assert.strictEqual(got.get("Re"), "レ", "唱名要按语境读成 レ：" + JSON.stringify([...got]));
+  assert.strictEqual(got.get("Meet"), "ミート", "确定的词保持词典读音");
+  assert.strictEqual(baseText(p), "「Do」「Re」「Meet」 を重ねて");
+});
+
+test("Shoo / Gimme / Yeah：词典里补上，不再被罗马音层抢走", async () => {
+  // 用户报的：Shoo 读成 ショオ、Gimme 读成 ギッメ（这两个词词典里**根本没有**，
+  // 于是被"能切成音节就收"的罗马音层抢走了）；Yeah 读成 イェア（该是 イェイ）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Shoo, Gimme more, Yeah!</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(250);
+  const p = env.document.querySelector("ul.lyric li p");
+  const got = new Map(
+    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+  assert.strictEqual(got.get("Shoo"), "シュー", "Shoo 该是 シュー：" + JSON.stringify([...got]));
+  assert.strictEqual(got.get("Gimme"), "ギミー", "Gimme 该是 ギミー");
+  assert.strictEqual(got.get("more"), "モア", "more 该是 モア");
+  assert.strictEqual(got.get("Yeah"), "イェイ", "Yeah 该是 イェイ");
+});
+
+test("设置面板：罗马音排在词典前面时给出提醒（它会把英文词按罗马音读）", async () => {
+  const env = bootPlugin(NCM_HTML, { config: { layerOrder: ["romaji", "dict", "llm", "google", "rule"] } });
+  await env.runLoad();
+  const box = env.listeners.config[0]().querySelector(".lk-layers");
+  const warn = box.querySelector(".lk-layer-warn");
+  assert.ok(warn, "要有提醒：" + box.textContent);
+  assert.ok(warn.textContent.indexOf("Gimme") >= 0, "要举例子说清后果：" + warn.textContent);
+
+  const okEnv = bootPlugin(NCM_HTML, { dev: true });
+  await okEnv.runLoad();
+  assert.strictEqual(
+    okEnv.listeners.config[0]().querySelector(".lk-layer-warn"),
+    null,
+    "默认顺序不该有提醒"
+  );
 });
 
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {

@@ -179,6 +179,42 @@ module.exports = [
   { en: "oman", kana: "オマーン" },
   { en: "niagara", kana: "ナイアガラ" },
   /*
+   * 感叹词 / 拟声词，以及"罗马音层会读歪、但确实不是日语词"的那些英文词。
+   *
+   * 用户报的两件事：
+   *   1. `Yeah` 读成了 イェア —— 日语里唱的是**イェイ**，人工钉死；
+   *   2. `Shoo` / `Gimme` 被读成 ショオ / ギッメ —— 这两个词**词典里根本没有**，
+   *      于是被罗马音层（它是"能切成音节就收"）抢走了。同类还有下面这些
+   *      （Harrison ハッリソン、Mason マソン、midi ミヂ…），一起补上。
+   * 短音节（`do`/`re`/`mi`/`me`/`mo`…）**故意不收**：它们两种读法都成立
+   * （英文 ドゥー/リー/ミー vs 唱名·罗马字 ド/レ/ミ），钉死反而会错，
+   * 交给大模型按整句语境判（这些词会被标成"没把握"，见 main.js）。
+   */
+  { en: "yeah", kana: "イェイ" },
+  { en: "yea", kana: "イェイ" },
+  { en: "yay", kana: "イェイ" },
+  { en: "shoo", kana: "シュー" },
+  { en: "gimme", kana: "ギミー" },
+  { en: "woo", kana: "ウー" },
+  { en: "whoo", kana: "ウー" },
+  { en: "harrison", kana: "ハリソン" },
+  { en: "penn", kana: "ペン" },
+  { en: "midi", kana: "ミディ" },
+  { en: "unto", kana: "アントゥ" },
+  { en: "mason", kana: "メイソン" },
+  { en: "rouge", kana: "ルージュ" },
+  { en: "genome", kana: "ゲノム" },
+  { en: "indie", kana: "インディー" },
+  { en: "audi", kana: "アウディ" },
+  { en: "eddie", kana: "エディ" },
+  { en: "hindu", kana: "ヒンドゥー" },
+  { en: "dude", kana: "デュード" },
+  { en: "emma", kana: "エマ" },
+  { en: "fujitsu", kana: "フジツウ" },
+  { en: "marina", kana: "マリーナ" },
+  { en: "muze", kana: "ミューズ" },
+  { en: "kinase", kana: "キナーゼ" },
+  /*
    * 常见缩写（用户报的 `Mr.` / `Dr.`）：日语里念的是**整个词**，不是字母名。
    * 它们会先于规则层命中，所以放在这里就是权威写法。
    * 有歧义的没收：`St.`（セント / ストリート）、`No.`（ナンバー / ノー）。
@@ -695,6 +731,5 @@ module.exports = [
   { en: "winter", kana: "ウィンター" },
   { en: "wishes", kana: "ウィッシズ" },
   { en: "wow", kana: "ワウ" },
-  { en: "yeah", kana: "イェア" },
   { en: "yesterday", kana: "イエスタデイ" },
 ];
