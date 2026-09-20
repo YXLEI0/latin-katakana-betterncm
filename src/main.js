@@ -99,6 +99,9 @@
      * 不是"读音该信谁"，永远最先判（见 core/reading.js 的 lookup）。
      */
     layerOrder: ["dict", "romaji", "llm", "google", "rule"],
+    // ---- API 用量统计：单价只用来"估算花费"，0 = 不算（单位：元 / 百万 token）
+    usagePriceIn: 0,
+    usagePriceOut: 0,
     annotateAll: true, // 除歌词外，也标播放栏的歌名/歌手
     scope: "all", // titles | lyrics | all | custom
     customSelector: "",
@@ -237,6 +240,7 @@
     reader: null,
     corrector: null,
     llm: null,
+    usage: null,
     annotator: null,
     observer: null,
     timer: null,
@@ -534,6 +538,18 @@
       "<code>question</code> 读成 クワエサション），所以词典之外交给大模型更准。" +
       "Key <b>只存在本机 localStorage</b>，除了你填的这个接口地址之外不会发到别处，也永远不会进仓库。" +
       "留空则整层不工作，自动退回下面的免费接口。</div>" +
+      "<h3>API 用量</h3>" +
+      '<div class="lk-usage"></div>' +
+      '<div class="lk-row"><label>输入单价 <input type="number" data-k="usagePriceIn" min="0" step="0.01" style="width:90px"> 元/百万 token</label></div>' +
+      '<div class="lk-row"><label>输出单价 <input type="number" data-k="usagePriceOut" min="0" step="0.01" style="width:90px"> 元/百万 token</label></div>' +
+      '<div class="lk-row">' +
+      '<button data-a="usageReset" data-scope="session">清零本次</button> ' +
+      '<button data-a="usageReset" data-scope="today">清零今天</button> ' +
+      '<button data-a="usageReset" data-scope="all">清零累计</button>' +
+      "</div>" +
+      '<div class="lk-hint">只统计<b>发出去的请求</b>：命中缓存不算（省下来的量另外显示）。' +
+      "token 数取自接口响应里的 <code>usage</code>；免费接口没有 token，用请求数与字符数衡量。" +
+      "填了单价就会多算一行估算花费（单价按你接口的现价来，默认 0 = 不算钱）。</div>" +
       "<h3>操作</h3>" +
       '<div class="lk-row">' +
       '<button data-a="rescan">重新扫描</button> ' +
@@ -549,6 +565,7 @@
     var preview = root.querySelector(".lk-preview");
     var status = root.querySelector(".lk-status");
     var layersBox = root.querySelector(".lk-layers");
+    var usageBox = root.querySelector(".lk-usage");
 
     /** 每一层右边那句小字：让用户一眼看出这层现在能不能用 */
     function layerNote(id) {
@@ -614,6 +631,66 @@
       rescan();
       refreshAll();
     }
+
+    /** 用量区块：把 usage 模块的账本渲染成几行 */
+    function refreshUsage() {
+      if (!usageBox) return;
+      usageBox.innerHTML = "";
+      if (!state.usage) {
+        usageBox.textContent = "用量统计不可用（core/usage.js 没注入）";
+        return;
+      }
+      var snap = state.usage.snapshot();
+      var priceIn = Number(config.usagePriceIn) || 0;
+      var priceOut = Number(config.usagePriceOut) || 0;
+      var rows = [
+        { label: "本次", bucket: snap.session },
+        { label: "今天", bucket: snap.today },
+        { label: "累计", bucket: snap.total },
+      ];
+      for (var i = 0; i < rows.length; i++) {
+        var line = document.createElement("div");
+        line.className = "lk-usage-row";
+        line.textContent = rows[i].label + "：" + usageLine(rows[i].bucket, priceIn, priceOut);
+        usageBox.appendChild(line);
+      }
+      var saved = document.createElement("div");
+      saved.className = "lk-hint";
+      var llmStats = state.llm ? state.llm.stats() : null;
+      var savedHits = (llmStats ? llmStats.cacheHits : 0) + (state.corrector ? state.corrector.stats().memoryHits : 0);
+      saved.textContent =
+        "缓存命中 " + savedHits + " 次（这些没发请求）" +
+        (priceIn || priceOut ? "" : "；填了单价才会算花费");
+      usageBox.appendChild(saved);
+    }
+
+    /** 一个桶一行字：请求/成功/失败/词/字符/token */
+    function usageLine(bucket, priceIn, priceOut) {
+      var parts = [];
+      for (var k = 0; k < USAGE_KINDS.length; k++) {
+        var kind = USAGE_KINDS[k];
+        var b = bucket[kind];
+        if (!b || (!b.requests && !b.failures)) continue;
+        var seg = (kind === "llm" ? "大模型 " : "免费接口 ") + b.requests + " 次请求";
+        if (b.failures) seg += "（成功 " + b.ok + " / 失败 " + b.failures + "）";
+        if (b.words) seg += "・" + b.words + " 词";
+        if (b.chars) seg += "・" + b.chars + " 字符";
+        // 只有大模型那层有 token（Google 那两个接口不回 usage）；免费接口就算被
+        // 灌了 token 也不显示，免得账本看着像是两种计费混在一起
+        if (kind === "llm" && (b.promptTokens || b.completionTokens)) {
+          seg += "・输入 " + b.promptTokens + " / 输出 " + b.completionTokens + " tok";
+        }
+        parts.push(seg);
+      }
+      if (!parts.length) return "还没发过请求";
+      var text = parts.join("　|　");
+      var money = state.usage.cost(bucket, priceIn, priceOut);
+      if (money > 0) text += "　≈ " + money.toFixed(4) + " 元";
+      return text;
+    }
+
+    /** 从 usage 模块拿两层 id（别在 main.js 里写死一份） */
+    var USAGE_KINDS = typeof LKUsage !== "undefined" ? LKUsage.KINDS : ["llm", "google"];
 
     function refreshPreview() {
       preview.innerHTML = "";
@@ -702,12 +779,21 @@
         );
       }
       if (state.error) lines.push("错误: " + state.error);
+      if (state.usage) {
+        var u = state.usage.snapshot();
+        lines.push(
+          "用量: 本次 大模型 " + u.session.llm.requests + " 次 / 免费接口 " + u.session.google.requests + " 次，" +
+            "今天 大模型 " + u.today.llm.requests + " 次（输入 " + u.today.llm.promptTokens + " / 输出 " +
+            u.today.llm.completionTokens + " tok）"
+        );
+      }
       status.textContent = lines.join("\n");
     }
 
     function refreshAll() {
       refreshLayers();
       refreshPreview();
+      refreshUsage();
       refreshStatus();
     }
 
@@ -725,7 +811,7 @@
 
         var commit = function () {
           if (el.type === "checkbox") config[key] = el.checked;
-          else if (el.type === "range") config[key] = Number(el.value);
+          else if (el.type === "range" || el.type === "number") config[key] = Number(el.value);
           else config[key] = el.value;
           /*
            * 接口地址当场纠正：多数人粘的是文档里的 base_url
@@ -812,6 +898,9 @@
             setTimeout(function () {
               b.textContent = "清除校正缓存";
             }, 1500);
+          } else if (what === "usageReset") {
+            var scope = b.dataset.scope || "session";
+            if (state.usage) state.usage.reset(scope);
           } else if (what === "layersReset") {
             config.layerOrder = normalizeLayerOrder(DEFAULTS.layerOrder);
             saveConfig();
@@ -895,11 +984,22 @@
 
     try {
       updateStyles();
+      /*
+       * 用量统计（本次 / 今天 / 累计）。core/usage.js 没注入时整块功能缺席，
+       * 但注音本身照常工作 —— 统计是附属品，不能拖累主流程。
+       */
+      if (typeof LKUsage !== "undefined") {
+        state.usage = LKUsage.createUsage();
+      }
       state.corrector = LKCorrect.createCorrector({
         online: config.online,
         // 纯片假名还不够：还要像这个词的音译（tick 不能被回成 カチカチ）
         validate: function (word, kana) {
           return typeof LKReading === "undefined" ? true : LKReading.looksLikeTransliteration(word, kana);
+        },
+        // 免费接口没有 token 概念，用请求数 + 字符数记账
+        onUsage: function (fields) {
+          if (state.usage) state.usage.add("google", fields);
         },
         log: function () {
           if (config.verbose) console.log.apply(console, [LOG].concat(Array.prototype.slice.call(arguments)));
@@ -937,6 +1037,10 @@
           endpoint: config.llmEndpoint,
           model: config.llmModel,
           key: config.llmKey,
+          // 用量：token 数由接口响应里的 usage 给（没给就只记次数）
+          onUsage: function (fields) {
+            if (state.usage) state.usage.add("llm", fields);
+          },
           // 同上：拦住"意译/拟声词"（用户报的 tick -> カチカチ）
           validate: function (word, kana) {
             return typeof LKReading === "undefined" ? true : LKReading.looksLikeTransliteration(word, kana);
@@ -1040,6 +1144,17 @@
         applyLayerOrder();
         rescan();
         return config.layerOrder.slice();
+      },
+      /*
+       * API 用量：LK.usage() 看账本（本次/今天/累计，两层分开），
+       * LK.usageReset('session'|'today'|'all') 清零。设置面板里那几个按钮走同一条路。
+       */
+      usage: function () {
+        return state.usage ? state.usage.snapshot() : null;
+      },
+      usageReset: function (scope) {
+        if (state.usage) state.usage.reset(scope || "session");
+        return state.usage ? state.usage.snapshot() : null;
       },
       read: function (word) {
         // 本地那几层的读音（不含大模型/联网校正）—— 看 source 就知道是谁给的

@@ -55,6 +55,8 @@
     options = options || {};
     var onUpdate = options.onUpdate || function () {};
     var onStatus = options.onStatus || function () {};
+    /** 用量回调：每批请求成功/失败各叫一次（免费接口没有 token，用请求数 + 字符数衡量） */
+    var onUsage = options.onUsage || function () {};
     var onlineEnabled = options.online !== false;
     var log = options.log || function () {};
     /*
@@ -210,6 +212,8 @@
       if (!onlineEnabled) return;
       var words = takeBatch();
       if (!words.length) return;
+      var usageChars = 0;
+      for (var uc = 0; uc < words.length; uc++) usageChars += (words[uc] || "").length;
       request(words).then(
         function (glosses) {
           var got = 0;
@@ -235,6 +239,7 @@
           }
           stats.onlineHits += got;
           stats.requests++;
+          onUsage({ requests: 1, ok: 1, words: words.length, chars: usageChars });
           lastError = null;
           if (got) {
             flushCache();
@@ -252,6 +257,7 @@
         function (err) {
           stats.requests++;
           stats.failures++;
+          onUsage({ requests: 1, failures: 1, words: words.length, chars: usageChars });
           lastError = (err && err.message) || String(err);
           for (var i = 0; i < words.length; i++) {
             inflight.delete(words[i]);

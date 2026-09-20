@@ -19,6 +19,7 @@
 			{ "file": "core/reading.js" },
 			{ "file": "core/correct.js" },
 			{ "file": "core/llm.js" },
+			{ "file": "core/usage.js" },
 			{ "file": "core/annotate.js" },
 			{ "file": "main.js" }
 		]

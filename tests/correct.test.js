@@ -47,17 +47,43 @@ function makeCorrector(ctx, opts) {
     });
   };
   const updates = [];
+  const usages = [];
   const corrector = ctx.LKCorrect.createCorrector({
     online: true,
     validate: opts.validate,
     log: function () {},
     onStatus: function () {},
+    onUsage: function (fields) {
+      usages.push(fields);
+    },
     onUpdate: function () {
       updates.push(1);
     },
   });
-  return { corrector, calls, updates };
+  return { corrector, calls, updates, usages };
 }
+
+test("用量：成功一批记一次请求 + 词数 + 字符数，失败那批记成失败", async () => {
+  const ctx = loadCore();
+  const ok = makeCorrector(ctx, { reply: () => dictResponse(["クローバー", "ドリーム"]) });
+  ok.corrector.lookup("clover");
+  ok.corrector.lookup("dream");
+  await sleep(1600);
+  assert.strictEqual(ok.usages.length, 1, "一批只记一笔");
+  assert.strictEqual(ok.usages[0].requests, 1);
+  assert.strictEqual(ok.usages[0].ok, 1);
+  assert.strictEqual(ok.usages[0].words, 2);
+  assert.strictEqual(ok.usages[0].chars, 11, "clover(6) + dream(5)：送出去的字符数");
+
+  const bad = makeCorrector(ctx, { reply: () => new Error("offline") });
+  bad.corrector.lookup("kaleidoscope");
+  await sleep(1600);
+  assert.strictEqual(bad.usages.length, 1, "失败也要记一笔");
+  assert.strictEqual(bad.usages[0].failures, 1);
+  assert.strictEqual(bad.usages[0].requests, 1);
+  assert.strictEqual(bad.usages[0].words, 1);
+  assert.strictEqual(bad.usages[0].chars, 12);
+});
 
 test("isWaiting：排队/请求中为 true，回来或失败后为 false", async () => {
   const ctx = loadCore();

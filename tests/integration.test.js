@@ -41,7 +41,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** 造一个假的 BetterNCM 环境并注入插件 */
 function bootPlugin(html, options) {
   options = options || {};
-  const ctx = loadCore(html || NCM_HTML, { reader: false });
+  // 默认注入全部核心模块；options.files 用来测"某个模块没注入"时的降级
+  const ctx = loadCore(html || NCM_HTML, { reader: false, files: options.files });
   const dom = ctx.dom;
   const window = ctx.window;
 
@@ -87,7 +88,8 @@ function bootPlugin(html, options) {
   window.betterncm = betterncm;
   window.plugin = plugin;
 
-  loadScripts(dom, FILES);
+  // options.files 给了就按它注入（用来测"某个核心模块没注入"的降级）
+  loadScripts(dom, options.files ? options.files.concat(["main.js"]) : FILES);
 
   const env = {
     ctx,
@@ -924,6 +926,117 @@ test("断网时依然能标（词典 + 罗马音 + 规则全在本地）", async
   const stats = env.api.stats();
   assert.ok(stats.reading, "应该有读音统计");
   assert.ok(stats.reading.dictHits + stats.reading.romajiHits + stats.reading.ruleHits >= 3, JSON.stringify(stats.reading));
+});
+
+test("用量：大模型返回的 token 数会记进账本（本次 / 今天 / 累计 + 落盘）", async () => {
+  const env = bootPlugin(LLM_HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions" },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const body = JSON.parse(init.body);
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = "カレイドスコープ";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            // 真接口会带 usage —— 账本要的就是这个
+            usage: { prompt_tokens: 321, completion_tokens: 45, total_tokens: 366 },
+            choices: [{ message: { content: JSON.stringify(out) } }],
+          }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1400);
+
+  const u = env.api.usage();
+  assert.ok(u, "要有账本");
+  assert.strictEqual(u.session.llm.requests, 1, "一次请求");
+  assert.strictEqual(u.session.llm.ok, 1);
+  assert.strictEqual(u.session.llm.promptTokens, 321, "输入 token 取自响应里的 usage");
+  assert.strictEqual(u.session.llm.completionTokens, 45, "输出 token 同上");
+  assert.strictEqual(u.session.llm.words, 1, "这批只问了词典外的那个词（light 在词典里）");
+  assert.strictEqual(u.session.llm.chars, "kaleidoscope".length, "送出去的字符数");
+  assert.strictEqual(u.session.google.requests, 0, "大模型排在免费接口前面，Google 那层不该被咨询");
+  assert.deepStrictEqual(
+    [u.session.llm.requests, u.today.llm.requests, u.total.llm.requests],
+    [1, 1, 1],
+    "本次 / 今天 / 累计 三份账一起涨"
+  );
+  const saved = JSON.parse(env.window.localStorage.getItem("latin-katakana.usage"));
+  assert.strictEqual(saved.total.llm.promptTokens, 321, "累计要落盘");
+});
+
+test("用量：设置面板显示账本，三个清零按钮各管一段", async () => {
+  const env = bootPlugin(NCM_HTML, { dev: true });
+  // 预置一份账本（在 onLoad 之前写进去）：证明面板读的是 localStorage 里那份
+  const d = new Date();
+  const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const bucket = (n) => ({ requests: n, ok: n, failures: 0, words: n, chars: n * 5, promptTokens: n * 100, completionTokens: n * 10 });
+  env.window.localStorage.setItem(
+    "latin-katakana.usage",
+    JSON.stringify({ version: 1, day: key, today: { llm: bucket(7), google: bucket(2) }, total: { llm: bucket(9), google: bucket(3) } })
+  );
+  await env.runLoad();
+
+  const u = env.api.usage();
+  assert.strictEqual(u.total.llm.requests, 9, "账本要从 localStorage 读出来");
+  assert.strictEqual(u.session.llm.requests, 0, "本次是新的会话");
+
+  const root = env.listeners.config[0]();
+  const usageText = root.querySelector(".lk-usage").textContent;
+  assert.ok(usageText.indexOf("累计：大模型 9 次请求") >= 0, "面板要显示累计：" + usageText);
+  assert.ok(usageText.indexOf("今天：大模型 7 次请求") >= 0, "面板要显示今天：" + usageText);
+  assert.ok(usageText.indexOf("免费接口 3 次请求") >= 0, "免费接口单独记：" + usageText);
+  assert.ok(usageText.indexOf("缓存命中") >= 0, "顺带说一句省下的请求：" + usageText);
+
+  const clickReset = (scope) => {
+    const b = [...env.listeners.config[0]().querySelectorAll("[data-a]")].find(
+      (x) => x.dataset.a === "usageReset" && x.dataset.scope === scope
+    );
+    assert.ok(b, "要有清零按钮：" + scope);
+    b.dispatchEvent(new env.window.Event("click"));
+  };
+
+  clickReset("today");
+  assert.strictEqual(env.api.usage().today.llm.requests, 0, "清零今天");
+  assert.strictEqual(env.api.usage().total.llm.requests, 9, "累计不该被清");
+
+  clickReset("all");
+  const after = env.api.usage();
+  assert.strictEqual(after.total.llm.requests, 0, "清零累计");
+  assert.strictEqual(after.total.google.requests, 0);
+});
+
+test("用量：单价填了就算花费，单价 0 就不显示钱", async () => {
+  const env = bootPlugin(NCM_HTML, { config: { usagePriceIn: 2, usagePriceOut: 8 } });
+  const d = new Date();
+  const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  env.window.localStorage.setItem(
+    "latin-katakana.usage",
+    JSON.stringify({
+      version: 1,
+      day: key,
+      today: { llm: { requests: 1, ok: 1, promptTokens: 1e6, completionTokens: 0 } },
+      total: { llm: { requests: 1, ok: 1, promptTokens: 1e6, completionTokens: 0 } },
+    })
+  );
+  await env.runLoad();
+  const text = env.listeners.config[0]().querySelector(".lk-usage").textContent;
+  assert.ok(text.indexOf("2.0000 元") >= 0, "输入 1M token × 2 元 = 2 元：" + text);
+});
+
+test("用量：core/usage.js 没注入时注音照常，只是没有账本", async () => {
+  const env = bootPlugin(NCM_HTML, { files: CORE_FILES.filter((f) => f.indexOf("usage") < 0) });
+  await env.runLoad();
+  await sleep(200);
+  assert.strictEqual(env.api.usage(), null, "没有模块就没有账本");
+  assert.strictEqual(rubyCount(env.document.querySelector("ul.lyric li p")), 2, "注音不受影响");
 });
 
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {

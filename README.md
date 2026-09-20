@@ -25,6 +25,7 @@
 - **推荐在设置面板里填一个大模型 API Key**（默认 DeepSeek，任何 OpenAI 兼容接口都行）：Key 只存在本机 localStorage，留空则这一层不工作、自动退回免费接口；一个词只问一次（**按"词 + 它所在的那句歌词"缓存**，所以同一个词在不同句子里会分别判断），命中与"问不出来"都会缓存。接口地址粘文档里的 `base_url`（`https://api.deepseek.com` 或 `…/v1`）也能用，会自动补成 `/chat/completions`
 - 记号按**字母名**逐字母读：`D/N/A` → ディーエヌエー、`R&B` → アールアンドビー、`X-Y` → エックスワイ（`e-mail` / `x-ray` 这类连字符词照旧按单词读）
 - 只标歌词原文行和播放栏标题，**含汉字的行也照标**；中文翻译层（默认歌词页 `li.line` 里的第二个块、RNP 的 `-translated`）和制作信息行（作词/作曲/编曲…）跳过。换歌时上一首的注音会撤掉，不会留在新歌的行里
+- **API 用量统计**：设置面板「API 用量」看**本次 / 今天 / 累计**的请求数、词数、字符数，大模型那层还记**输入/输出 token**（取自接口响应里的 `usage`）；只算真发出去的请求，命中缓存不算（省下的量单独显示）。填了单价会多算一行**估算花费**。控制台 `LK.usage()` 看、`LK.usageReset('today')` 清零
 - 可以和 [片假名终结者](https://github.com/YXLEI0/katakana-terminator-betterncm)、[jp-furigana](https://github.com/Leleawa/jp-furigana) 同时开着；jp-furigana 需要先打共存补丁：`npm run patch:furigana`
 - 桌面歌词无效，那是原生窗口而不是网页
 - 读音来源、规则依据（sljfaq）、词典怎么生成、排障、已知限制见 [docs/notes.md](docs/notes.md)

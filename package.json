@@ -10,8 +10,8 @@
     "install:plugin": "node tools/build.js --install",
     "verify:install": "node tools/verify-install.js",
     "patch:furigana": "node tools/patch-jp-furigana-plugin.js",
-    "test": "node --test tests/latin.test.js tests/reading.test.js tests/sljfaq-words.test.js tests/dict.test.js tests/annotate.test.js tests/correct.test.js tests/llm.test.js tests/integration.test.js tests/patch.test.js",
-    "test:serial": "node tests/latin.test.js && node tests/reading.test.js && node tests/sljfaq-words.test.js && node tests/dict.test.js && node tests/annotate.test.js && node tests/correct.test.js && node tests/llm.test.js && node tests/integration.test.js && node tests/patch.test.js",
+    "test": "node --test tests/latin.test.js tests/reading.test.js tests/sljfaq-words.test.js tests/dict.test.js tests/annotate.test.js tests/correct.test.js tests/llm.test.js tests/usage.test.js tests/integration.test.js tests/patch.test.js",
+    "test:serial": "node tests/latin.test.js && node tests/reading.test.js && node tests/sljfaq-words.test.js && node tests/dict.test.js && node tests/annotate.test.js && node tests/correct.test.js && node tests/llm.test.js && node tests/usage.test.js && node tests/integration.test.js && node tests/patch.test.js",
     "build:dict:llm": "node tools/expand-dict-llm.js",
     "check": "node tools/check.js"
   },

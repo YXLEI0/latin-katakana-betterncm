@@ -179,6 +179,8 @@
     var log = options.log || function () {};
     var onStatus = options.onStatus || function () {};
     var onUpdate = options.onUpdate || function () {};
+    /** 用量回调：每批请求成功/失败各叫一次，main.js 接过去记 token 与次数 */
+    var onUsage = options.onUsage || function () {};
     /*
      * 答案校验：由上层注入（main.js 传 reading.js 的 looksLikeTransliteration）。
      * 光看"纯片假名"拦不住**意译/拟声词** —— 用户报的 tick -> カチカチ 就是这种，
@@ -392,6 +394,15 @@
       inflight = true;
       requestTimes.push(Date.now());
       stats.requests++;
+      /*
+       * 用量统计：这一批送出去的词数与字符数（token 数要等响应里的 usage）。
+       * gotResponse 表示"请求真的发出去并拿到了响应" —— 拿不到就别记成用量
+       * （fetch 抛异常 = 请求根本没发出去）。
+       */
+      var usageWords = batch.length;
+      var usageChars = 0;
+      for (var uw = 0; uw < batch.length; uw++) usageChars += (batch[uw].word || "").length;
+      var gotResponse = false;
       var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
       var to = setTimeout(function () {
         if (ctrl) ctrl.abort();
@@ -417,12 +428,13 @@
       } catch (e) {
         clearTimeout(to);
         inflight = false;
-        fail(batch, e);
+        fail(batch, e, { words: usageWords, chars: usageChars, sent: false });
         return Promise.resolve(null);
       }
 
       return Promise.resolve(p)
         .then(function (res) {
+          gotResponse = true; // 请求发出去了（哪怕回的是 4xx/5xx，也算一次用量）
           if (res && res.ok) return res.json();
           return readBody(res).then(function (body) {
             throw httpError(res && res.status, cfg.endpoint, body);
@@ -433,11 +445,21 @@
             data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
           var obj = pickJson(content);
           if (!obj) throw new Error("响应里没有 JSON");
+          // 记 token：接口给了 usage 就用它，没给就只记次数
+          var u = data && data.usage;
+          onUsage({
+            requests: 1,
+            ok: 1,
+            words: usageWords,
+            chars: usageChars,
+            promptTokens: u && typeof u.prompt_tokens === "number" ? u.prompt_tokens : 0,
+            completionTokens: u && typeof u.completion_tokens === "number" ? u.completion_tokens : 0,
+          });
           applyBatch(batch, obj);
           return true;
         })
         .catch(function (err) {
-          fail(batch, err);
+          fail(batch, err, { words: usageWords, chars: usageChars, sent: gotResponse });
           return false;
         })
         .then(function (okFlag) {
@@ -504,10 +526,21 @@
       onStatus("大模型：最近一批命中 " + hits + "/" + batch.length);
     }
 
-    /** 一批词失败了：放回队列（不写缓存），按退避冷却，等会儿重试 */
-    function fail(batch, err) {
+    /**
+     * 一批词失败了：放回队列（不写缓存），按退避冷却，等会儿重试。
+     * @param {Object} [usage] { words, chars, sent } —— sent=false 表示请求没发出去，
+     *                        那次不算 API 用量（只记一次失败）
+     */
+    function fail(batch, err, usage) {
       lastError = (err && err.message) || String(err);
       stats.failures++;
+      var u = usage || { words: batch.length, chars: 0, sent: true };
+      onUsage({
+        requests: u.sent ? 1 : 0,
+        failures: 1,
+        words: u.sent ? u.words || 0 : 0,
+        chars: u.sent ? u.chars || 0 : 0,
+      });
       cooldownUntil = Date.now() + cooldownMs;
       cooldownMs = Math.min(cooldownMs * 2, COOLDOWN_MAX_MS);
       for (var i = 0; i < batch.length; i++) {
