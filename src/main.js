@@ -82,7 +82,7 @@
   }
 
   // 改了默认值就 +1：用来把旧版本存下来的设置迁移掉
-  var CONFIG_VERSION = 1;
+  var CONFIG_VERSION = 2;
   var CONFIG_KEY = "latin-katakana.config";
 
   var DEFAULTS = {
@@ -93,6 +93,12 @@
     llmEndpoint: "https://api.deepseek.com/chat/completions",
     llmModel: "deepseek-chat",
     llmKey: "",
+    /*
+     * 读音来源的调用顺序（越靠前越优先），设置面板里可以上下调。
+     * 记号 / 缩写 / 字母名 / 长音符罗马字不在这张表里 —— 那是"这个词该怎么断"，
+     * 不是"读音该信谁"，永远最先判（见 core/reading.js 的 lookup）。
+     */
+    layerOrder: ["dict", "romaji", "llm", "google", "rule"],
     annotateAll: true, // 除歌词外，也标播放栏的歌名/歌手
     scope: "all", // titles | lyrics | all | custom
     customSelector: "",
@@ -101,6 +107,80 @@
     focusDebug: false, // 给已注音区域描边，排障用
     verbose: false,
   };
+
+  // ------------------------------------------------------------ 读音来源与顺序
+
+  /*
+   * 用户可以在设置面板里给这几层上下调。越靠前越优先，语义是：
+   *   "排在当前答案前面的在线层"才有资格覆盖它 —— 所以把**英文音译规则**提到
+   *   大模型/免费接口前面，就等于**一个请求都不发**（这正是"不想联网"的用法）；
+   *   把**大模型**提到词典前面，则连词典命中的词也会让大模型判一遍。
+   *
+   * 记号 / 缩写 / 字母名 / 长音符罗马字（`D/N/A`、`I'll`、`LDK`、`Tōkyō`）
+   * 不在这张表里：它们决定的不是"读音该信谁"，而是"这个词该怎么断"，永远最先判。
+   */
+  var LAYER_IDS = ["dict", "romaji", "llm", "google", "rule"];
+  var LAYER_NAMES = {
+    dict: "离线词典",
+    romaji: "日式罗马音",
+    llm: "大模型校正",
+    google: "免费接口",
+    rule: "英文音译规则",
+  };
+  // 异步层（要发请求、结果晚一点回来）；另外三层是同步的，读的时候当场就有答案
+  var ASYNC_LAYERS = { llm: true, google: true };
+
+  /** 去重 + 补齐：脏配置、旧版本配置都不至于少一层（缺的按默认顺序补在后面） */
+  function normalizeLayerOrder(list) {
+    var out = [];
+    var src = list && typeof list.length === "number" ? list : [];
+    var i;
+    for (i = 0; i < src.length; i++) {
+      if (LAYER_IDS.indexOf(src[i]) >= 0 && out.indexOf(src[i]) < 0) out.push(src[i]);
+    }
+    for (i = 0; i < LAYER_IDS.length; i++) {
+      if (out.indexOf(LAYER_IDS[i]) < 0) out.push(LAYER_IDS[i]);
+    }
+    return out;
+  }
+
+  /** 这一层在用户排的顺序里排第几（越小越优先）；不在表里的（如 letters）算最优先 */
+  function layerRank(id) {
+    var i = config.layerOrder.indexOf(id);
+    return i < 0 ? -1 : i;
+  }
+
+  /** 大模型那层现在能不能用（开关 + 填了 key） */
+  function llmAvailable() {
+    if (!state.llm || !state.llm.config) return false;
+    var c = state.llm.config();
+    return !!(c.enabled && c.hasKey);
+  }
+
+  function googleAvailable() {
+    return !!(config.online && state.corrector);
+  }
+
+  function layerAvailable(id) {
+    if (id === "llm") return llmAvailable();
+    if (id === "google") return googleAvailable();
+    return true;
+  }
+
+  /** 同步层（词典/罗马音/规则）在用户顺序里的相对次序 */
+  function syncLayerOrder() {
+    var out = [];
+    for (var i = 0; i < config.layerOrder.length; i++) {
+      if (!ASYNC_LAYERS[config.layerOrder[i]]) out.push(config.layerOrder[i]);
+    }
+    return out;
+  }
+
+  /** 把顺序推给读音引擎；配置坏了先纠正，免得引擎拿到半张表 */
+  function applyLayerOrder() {
+    config.layerOrder = normalizeLayerOrder(config.layerOrder);
+    if (state.reader && state.reader.setOrder) state.reader.setOrder(syncLayerOrder());
+  }
 
   function loadConfig() {
     var saved = {};
@@ -112,6 +192,8 @@
     var cfg = {};
     for (var k in DEFAULTS) cfg[k] = DEFAULTS[k];
     for (var k2 in saved) if (k2 in DEFAULTS) cfg[k2] = saved[k2];
+    // 层序是数组，且可能被手改坏：当场去重补齐（也顺便复制一份，别改到 DEFAULTS）
+    cfg.layerOrder = normalizeLayerOrder(cfg.layerOrder);
     cfg.configVersion = CONFIG_VERSION;
     return cfg;
   }
@@ -171,86 +253,77 @@
   // ------------------------------------------------------------ 读音
 
   /*
-   * 取一个词的显示读音。层序（越靠前越优先）：
+   * 取一个词的显示读音。**层序由用户在设置面板里定**，默认：
    *
-   *   1. 词典（人工核过的外来语写法 / 缩写 / 字母名）—— 确定，直接返回；
-   *   2. 罗马音（歌词本来就是罗马音的，切出来是确定的）；
-   *   3. **大模型校正**（配了 key 时）—— 优先于拼写规则；
-   *   4. **免费接口**（没配大模型时）—— 同样优先于拼写规则；
-   *   5. 英文音译规则（兜底，拼写猜测）。
+   *   离线词典 > 罗马音 > 大模型校正 > 免费接口 > 英文音译规则
    *
-   * 用户明确要的顺序是「大模型 -> 免费接口 -> 规则」：规则是拼写音译，
-   * hello 会读成 ヘッラオ、question 会读成 クワエサション，那不叫人唱的音。
-   * 所以**在线那层还能给出结果时，这一轮先不标**（返回 null），等它回来再补 ——
-   * 先标一个错的再改，不如晚半秒标一个对的。
+   * 同步层（词典/罗马音/规则）当场给答案；异步层（大模型/免费接口）要发请求。
+   * 规则是拼写音译（hello -> ヘッラオ、question -> クワエサション），所以默认把它
+   * 排在在线层后面 —— 但它同时也是一切的兜底：**在线层挂了/没配/在退避时立刻放行**，
+   * 否则断网就等于一个字都不标。
    *
-   * 但这一条有个必须守住的底线：**在线那层挂了/没配/在退避时立刻放行**，
-   * 让规则兜底，否则断网就等于一个字都不标。
+   * 排序带来的两个直接可用的用法：
+   *   - 把「英文音译规则」提到在线层前面 -> 这一步**一个请求都不发**，纯离线；
+   *   - 把「大模型」提到词典前面       -> 连词典命中的词也让大模型判一遍
+   *                                        （词典偶有错条目，这是逃生门）。
+   *
+   * 底线不变：**绝不返回 null 让这行空着**。高优先的在线层还在问的时候，用现成的
+   * 答案顶上并标成"暂定"（`lt-pending`，样式淡一点），结果回来由 annotate.relabel()
+   * 就地改写 —— 用户报过的"全英文行标注后有概率消失"就是这么修的。
    */
   function readForDisplay(word, line) {
     if (!state.reader) return null;
     var r = state.reader.read(word);
     if (!r || !r.kana) return null;
 
-    // 词典 / 罗马音 / 字母名 / 记号：确定的答案，直接返回，不发请求也不等
-    if (r.source !== "rule") return r.kana;
+    var mine = layerRank(r.source); // 同步层名次；letters 等不在表里 -> -1（最优先）
+    for (var i = 0; i < config.layerOrder.length; i++) {
+      var id = config.layerOrder[i];
+      if (!ASYNC_LAYERS[id]) continue;
+      // 排在当前答案后面的在线层不参与：不发请求、也不覆盖
+      if (i >= mine) break;
+      if (!layerAvailable(id)) continue;
 
-    /*
-     * ③ 大模型。配了 key 就**只**走它，不再同时问免费接口 —— 两个都问是白花一次请求，
-     * 而且两边的答案还可能打架。它挂了/在退避（isWaiting 为 false）时用规则兜底。
-     */
-    var llmOn = !!(state.llm && state.llm.config && state.llm.config().enabled && state.llm.config().hasKey);
-    if (llmOn) {
-      if (line === undefined || line === null) {
-        // 控制台 LK.display('词') 这种没有句子的情况：取这个词最近一次的读音
-        var seen = state.llm.peek(word);
-        return seen || r.kana;
+      if (id === "llm") {
+        if (line !== undefined && line !== null) {
+          var llm = state.llm.lookup(word, line);
+          if (llm) return llm;
+        }
+        // 这个词还没问到结果：先用在别的句子里拿到的读音，其次用当前这层的读音顶上
+        return state.llm.peek(word) || r.kana;
       }
-      var llm = state.llm.lookup(word, line);
-      if (llm) return llm;
-      /*
-       * 这句还没问到结果 —— **先用现成的顶上，绝不返回 null（不标）**：
-       *   1. 这个词在别的句子里拿到过读音 -> 用那个（peek）；
-       *   2. 否则用规则读音当**暂定**值（注音会标成 lt-pending，样式淡一点）。
-       *
-       * 为什么不"先不标"：全英文行里词典外的词最多，一行里只要有一个词在等，
-       * 那一行就会空着；而且这个词所在的原文本节点已经有记录了，后面拿到结果
-       * 也不会再补注（首词尤其明显）—— 用户看到的就是"标注后有概率消失"。
-       * 用暂定值顶上，等真结果回来由 annotate.relabel() **就地改写**，
-       * DOM 一个节点都不动。
-       */
-      var seenAnywhere = state.llm.peek(word);
-      return seenAnywhere || r.kana;
-    }
 
-    // ④ 免费接口（没配大模型时才轮到它）
-    if (config.online && state.corrector) {
+      // 免费接口（Google）
       var fixed = state.corrector.lookup(word);
       if (fixed) return fixed;
-      // 同上：还在等免费接口时先用规则读音顶（标成暂定），别空着
       return r.kana;
     }
 
-    // ⑤ 规则兜底
+    // 没有更高优先的在线层可用 —— 当前这层的答案就是最终答案
     return r.kana;
   }
 
   /**
-   * 这个词的读音现在是不是"暂定"的（在线那层还在问，用的是规则结果顶）。
+   * 这个词的读音现在是不是"暂定"的（有比它更优先的在线层还在问）。
    * 注音层靠它在 ruby 上加 `lt-pending` 类 —— 样式淡一点，提示"还不一定"。
    */
   function isProvisional(word, line) {
-    if (!word) return false;
-    // 词典 / 罗马音 / 字母名 / 记号是确定答案，永远不是"暂定"
-    // （不判这个的话，词典命中的词会一直被标成暂定 —— 因为它压根没入过队）
-    var local = state.reader ? state.reader.read(word) : null;
-    if (!local || local.source !== "rule") return false;
-    if (state.llm && state.llm.isWaiting) {
-      var llmOn = !!(state.llm.config && state.llm.config().enabled && state.llm.config().hasKey);
-      if (llmOn) return state.llm.isWaiting(word, line);
-    }
-    if (config.online && state.corrector && state.corrector.isWaiting) {
-      return state.corrector.isWaiting(word);
+    if (!word || !state.reader) return false;
+    var r = state.reader.read(word);
+    if (!r) return false;
+    var mine = layerRank(r.source);
+    for (var i = 0; i < config.layerOrder.length; i++) {
+      var id = config.layerOrder[i];
+      if (!ASYNC_LAYERS[id]) continue;
+      if (i >= mine) break; // 这一层不参与，后面的更不参与
+      if (!layerAvailable(id)) continue;
+      if (id === "llm") {
+        if (state.llm.isWaiting && state.llm.isWaiting(word, line)) return true;
+      } else if (state.corrector.isWaiting && state.corrector.isWaiting(word)) {
+        return true;
+      }
+      // 这一层已经答过了（或确定给不出）—— 显示的就是最终答案，不是暂定
+      return false;
     }
     return false;
   }
@@ -412,6 +485,11 @@
       "#latin-katakana-config .lk-preview { padding: 10px 12px; border: 1px solid rgba(128,128,128,.35); border-radius: 6px; font-size: 18px; }" +
       "#latin-katakana-config .lk-preview-trans { margin-top: 4px; font-size: 14px; opacity: .6; }" +
       "#latin-katakana-config .lk-status { white-space: pre-wrap; font-family: monospace; font-size: 12px; opacity: .8; }" +
+      "#latin-katakana-config .lk-layer { display: flex; align-items: center; gap: 6px; line-height: 1.9; }" +
+      "#latin-katakana-config .lk-layer-name { min-width: 110px; }" +
+      "#latin-katakana-config .lk-layer-note { opacity: .6; font-size: 12px; flex: 1; }" +
+      "#latin-katakana-config .lk-layer-btn { min-width: 26px; }" +
+      "#latin-katakana-config .lk-layer-btn[disabled] { opacity: .35; }" +
       "#latin-katakana-config .lk-links a { margin-right: 14px; }" +
       "</style>" +
       '<div class="lk-links">' +
@@ -439,6 +517,13 @@
       "</select></label></div>" +
       '<div class="lk-row"><label>自定义选择器 <input type="text" data-k="customSelector" placeholder="例如 ul.lyric > li"></label></div>' +
       '<div class="lk-hint">选择器留空或匹配不到元素时会自动回退。</div>' +
+      "<h3>读音来源顺序</h3>" +
+      '<div class="lk-hint">越靠上越优先。把<b>英文音译规则</b>提到在线层前面 = <b>一个请求都不发</b>（纯离线）；' +
+      "把<b>大模型</b>提到词典前面 = 连词典命中的词也让大模型判一遍（词典偶有错条目，这是逃生门）。<br>" +
+      "记号 / 缩写 / 字母名 / 长音符罗马字（<code>D/N/A</code>、<code>I'll</code>、<code>LDK</code>、" +
+      "<code>Tōkyō</code>）不参与排序 —— 它们定的是「这个词该怎么断」，永远最先判。</div>" +
+      '<div class="lk-layers"></div>' +
+      '<div class="lk-row"><button data-a="layersReset">恢复默认顺序</button> <span data-v="layersReset"></span></div>' +
       "<h3>大模型校正（推荐）</h3>" +
       '<div class="lk-row"><label><input type="checkbox" data-k="llmEnabled"> 用大模型校正规则读出来的词</label></div>' +
       '<div class="lk-row"><label>接口地址 <input type="text" data-k="llmEndpoint"></label></div>' +
@@ -463,6 +548,72 @@
 
     var preview = root.querySelector(".lk-preview");
     var status = root.querySelector(".lk-status");
+    var layersBox = root.querySelector(".lk-layers");
+
+    /** 每一层右边那句小字：让用户一眼看出这层现在能不能用 */
+    function layerNote(id) {
+      if (id === "dict") return "（" + (typeof LKDict !== "undefined" ? LKDict.count : "?") + " 条，纯离线）";
+      if (id === "romaji") return "（歌词里的日式罗马字，纯离线）";
+      if (id === "rule") return "（拼写音译，永远给得出结果）";
+      if (id === "llm") return llmAvailable() ? "（已启用）" : "（未启用 / 没填 key）";
+      if (id === "google") return googleAvailable() ? "（已开启）" : "（已关闭）";
+      return "";
+    }
+
+    function refreshLayers() {
+      if (!layersBox) return;
+      layersBox.innerHTML = "";
+      for (var i = 0; i < config.layerOrder.length; i++) {
+        (function (index) {
+          var id = config.layerOrder[index];
+          var row = document.createElement("div");
+          row.className = "lk-layer";
+
+          var name = document.createElement("span");
+          name.className = "lk-layer-name";
+          name.textContent = (index + 1) + ". " + (LAYER_NAMES[id] || id);
+          row.appendChild(name);
+
+          var note = document.createElement("span");
+          note.className = "lk-layer-note";
+          note.textContent = layerNote(id);
+          row.appendChild(note);
+
+          row.appendChild(mkMoveBtn(index, id, -1, "↑"));
+          row.appendChild(mkMoveBtn(index, id, 1, "↓"));
+          layersBox.appendChild(row);
+        })(i);
+      }
+    }
+
+    function mkMoveBtn(index, id, delta, label) {
+      var b = document.createElement("button");
+      b.className = "lk-layer-btn";
+      b.textContent = label;
+      b.setAttribute("data-layer", id);
+      b.setAttribute("data-dir", delta < 0 ? "up" : "down");
+      b.disabled = delta < 0 ? index === 0 : index === config.layerOrder.length - 1;
+      b.addEventListener("click", function () {
+        moveLayer(id, delta);
+      });
+      return b;
+    }
+
+    /**
+     * 上下调一层。改完顺序必须**重扫**：已经注过音的词可能要换一个来源，
+     * rescan() 会先整篇还原再按新顺序重注（relabel 只管"暂定 -> 最终"）。
+     */
+    function moveLayer(id, delta) {
+      var from = config.layerOrder.indexOf(id);
+      var to = from + delta;
+      if (from < 0 || to < 0 || to >= config.layerOrder.length) return;
+      config.layerOrder[from] = config.layerOrder[to];
+      config.layerOrder[to] = id;
+      saveConfig();
+      applyLayerOrder();
+      rescan();
+      refreshAll();
+    }
 
     function refreshPreview() {
       preview.innerHTML = "";
@@ -555,6 +706,7 @@
     }
 
     function refreshAll() {
+      refreshLayers();
       refreshPreview();
       refreshStatus();
     }
@@ -660,6 +812,11 @@
             setTimeout(function () {
               b.textContent = "清除校正缓存";
             }, 1500);
+          } else if (what === "layersReset") {
+            config.layerOrder = normalizeLayerOrder(DEFAULTS.layerOrder);
+            saveConfig();
+            applyLayerOrder();
+            rescan();
           } else if (what === "llmTest") {
             var out = root.querySelector('[data-v="llmTest"]');
             if (!state.llm) {
@@ -767,10 +924,13 @@
       });
       state.reader = LKReading.createReader({
         dict: LKDict.words,
+        // 同步层按用户排的顺序（异步层由 readForDisplay 处理，见那里）
+        order: syncLayerOrder(),
         log: function () {
           if (config.verbose) console.log.apply(console, [LOG].concat(Array.prototype.slice.call(arguments)));
         },
       });
+      applyLayerOrder();
       // 大模型校正：没填 key 就整层不工作（lookup 一律返回 null），自动退回上面的 Google 路子
       if (typeof LKLLM !== "undefined") {
         state.llm = LKLLM.createClient({          enabled: config.llmEnabled !== false,
@@ -861,11 +1021,25 @@
       state: state,
       set: function (key, value) {
         config[key] = value;
+        if (key === "layerOrder") config.layerOrder = normalizeLayerOrder(config.layerOrder);
         saveConfig();
+        applyLayerOrder();
         updateStyles();
         if (key === "enabled") config.enabled ? enable() : disable();
         else rescan();
         return config[key];
+      },
+      /*
+       * 读音来源顺序：LK.layers() 看当前顺序，LK.layers(['llm','dict',...]) 直接改。
+       * 设置面板里那对 ↑↓ 按钮走的就是同一条路（改完同样会重扫）。
+       */
+      layers: function (order) {
+        if (order === undefined) return config.layerOrder.slice();
+        config.layerOrder = normalizeLayerOrder(order);
+        saveConfig();
+        applyLayerOrder();
+        rescan();
+        return config.layerOrder.slice();
       },
       read: function (word) {
         // 本地那几层的读音（不含大模型/联网校正）—— 看 source 就知道是谁给的
@@ -873,7 +1047,8 @@
       },
       display: function (word) {
         /*
-         * **页面上实际用的**那个读音：词典 -> 罗马音 -> 大模型 -> Google -> 规则。
+         * **页面上实际用的**那个读音：按用户排的层序取（默认
+         * 词典 -> 罗马音 -> 大模型 -> Google -> 规则）。
          * 判断"某个词到底是谁给的读音"就用它：和 LK.read() 比一下，
          * 不一样就说明被大模型（或联网）换过了。
          */
@@ -884,6 +1059,7 @@
       },
       stats: function () {
         return {
+          layers: config.layerOrder.slice(), // 当前层序（LK.layers() 改的就是它）
           reading: state.reader ? state.reader.stats() : null,
           correct: state.corrector ? state.corrector.stats() : null,
           llm: state.llm ? state.llm.stats() : null,

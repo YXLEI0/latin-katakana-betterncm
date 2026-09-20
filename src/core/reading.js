@@ -1803,8 +1803,9 @@
    *
    * @param {Object} opts
    *   opts.dict 英文小写 -> 片假名 的离线词表（可以是空对象或 undefined）
+   *   opts.order 可选的同步层顺序，例如 ["romaji", "dict", "rule"]（缺省 dict > romaji > rule）
    *   opts.log  可选，(msg) => void，只用来报调试信息，正常路径不调用
-   * @returns {Object} { read, addOnline, stats }
+   * @returns {Object} { read, addOnline, stats, setOrder, getOrder }
    */
   function createReader(opts) {
     var options = opts || {};
@@ -1815,6 +1816,108 @@
     var log = typeof options.log === "function" ? options.log : null;
 
     var stat = { dictHits: 0, letterHits: 0, romajiHits: 0, ruleHits: 0, onlineHits: 0, missed: 0 };
+
+    /*
+     * 可排序的同步层与它们的默认顺序。
+     *
+     * 用户可以在设置面板里把这几层上下调（"哪个来源更可信"是口味问题：词典是人工核过的，
+     * 但词典也可能有错；规则是拼写猜测，但它不联网、不说谎）。大模型 / 免费接口那两层
+     * 是**异步**的，顺序由上层（main.js）管，这里只管同步层。
+     */
+    var LAYER_IDS = ["dict", "romaji", "rule"];
+    var layers = LAYER_IDS.slice();
+
+    /**
+     * 设置同步层的顺序。只认识 dict / romaji / rule，重复项丢掉，
+     * 没提到的层按默认顺序补在后面 —— 旧配置、手改坏的配置都不会因此少一层。
+     */
+    function setOrder(next) {
+      var out = [];
+      var i;
+      if (next && typeof next.length === "number") {
+        for (i = 0; i < next.length; i++) {
+          if (LAYER_IDS.indexOf(next[i]) >= 0 && out.indexOf(next[i]) < 0) out.push(next[i]);
+        }
+      }
+      for (i = 0; i < LAYER_IDS.length; i++) {
+        if (out.indexOf(LAYER_IDS[i]) < 0) out.push(LAYER_IDS[i]);
+      }
+      layers = out;
+      trace("同步层序：" + layers.join(" > "));
+    }
+
+    function getOrder() {
+      return layers.slice();
+    }
+
+    if (options.order) setOrder(options.order);
+
+    /**
+     * 三层各自的取法。每层自己判"给不给得出答案"，给不出返回 null 让下一层试。
+     * 层与层之间没有依赖，所以顺序可以随便换。
+     */
+    var LAYER_FN = {
+      dict: function (c) {
+        var i;
+        var key;
+        // 词典：折叠写法优先（词典里存的是 ASCII）
+        // 注意**不能**再走"去掉非字母"那一档键：`déjà` 会被削成 `dj`，
+        // 正好命中词典里的 DJ -> ディージェイ（用户报过类似的怪音）。
+        for (i = 0; i < c.keys.length; i++) {
+          key = c.keys[i];
+          if (dict[key] !== undefined && dict[key]) {
+            trace("dict 命中：" + key);
+            return { kana: dict[key], source: "dict", confident: true };
+          }
+        }
+        // 联网学到的读音排在词典之后：词典是人工核过的，联网结果可能会漂
+        for (i = 0; i < c.keys.length; i++) {
+          key = c.keys[i];
+          if (online[key] !== undefined) {
+            trace("online 命中：" + key);
+            return { kana: online[key], source: "online", confident: true };
+          }
+        }
+        /*
+         * 全大写的无元音缩写（LDK / NHK / CD / TV / BGM / RPG / DVD …）：按字母名逐个念。
+         * 挂在词典这一层里（而不是单独一层）：它和词典一样是"查表就有确定答案"，
+         * 而且必须排在规则层前面 —— 规则会把它当词拼（LDK -> ラダク、TV -> タブ）。
+         * 词典里已有的（CM -> シーエム、DJ -> ディージェイ）在上面就返回了，不受影响。
+         */
+        var spelledAcronym = spellOutAcronym(c.raw);
+        if (spelledAcronym) {
+          trace("letters（缩写）命中：" + c.raw + " -> " + spelledAcronym);
+          return { kana: spelledAcronym, source: "letters", confident: true };
+        }
+        return null;
+      },
+      romaji: function (c) {
+        // 用 shown（已小写、去了首尾标点）而不是 stripNonLetters，
+        // 因为 "saka-" 词尾的连字符是长音符，不能被吃掉。
+        // 折叠过的写法先试：`to-kyo-` 这种末尾的长音符在 normalize 里会被去掉，
+        // 所以要用 fold.text 原样喂进去（Tōkyō -> トーキョー，而不是 トキョ）。
+        if (c.fold) {
+          var foldKana = romajiToKatakana(c.fold.text);
+          if (foldKana) {
+            trace("romaji（折叠）命中：" + c.fold.text + " -> " + foldKana);
+            // 只有长音符（日语罗马字）才算确定；别的变音符号交给上层去修
+            return { kana: foldKana, source: "romaji", confident: c.fold.pureMacron };
+          }
+        }
+        var kana = romajiToKatakana(c.shown);
+        if (kana) {
+          trace("romaji 命中：" + c.shown + " -> " + kana);
+          return { kana: kana, source: "romaji", confident: !c.fold };
+        }
+        return null;
+      },
+      rule: function (c) {
+        // 英文规则永远有结果（最差也是个不 confident 的读音）
+        var res = englishToKatakana(c.shown);
+        trace("rule 命中：" + c.shown + " -> " + res.kana + "（confident=" + res.confident + "）");
+        return { kana: res.kana, source: "rule", confident: res.confident && !c.fold };
+      },
+    };
 
     /** 只在这里打日志，方便上层开开关排查 */
     function trace(msg) {
@@ -1836,10 +1939,14 @@
 
     /**
      * 一次查找的完整判定顺序：
-     *   ① dict：原样 -> 小写 -> 去掉非字母
-     *   ①.5 记号逐字母读（D/N/A -> ディーエヌエー）
-     *   ② romajiToKatakana（切不干净会返回 null，自然落到 ③）
-     *   ③ englishToKatakana
+     *   ① 形态层（不参与排序，永远最先）：
+     *      - 记号逐字母读（D/N/A -> ディーエヌエー）
+     *      - 缩写拆词干 + 尾巴（I'll -> アイル）
+     *      - 只有长音符的罗马字（Tōkyō -> トーキョー）
+     *   ② 可排序层：dict / romaji / rule，顺序由上层给（默认 dict > romaji > rule）
+     *
+     * 为什么形态层不能参与排序：它决定的不是"读音该信谁"，而是"这个词该怎么断"
+     * （`D/N/A` 去掉斜杠正好是个词典词条；`I'll` 折掉撇号会撞上 ill）。
      * 查不到返回 null（输入为空、或规范化后没有拉丁字母，也走这条路）。
      */
     function lookup(raw) {
@@ -1893,17 +2000,11 @@
         }
       }
 
-      // ② 词典：折叠写法优先（词典里存的是 ASCII）
-      //    注意**不能**再走"去掉非字母"那一档键：`déjà` 会被削成 `dj`，
-      //    正好命中词典里的 DJ -> ディージェイ（用户报过类似的怪音）。
-      var keys = fold ? keysFor(fold.text, shown) : keysFor(raw, normalize(raw));
-      var i;
-      var key;
-
       /*
-       * ②.5 只有长音符的词（`Tōkyō` / `kōhī` / `arigatō`）：这就是**日语罗马字**，
-       *      麦克风就是长音符标记 —— 按罗马音读（トーキョー / コーヒー / アリガトー）
-       *      比查"英文词"的词典更贴近唱出来的音，所以排在词典前面。
+       * ①.6 只有长音符的词（`Tōkyō` / `kōhī` / `arigatō`）：这就是**日语罗马字**，
+       *      麦克风就是长音符标记 —— 按罗马音读（トーキョー / コーヒー / アリガトー）。
+       *      长音符只出现在罗马字里，不存在"这层和那层打架"的问题，所以钉在最前面，
+       *      跟着 romaji 层一起被排序反而会让 `Tōkyō` 落到词典键上去。
        */
       if (fold && fold.pureMacron) {
         var macronKana = romajiToKatakana(fold.text);
@@ -1913,57 +2014,16 @@
         }
       }
 
-      for (i = 0; i < keys.length; i++) {
-        key = keys[i];
-        if (dict[key] !== undefined && dict[key]) {
-          trace("dict 命中：" + key);
-          return { kana: dict[key], source: "dict", confident: true };
+      // ② 可排序层：按上层给的顺序逐个试，谁先给得出答案就算谁的
+      var ctx = { raw: raw, shown: shown, fold: fold, keys: fold ? keysFor(fold.text, shown) : keysFor(raw, normalize(raw)) };
+      for (var li = 0; li < layers.length; li++) {
+        var picked = LAYER_FN[layers[li]](ctx);
+        if (picked) {
+          trace(picked.source + " 命中：" + raw + " -> " + picked.kana);
+          return picked;
         }
       }
-
-      // 联网学到的读音排在词典之后：词典是人工核过的，联网结果可能会漂
-      for (i = 0; i < keys.length; i++) {
-        key = keys[i];
-        if (online[key] !== undefined) {
-          trace("online 命中：" + key);
-          return { kana: online[key], source: "online", confident: true };
-        }
-      }
-
-      /*
-       * ②.6 全大写的无元音缩写（LDK / NHK / CD / TV / BGM / RPG / DVD …）：
-       *      按字母名逐个念。必须排在规则层前面 —— 规则会把它当成一个词去拼
-       *      （LDK -> ラダク、TV -> タブ，用户报的就是这个）。
-       *      词典里已有的（CM -> シーエム、DJ -> ディージェイ）在前面就返回了，不受影响。
-       */
-      var spelledAcronym = spellOutAcronym(raw);
-      if (spelledAcronym) {
-        trace("letters（缩写）命中：" + raw + " -> " + spelledAcronym);
-        return { kana: spelledAcronym, source: "letters", confident: true };
-      }
-
-      // ③ 罗马音。这里用 shown（已小写、去了首尾标点）而不是 stripNonLetters，
-      //    因为 "saka-" 词尾的连字符是长音符，不能被吃掉。
-      //    折叠过的写法先试：`to-kyo-` 这种末尾的长音符在 normalize 里会被去掉，
-      //    所以要用 fold.text 原样喂进去（Tōkyō -> トーキョー，而不是 トキョ）。
-      if (fold) {
-        var foldKana = romajiToKatakana(fold.text);
-        if (foldKana) {
-          trace("romaji（折叠）命中：" + fold.text + " -> " + foldKana);
-          // 只有长音符（日语罗马字）才算确定；别的变音符号交给上层去修
-          return { kana: foldKana, source: "romaji", confident: fold.pureMacron };
-        }
-      }
-      var kana = romajiToKatakana(shown);
-      if (kana) {
-        trace("romaji 命中：" + shown + " -> " + kana);
-        return { kana: kana, source: "romaji", confident: !fold };
-      }
-
-      // ④ 英文规则。永远有结果（最差也是个不 confident 的读音）。
-      var res = englishToKatakana(shown);
-      trace("rule 命中：" + shown + " -> " + res.kana + "（confident=" + res.confident + "）");
-      return { kana: res.kana, source: "rule", confident: res.confident && !fold };
+      return null;
     }
 
     /** 公开的 read：负责计一次数 */
@@ -2017,7 +2077,7 @@
       };
     }
 
-    return { read: read, addOnline: addOnline, stats: stats };
+    return { read: read, addOnline: addOnline, stats: stats, setOrder: setOrder, getOrder: getOrder };
   }
 
   return {

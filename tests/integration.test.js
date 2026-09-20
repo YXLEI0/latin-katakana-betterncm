@@ -541,6 +541,157 @@ test("层序：完全离线设置（关掉联网）时规则立刻生效，不�
   assert.strictEqual(rubyCount(p), 1, "没有在线可用时不该等：" + p.innerHTML);
 });
 
+test("层序可调：把英文规则提到在线层前面 = 一个请求都不发", async () => {
+  // 用户把「英文音译规则」拖到大模型/免费接口上面，就是"纯离线，别联网"的用法。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>きらめく kaleidoscope の夜</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+  let called = 0;
+  const env = bootPlugin(HTML, {
+    // 大模型配了 key（这层可用），免费接口也开着 —— 但只要规则排在它们前面，
+    // 这两个请求都不该发出去
+    config: {
+      llmEnabled: true,
+      llmKey: "sk-test",
+      llmEndpoint: "https://api.example.com/v1/chat/completions",
+      layerOrder: ["dict", "romaji", "rule", "llm", "google"],
+    },
+    fetch: function () {
+      called++;
+      return Promise.reject(new Error("offline (test)"));
+    },
+  });
+  await env.runLoad();
+  await sleep(1600); // 超过攒批窗口，够任何"想联网"的实现发请求了
+
+  assert.strictEqual(called, 0, "规则排在在线层前面时不许发请求");
+  const p = env.document.querySelector("ul.lyric li p");
+  assert.strictEqual(rubyCount(p), 1, "规则照样要注上：" + p.innerHTML);
+  assert.ok(!p.querySelector("ruby.lt-ruby").classList.contains("lt-pending"), "轮不到在线层，不存在暂定");
+  const s = env.api.stats();
+  assert.strictEqual(s.llm.requests, 0, "大模型一次都没问");
+});
+
+test("层序可调：把大模型提到词典前面，词典命中的词也会被模型改写", async () => {
+  // 词典偶有错条目（tick / ave 这类用户报过的），这是逃生门：
+  // 把大模型排到词典上面，词典命中的词也交给它判一遍。
+  const requests = [];
+  const env = bootPlugin(LLM_HTML, {
+    config: {
+      llmEnabled: true,
+      llmKey: "sk-test",
+      llmEndpoint: "https://api.example.com/v1/chat/completions",
+      layerOrder: ["llm", "dict", "romaji", "google", "rule"],
+    },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const body = JSON.parse(init.body);
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      requests.push(items.map((it) => it.w));
+      const out = {};
+      items.forEach((it, i) => {
+        // 必须给**合法片假名**：读音会被 looksLikeTransliteration 校验，
+        // 带全角括号这种"不是音译"的答案会被丢掉（那正是那层该干的事）
+        out[String(i + 1)] = it.w === "light" ? "レフト" : "カレイドスコープ";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1400);
+
+  const words = [].concat.apply([], requests);
+  assert.ok(words.indexOf("light") >= 0, "词典命中的 light 也要问（它排在模型下面）：" + words.join(","));
+  const p = env.document.querySelector("ul.lyric li p");
+  const got = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent]);
+  assert.deepStrictEqual(
+    got,
+    [
+      ["kaleidoscope", "カレイドスコープ"],
+      ["light", "レフト"],
+    ],
+    "两个词都要换成模型给的读音：" + JSON.stringify(got)
+  );
+  assert.strictEqual(baseText(p), "きらめく kaleidoscope の light");
+});
+
+test("层序可调：默认顺序下词典压过大模型（词典命中的词不进队列）", async () => {
+  // 这是默认口径，上面那条测试正是它的反面 —— 两条一起钉住"顺序真的起作用"
+  const requests = [];
+  const env = bootPlugin(LLM_HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions" },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const body = JSON.parse(init.body);
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      requests.push(items.map((it) => it.w));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = "カレイドスコープ";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1400);
+  const words = [].concat.apply([], requests);
+  assert.ok(words.indexOf("light") < 0, "默认顺序下词典命中不该问模型：" + words.join(","));
+});
+
+test("层序可调：设置面板的 ↑↓ 按钮能改顺序、落盘，并立刻重扫", async () => {
+  const env = bootPlugin(NCM_HTML, { dev: true });
+  await env.runLoad();
+  // 注意 [...]: LK.layers() 里的数组是 jsdom 那个 realm 的，
+  // 直接 deepStrictEqual 会因为原型不同而失败（假报错）
+  assert.deepStrictEqual([...env.api.layers()], ["dict", "romaji", "llm", "google", "rule"], "默认顺序");
+
+  const root = env.listeners.config[0]();
+  const rows = root.querySelectorAll(".lk-layers .lk-layer");
+  assert.strictEqual(rows.length, 5, "五层都要列出来：" + root.querySelector(".lk-layers").innerHTML);
+
+  // 第一层的 ↓：词典和罗马音对调
+  const down = rows[0].querySelector('[data-dir="down"]');
+  assert.ok(down, "第一层要有 ↓ 按钮");
+  down.dispatchEvent(new env.window.Event("click"));
+
+  assert.deepStrictEqual([...env.api.layers()], ["romaji", "dict", "llm", "google", "rule"], "点完就要换过来");
+  const saved = JSON.parse(env.window.localStorage.getItem("latin-katakana.config"));
+  assert.deepStrictEqual(saved.layerOrder, ["romaji", "dict", "llm", "google", "rule"], "顺序要落盘");
+
+  // 面板上第一层的 ↑ 现在是禁用的（已经在最上面）
+  const rows2 = env.listeners.config[0]().querySelectorAll(".lk-layers .lk-layer");
+  assert.strictEqual(rows2[0].querySelector('[data-dir="up"]').disabled, true, "最上面那层不该还能往上");
+  assert.strictEqual(rows2[4].querySelector('[data-dir="down"]').disabled, true, "最下面那层不该还能往下");
+
+  // 「恢复默认顺序」
+  const reset = [...env.listeners.config[0]().querySelectorAll("[data-a]")].find((b) => b.dataset.a === "layersReset");
+  assert.ok(reset, "要有恢复默认按钮");
+  reset.dispatchEvent(new env.window.Event("click"));
+  assert.deepStrictEqual([...env.api.layers()], ["dict", "romaji", "llm", "google", "rule"], "恢复默认");
+});
+
+test("层序可调：配置里的顺序坏了也不会少一层（去重 + 补齐）", async () => {
+  const env = bootPlugin(NCM_HTML, { config: { layerOrder: ["rule", "rule", "乱七八糟"] } });
+  await env.runLoad();
+  await sleep(200); // 注音是排在下一帧做的
+  assert.deepStrictEqual([...env.api.layers()], ["rule", "dict", "romaji", "llm", "google"], "认识的留下、缺的补上");
+  assert.strictEqual(rubyCount(env.document.querySelector("ul.lyric li p")), 2, "坏配置也要正常注音");
+});
+
 test("用户报的缩写：you're / I'll / it's / I'd 都要注对（不能撞上 ill / id）", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">

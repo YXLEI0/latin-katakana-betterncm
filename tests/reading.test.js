@@ -860,3 +860,68 @@ test("边界：dict 里塞了空值不会把结果读成空串", () => {
   assert.ok(got.kana.length > 0);
   assert.notStrictEqual(got.source, "dict");
 });
+
+// ============================================================ 层序（用户可调）
+
+test("层序：默认是 dict > romaji > rule", () => {
+  const r = LK.createReader({ dict: {} });
+  assert.deepStrictEqual(r.getOrder(), ["dict", "romaji", "rule"]);
+});
+
+test("层序：把 romaji 提到词典前面，罗马音命中就压倒词典", () => {
+  // sekai 既是合法罗马音、又在词典里 —— 正好用来看谁优先
+  const dict = { sekai: "セカイデハナイ" };
+  const byDict = LK.createReader({ dict: dict });
+  assert.strictEqual(byDict.read("sekai").source, "dict");
+  assert.strictEqual(byDict.read("sekai").kana, "セカイデハナイ");
+
+  const byRomaji = LK.createReader({ dict: dict, order: ["romaji", "dict", "rule"] });
+  const got = byRomaji.read("sekai");
+  assert.strictEqual(got.source, "romaji");
+  assert.strictEqual(got.kana, "セカイ");
+});
+
+test("层序：把 rule 提到最前面，规则层就压过词典和罗马音", () => {
+  const r = LK.createReader({ dict: { sekai: "セカイデハナイ" }, order: ["rule", "dict", "romaji"] });
+  const got = r.read("sekai");
+  assert.strictEqual(got.source, "rule", "规则层排在前面就该由它说了算");
+  assert.notStrictEqual(got.kana, "セカイデハナイ");
+});
+
+test("层序：rule 排最后时，词典/罗马音都给不出答案才轮到它", () => {
+  const r = LK.createReader({ dict: { clover: "クローバー" }, order: ["romaji", "dict", "rule"] });
+  assert.strictEqual(r.read("clover").source, "dict", "罗马音切不出来的词仍然归词典");
+  assert.strictEqual(r.read("zxqwk").source, "rule", "谁都不认识才落到规则");
+});
+
+test("层序：运行时 setOrder 立刻生效，getOrder 返回副本", () => {
+  const r = LK.createReader({ dict: { sekai: "セカイデハナイ" } });
+  assert.strictEqual(r.read("sekai").source, "dict");
+  r.setOrder(["romaji", "dict", "rule"]);
+  assert.strictEqual(r.read("sekai").source, "romaji");
+  const got = r.getOrder();
+  got[0] = "rule";
+  assert.deepStrictEqual(r.getOrder(), ["romaji", "dict", "rule"], "getOrder 不能把内部数组漏出去");
+});
+
+test("层序：脏配置不会让层变少（去重 + 缺的补在后面）", () => {
+  const r = LK.createReader({ dict: {} });
+  r.setOrder(["rule", "rule", "不存在的层"]);
+  assert.deepStrictEqual(r.getOrder(), ["rule", "dict", "romaji"]);
+  r.setOrder([]);
+  assert.deepStrictEqual(r.getOrder(), ["dict", "romaji", "rule"], "空数组要退回默认顺序");
+  r.setOrder(null);
+  assert.deepStrictEqual(r.getOrder(), ["dict", "romaji", "rule"]);
+});
+
+test("层序：形态层（记号 / 缩写 / 长音符罗马字）不受排序影响", () => {
+  // 这三类决定的不是"读音该信谁"，而是"这个词该怎么断"，永远最先
+  const r = LK.createReader({ dict: { dna: "ディーエヌエー" }, order: ["rule", "romaji", "dict"] });
+  assert.strictEqual(r.read("D/N/A").source, "letters", "记号永远先判");
+  assert.strictEqual(r.read("D/N/A").kana, "ディーエヌエー");
+  const r2 = LK.createReader({ dict: { ill: "イル" }, order: ["rule", "romaji", "dict"] });
+  assert.strictEqual(r2.read("I'll").source, "rule", "缩写拆出来的词干按当轮层序读，但拆词本身先做");
+  const r3 = LK.createReader({ dict: { tokyo: "トウキョウ" }, order: ["rule", "romaji", "dict"] });
+  assert.strictEqual(r3.read("Tōkyō").source, "romaji", "长音符就是罗马字，先于其它层判定");
+  assert.strictEqual(r3.read("Tōkyō").kana, "トーキョー");
+});
