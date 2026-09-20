@@ -66,6 +66,9 @@ function makeClient(ctx, opts) {
     model: "test-model",
     key: opts.key === undefined ? "sk-test" : opts.key,
     validate: opts.validate,
+    // 测试用的旋钮：退避起点 / 批大小（要看"退避结束后自己重试"不能真等 60 秒）
+    cooldownMs: opts.cooldownMs,
+    batchSize: opts.batchSize,
     log: function () {},
     onStatus: function (m) {
       statuses.push(m);
@@ -149,6 +152,30 @@ test("被拒的答案会落盘：重启之后 rejects() 还看得出原因", asy
 });
 
 // ============================================================ 停摆与恢复
+
+test("退避结束后会自己重试（老版本这里会永远卡住：队列躺着一动不动）", async () => {
+  // 用户截图里的样子：队列 184 个词、本分钟额度还是满的、没有请求在飞。
+  // 根因是 schedule() 里 `if (!canAsk()) return;` —— 退避期间那次排期什么都不做，
+  // 而退避结束时**没有任何事件**会再来叫我们（页面不动就没有新的 lookup），
+  // 于是队列永远躺着。现在会排到退避结束那一刻。
+  const ctx = loadCore();
+  let fail = true;
+  const c = makeClient(ctx, {
+    cooldownMs: 60, // 退避起点缩到 60ms，不然测试要等 60 秒
+    reply: () => (fail ? new Error("offline") : { 1: "クローバー" }),
+  });
+  c.client.lookup("clover", "clover");
+  await c.client.flush(); // 第一批失败，进入退避
+  assert.ok(c.client.stats().cooldownMs > 0, "先进入退避");
+  const afterFail = c.calls.length;
+
+  // 关键：**不再调用 lookup**，也不手动 flush —— 只等，就应该自己重试
+  fail = false;
+  await new Promise((r) => setTimeout(r, 400));
+  assert.ok(c.calls.length > afterFail, "退避过后要自己再发一次（" + afterFail + " -> " + c.calls.length + "）");
+  assert.strictEqual(c.client.peek("clover"), "クローバー", "重试成功后要收下答案");
+  assert.strictEqual(c.client.stats().pending, 0, "队列要排空");
+});
 
 test("请求体：max_tokens 给足（4000），免得一批词回来被截断成坏 JSON", async () => {
   const ctx = loadCore();
@@ -589,14 +616,17 @@ test("超长词与非字母词直接忽略，不占队列", async () => {
 test("队列攒够 batchSize 就立刻发，不等攒批窗口", async () => {
   const ctx = loadCore();
   const { client, calls } = makeClient(ctx, { reply: () => ({}) });
-  // 默认 batchSize = 30：第 30 个词入队时应该立刻发出去（schedule(0)）
-  // 注意词必须是纯字母：keyOf 会把数字/符号折掉，word0 / word1 会变成同一个键
+  // 攒够一批（batchSize）就该立刻发出去（schedule(0)），不等攒批窗口。
+  // 注意词必须是纯字母：keyOf 会把数字/符号折掉，"word0"/"word1" 会变成同一个键。
+  const bs = client.config().batchSize;
   const words = [];
-  for (let i = 0; i < 30; i++) words.push("w" + String.fromCharCode(97 + Math.floor(i / 26)) + String.fromCharCode(97 + (i % 26)));
+  for (let i = 0; i < bs; i++) {
+    words.push("w" + String.fromCharCode(97 + Math.floor(i / 26)) + String.fromCharCode(97 + (i % 26)));
+  }
   for (const w of words) client.lookup(w);
   await new Promise((r) => setTimeout(r, 20));
   assert.strictEqual(calls.length, 1, "攒够一批就该发");
-  assert.strictEqual(calls[0].words.length, 30);
+  assert.strictEqual(calls[0].words.length, bs);
 });
 
 test("stats 返回的是快照，改它不影响内部状态", async () => {

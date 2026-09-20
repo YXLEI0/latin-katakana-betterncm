@@ -32,7 +32,7 @@
   var CACHE_TTL_MS = 180 * 24 * 60 * 60 * 1000; // 半年
   var CACHE_MAX = 6000;
   var FLUSH_DELAY_MS = 400; // 攒批窗口
-  var BATCH_SIZE = 30; // 一次问多少个词
+  var BATCH_SIZE = 40; // 一次问多少个词（词典外词多的歌一次能排上百个，批大点少发几次）
   var REQUEST_TIMEOUT_MS = 20000;
   var MAX_REQ_PER_MIN = 20; // 限流：再准也不该把页面拖垮
   var COOLDOWN_MS = 60000; // 失败后的退避起点
@@ -255,7 +255,12 @@
     var timer = null;
     var timerDelay = -1;
     var dirty = false;
-    var cooldownMs = COOLDOWN_MS;
+    /*
+     * 退避起点。正常用 COOLDOWN_MS（60s），测试里可以传个小值
+     * （要看"退避结束后会不会自己重试"，等 60 秒不现实）。
+     */
+    var cooldownBase = typeof options.cooldownMs === "number" ? options.cooldownMs : COOLDOWN_MS;
+    var cooldownMs = cooldownBase;
     var cooldownUntil = 0;
     var requestTimes = [];
     var lastError = null;
@@ -416,10 +421,23 @@
     }
 
     function schedule(delay) {
-      if (inflight) return;
-      if (!canAsk()) return;
+      if (inflight) return; // 正在请求：它回来之后自己会接着排（见 send 的收尾）
       if (!queue.length) return;
       var d = typeof delay === "number" ? delay : FLUSH_DELAY_MS;
+      /*
+       * 在退避里**不能直接 return**（老版本就是 `if (!canAsk()) return;`）：
+       * 退避期间 canAsk() 为 false，于是那次 schedule 什么都不做 ——
+       * 而退避结束时**没有任何事件**会再来叫我们（页面不动就没有新的 lookup），
+       * 队列就这么一直躺着：用户看到的是「读音全都没矫正」，
+       * 面板上写着「队列里还有 184 个词在等，本分钟还剩 20 次额度」（额度满的、
+       * 却没有请求在飞）—— 这正是用户截图里的样子。
+       * 所以要**排到退避结束的那一刻**去重试。
+       */
+      if (!canAsk()) {
+        // 这层根本没开（没 enabled / 没 key / 没地址）：排了也没用，别空转
+        if (!cfg.enabled || !cfg.key || !cfg.endpoint) return;
+        d = Math.max(d, cooldownUntil - Date.now() + 50);
+      }
       if (timer) {
         // 已经排着一个更短的就别动它；排着更长的（攒批窗口）而现在攒够一批了，
         // 就立刻改期 —— 否则攒够 BATCH_SIZE 也得干等满 400ms 才发。
@@ -619,7 +637,7 @@
       }
       dirty = true;
       // 失败退避要复位：能正常回来就说明接口是通的
-      cooldownMs = COOLDOWN_MS;
+      cooldownMs = cooldownBase;
       cooldownUntil = 0;
       failedSinceHit = 0;
       log("大模型校正回来 " + batch.length + " 个词：命中 " + hits + "，没给 " + missed);
@@ -826,7 +844,7 @@
         if (next.batchSize) cfg.batchSize = Math.max(1, Math.min(60, next.batchSize | 0));
         // 改配置等于用户手动动过了（多半是刚填好 key），把失败退避清掉，别让他等十分钟
         cooldownUntil = 0;
-        cooldownMs = COOLDOWN_MS;
+        cooldownMs = cooldownBase;
         if (!canAsk() && queue.length) {
           queue = [];
           queued.clear();
@@ -876,7 +894,7 @@
        */
       retryNow: function () {
         cooldownUntil = 0;
-        cooldownMs = COOLDOWN_MS;
+        cooldownMs = cooldownBase;
         failedSinceHit = 0;
         if (canAsk() && queue.length) schedule(0);
         return { pending: queue.length, inflight: inflight };

@@ -923,11 +923,19 @@
         );
         sayBtn("立刻重试", "llmRetryNow");
       } else if (s.pending > 0) {
+        var bs = s.batchSize || 40;
+        var batches = Math.ceil(s.pending / bs);
         say(
           "队列里还有 " + s.pending + " 个词在等" +
-            (s.inflight ? "（正在请求）" : "，本分钟还剩 " + s.roomThisMinute + " 次额度") +
-            " —— 等一会儿就会矫正。"
+            (s.inflight ? "（正在请求）" : "，还要发 " + batches + " 次请求，本分钟还剩 " + s.roomThisMinute + " 次额度") +
+            " —— 矫正会一批批补上，不用管它。"
         );
+        if (s.pending > bs * 2) {
+          say(
+            "一次排这么多是因为「大模型」排在「离线词典」前面 —— 那样每个词都要问一遍。" +
+              "把「离线词典」放回最上面就没这么多请求了（词典命中的词本来就不需要矫正）。"
+          );
+        }
       } else if (s.missesCached > 0) {
         say(
           "有 " + s.missesCached + " 条「问过但没收下」（不会再自动重问），其中首音校验判掉 " +
@@ -947,6 +955,23 @@
       refreshLlmState();
       refreshStatus();
     }
+
+    /*
+     * 面板开着的时候每秒轻量刷一下数字（不重跑预览和状态那种重活）。
+     *
+     * 为什么需要：这些数字是**快照**，而模型层是在持续干活的 —— 用户看到
+     * 「队列里还有 184 个词在等」时，其实可能下一秒就排完了；反过来，
+     * 队列真的卡住时也需要看得出来。不刷新的话，截图里那种"额度满着、
+     * 队列一大坨"会让人以为它卡死了。面板一关就自己停（isConnected 检查）。
+     */
+    var liveTimer = setInterval(function () {
+      if (!root.isConnected) {
+        clearInterval(liveTimer);
+        return;
+      }
+      refreshUsage();
+      refreshLlmState();
+    }, 1000);
 
     if (!DEV && status) status.style.display = "none";
 
