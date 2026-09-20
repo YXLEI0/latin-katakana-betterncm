@@ -506,6 +506,19 @@
     return new RegExp(esc + tail).test(s);
   }
 
+  /**
+   * 紧挨在打码符号后面的词（`****ed` 里的 `ed`、`***ing` 里的 `ing`）：
+   * 那是被隐去的词的一部分，单个片段没有意义 —— 不标。
+   * 用户截图：`Oh, I'll be ****ed up` 里只有 `ed` 头上有 エド。
+   */
+  function censoredBefore(word, line) {
+    var w = String(word == null ? "" : word);
+    var s = String(line == null ? "" : line);
+    if (!w || !s) return false;
+    var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp("[*\uFF0A\u00D7\u203B]+\u200B*" + esc + "(?![A-Za-z])").test(s);
+  }
+
   /** 这段文字里有没有"后面紧跟日语词尾"的重复字母串（打码）—— 给排障用 */
   function looksCensoredRun(text) {
     var s = String(text == null ? "" : text);
@@ -528,6 +541,10 @@
       var learned = state.learned.get(word);
       if (learned) return { kana: learned, source: "learned", confident: true };
     }
+    /*
+     * 紧跟在打码符号后面的片段（`****ed` 里的 ed）：不标。
+     */
+    if (censoredBefore(word, line)) return null;
     /*
      * 像打码的重复字母串（后面紧跟着假名，`“XX”してる`）：留白。
      * 缩写成串的（`「YY」` 这种独立的）继续往下走，按字母名读成 ワイワイ。

@@ -1775,6 +1775,13 @@
     if (s.length < 2 || s.length > 6) return null;
     if (!/^[A-Z]+$/.test(s)) return null;
     if (!/[AEIOUY]/.test(s)) return lettersToKatakana(s.toLowerCase());
+    /*
+     * 有元音的这一支**只收 2~3 个字母**：`SOS` / `QTE` / `YY` 是缩写，
+     * 而 4 个字母以上、又带元音的（`DIVA` / `QUIX` / `KISS`）基本都是**词或名字**，
+     * 逐字母念就错了 —— 用户截图里 `憧れた DIVA なん だ` 的 DIVA 被念成
+     * ディーアイブイエー，正确是 ディーヴァ。
+     */
+    if (s.length > 3) return null;
     var low = s.toLowerCase();
     if (dict && dict[low] !== undefined) return null;
     // 英文常用词表里有的（MY / WHY / SKY / FLY…）：真词，不能念字母

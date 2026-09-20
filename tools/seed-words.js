@@ -968,4 +968,10 @@ module.exports = [
   { en: "solitude", kana: "ソリテュード" },
   { en: "magnitude", kana: "マグニテュード" },
   { en: "interlude", kana: "インタールード" },
+  /*
+   * 用户截图：`憧れた DIVA なん だ` 的 DIVA 被逐字母念成 ディーアイブイエー。
+   * 4 个字母以上、带元音的全大写基本都是**词或名字**（DIVA / QUIX / KISS），
+   * 所以缩写那条判据已经收窄到 2~3 个字母；这个词本身也钉进词表。
+   */
+  { en: "diva", kana: "ディーヴァ" },
 ];

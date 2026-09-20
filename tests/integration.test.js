@@ -2046,6 +2046,42 @@ test("波浪号拉长音：`この feel~ing go~od` 读 フィーリング / グ�
   assert.strictEqual(got2.get("love"), "ラブ", ps[1].innerHTML);
 });
 
+test("打码的 `****ed`、采样行、以及全大写的 `DIVA`", async () => {
+  // 用户三张截图：
+  //   1. `Oh, I'll be ****ed up…` 里只有打码碎片 `ed` 被注了 エド；
+  //   2. `采样：QUIX - Deep Home` 是采样署名，整行不该注音（QUIX 也别逐字母念）；
+  //   3. `憧れた DIVA なん だ` 的 DIVA 被逐字母念成 ディーアイブイエー（该 ディーヴァ）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Oh, I'll be ****ed up, if you can't be right here</p></li>
+  <li class="line"><p>采样：QUIX - Deep Home</p></li>
+  <li class="line"><p>憧れた DIVA なん だ</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(300);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const got = new Map(
+    [...ps[0].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+  assert.strictEqual(got.has("ed"), false, "打码碎片 ed 不该注音：" + ps[0].innerHTML);
+  assert.strictEqual(got.get("Oh"), "オー", "其它词照标：" + JSON.stringify([...got]));
+  assert.strictEqual(got.get("can't"), "キャント");
+  assert.strictEqual(got.get("right"), "ライト");
+
+  assert.strictEqual(rubyCount(ps[1]), 0, "采样署名行整行不注音：" + ps[1].innerHTML);
+
+  assert.strictEqual(
+    new Map([...ps[2].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])).get("DIVA"),
+    "ディーヴァ",
+    "DIVA 是词，不是字母名：" + ps[2].innerHTML
+  );
+  // 全大写但有元音、4 个字母以上的，都不该逐字母念
+  assert.strictEqual(env.api.read("QUIX").source !== "letters", true, "QUIX 不该逐字母：" + JSON.stringify(env.api.read("QUIX")));
+  assert.strictEqual(env.api.read("DIVA").kana, "ディーヴァ");
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

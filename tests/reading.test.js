@@ -541,6 +541,12 @@ test("逐字母缩写的判据不能误伤真词（my / sky / why / hmm / Ldk）
   assert.strictEqual(A("SKY", dict, en), null);
   assert.strictEqual(A("WHY", dict, en), null);
   assert.strictEqual(A("FLY", dict, en), null, "英文词表里的也不算缩写");
+  // 有元音的那一支只收 2~3 个字母：4 个以上带元音的基本是词或名字（用户截图的 DIVA）
+  const blank = {};
+  assert.strictEqual(A("DIVA", blank, blank), null, "DIVA 是词/名字，不能逐字母");
+  assert.strictEqual(A("QUIX", blank, blank), null, "QUIX 同理");
+  assert.strictEqual(A("KISS", blank, blank), null);
+  assert.strictEqual(A("BCDFGH"), "ビーシーディーエフジーエイチ", "无元音的 6 个字母还是缩写");
   // 有元音、两张表都没有、也切不成罗马音的才是缩写（用户报的 SOS / QTE）
   assert.strictEqual(A("SOS", dict, en), "エスオーエス");
   assert.strictEqual(A("QTE", dict, en), "キューティーイー");

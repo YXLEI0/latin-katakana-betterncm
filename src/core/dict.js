@@ -1690,6 +1690,7 @@
     "distributor": "ディストリビューター",
     "district": "ディストリクト",
     "districts": "ディストリクツ",
+    "diva": "ディーヴァ",
     "diverse": "ダイバース",
     "diversity": "ダイバーシティ",
     "divided": "ディバイデッド",
@@ -6369,6 +6370,6 @@
 
   return {
     words: words,
-    count: 6347,
+    count: 6348,
   };
 });
