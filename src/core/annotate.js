@@ -103,6 +103,12 @@
      * 样式上淡一点，等真结果回来由 relabel() 改写并去掉类。
      */
     var pending = typeof options.pending === "function" ? options.pending : null;
+    /*
+     * 可选的"这段文字里有没有被判成打码的重复字母串"（排障用）。
+     * 判据在 main.js（要靠整行和后一个字符），这里只是问一句，
+     * 免得排障报告写成"上面几条都不成立"，让人以为漏标了。
+     */
+    var censoredRun = typeof options.censoredRun === "function" ? options.censoredRun : null;
 
     var annotateAll = options.annotateAll !== false; // false = 只标歌词
 
@@ -1821,7 +1827,7 @@
           } else if (skippable) {
             out.push("  → 祖先被跳过（" + skippable + "）：别的插件的注音节点 / 表单 / 输入框，不能碰");
           } else if (!matcher.hasReadable(val)) {
-            out.push("  → 这段文字里没有值得注音的词（单个小写字母、`xx` 这种重复字母/占位），是**故意**不标的");
+            out.push("  → 这段文字里没有值得注音的词（单个小写字母、打码的重复字母等），是**故意**不标的");
           } else if (inChurn) {
             out.push(
               "  → 正在**认输期**（还有 " +
@@ -1837,6 +1843,13 @@
           } else if (RE_CREDIT.test(val)) {
             // 上面已经单独报过"被当成制作信息行"，这里只把链子接上，别重复一整句
             out.push("  → 原因就是上面那条：制作信息行不标");
+          } else if (censoredRun && censoredRun(val)) {
+            /*
+             * 重复字母（`XX` / `YY`）这一类的取舍在 main.js：后面紧跟日语词尾的
+             * 按**打码**留白，独立写的按**字母名**标。这里只是把结论说出来，
+             * 免得报告写成"上面几条都不成立"（那会让人以为是漏了）。
+             */
+            out.push("  → 这段里有重复字母（`XX` / `YY` 这种）：后面跟日语词尾的按打码留白 —— 这一处被判成打码");
           } else if (mo && mo.changes >= MOTION_LIMIT) {
             out.push(
               "  → 这个宿主的文本最近 " +
@@ -1865,7 +1878,7 @@
         for (var ti = 0; ti < toks.length; ti++) {
           var tkOne = toks[ti];
           if (!matcher.looksReadable(tkOne)) {
-            tokInfo.push(tkOne.text + "（不标：单个小写字母 / `xx` 这类重复字母）");
+            tokInfo.push(tkOne.text + "（不标：单个小写字母 / 打码的重复字母）");
             continue;
           }
           var kana = null;

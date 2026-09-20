@@ -1492,7 +1492,7 @@ test("LK.why()：在区域里却没注音的行，要直接说出原因，不能
   // 我只好再猜一轮。诊断必须一次给结论：是占位符、认输期、还是在动。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
-  <li class="line"><p>ねえあたし知ってるよ きみがひとり“xx”してるの知ってるよ</p></li>
+  <li class="line"><p>ねえあたし知ってるよ きみがひとり“XX”してるの知ってるよ</p></li>
   <li class="line"><p>作词：MWAH</p></li>
 </ul></div></div>
 </body></html>`;
@@ -1501,20 +1501,21 @@ test("LK.why()：在区域里却没注音的行，要直接说出原因，不能
   await sleep(250);
 
   /*
-   * 不标的那一类用**小写**重复字母（`xx`）：大写 2~3 个（`XX` / `YY`）按用户后来的
-   * 要求改成标字母名了（那种拼写分不出打码还是缩写），小写与长串仍然留白。
+   * 不标的那一类：**打码的**重复字母串 —— 判据是"后面紧跟日语词尾/助词"
+   * （`“XX”してる`、`XXの…`）。用户的要求是"打码的 XX 留白、缩写的 YY 照标"，
+   * 两者拼写一样，只能看用法。
    */
   const ps = env.document.querySelectorAll("ul.lyric li p");
-  assert.ok(ps[0].innerHTML.indexOf("エックス") < 0, "小写 xx 不注音：" + ps[0].innerHTML);
-  const tx = env.api.why("xx");
-  assert.ok(tx.indexOf("重复字母") >= 0, "小写 xx 要说清是故意不标：" + tx);
+  assert.ok(ps[0].innerHTML.indexOf("エックス") < 0, "打码的 XX 要留白：" + ps[0].innerHTML);
+  const tx = env.api.why("XX");
+  assert.ok(tx.indexOf("打码") >= 0, "要说清是按打码留白：" + tx);
   assert.ok(tx.indexOf("在标注区域里：是") >= 0, "前提：它在区域里：" + tx);
 
   // 制作信息行：在区域里，但按规则跳过 —— 原因要写出来
   const tc = env.api.why("MWAH");
   assert.ok(tc.indexOf("制作信息行") >= 0, "要说清是被当成制作信息行：" + tc);
 
-  assert.ok(env.api.why("xx").indexOf("全局：已插注音") >= 0, "末尾要有全局计数：" + env.api.why("xx"));
+  assert.ok(env.api.why("XX").indexOf("全局：已插注音") >= 0, "末尾要有全局计数：" + env.api.why("XX"));
 });
 
 test("罗马音节行：短音节按罗马音读（PI→ピ / ME→メ），普通英文行不受影响", async () => {
@@ -1924,13 +1925,17 @@ test("`KiLLKiSS judy / jude / juda` 与乐队名 `Ave Mujica`（アベ ムジカ
   }
 });
 
-test("`YY` 要标；同一行里成串的大写单字母读字母名（`(A, B)` -> エー / ビー）", async () => {
-  // 用户两句话：「YY 要标」「同一行里成串的大写单字母 → 字母名」。
-  // 前者：`合言葉は「YY」` 的 YY 要读 ワイワイ（和打码的 XX 拼写一样，统一标）。
-  // 后者：`(A, B)` 的 A / B 读 エー / ビー，但 `A story … I` 里的冠词 A 仍是ア。
+test("`YY` 标字母名、打码的 `XX` 留白；成串的大写单字母读字母名（`(A, B)`）", async () => {
+  // 用户三句话依次是：「YY 要标」「同一行里成串的大写单字母 → 字母名」
+  // 「打码的 XX 还是留白更好」。前两条照做；第三条和第一条冲突（XX / YY 拼写一样），
+  // 只能看**用法**：打码词后面必然跟日语词尾/助词（`“XX”してる`、`XXの…`），
+  // 缩写是独立写的（`「YY」`、`YY!`）。判据就是"后面紧挨着（可夹收尾引号）的
+  // 一个字符是不是平假名"。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>きみがひとり“XX”してるの知ってるよ</p></li>
   <li class="line"><p>合言葉は「YY」</p></li>
+  <li class="line"><p>YY! XXの うた</p></li>
   <li class="line"><p>(A, B) 退屈に打つ QTE (Why?)</p></li>
   <li class="line"><p>A story of love and I</p></li>
   <li class="line"><p>B面の うた</p></li>
@@ -1945,15 +1950,23 @@ test("`YY` 要标；同一行里成串的大写单字母读字母名（`(A, B)` 
       [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
     );
 
-  assert.strictEqual(pairsOf(ps[0]).get("YY"), "ワイワイ", "YY 要标：" + ps[0].innerHTML);
-  assert.strictEqual(pairsOf(ps[1]).get("A"), "エー", "成串的 A 读字母名：" + ps[1].innerHTML);
-  assert.strictEqual(pairsOf(ps[1]).get("B"), "ビー", "成串的 B 读字母名：" + ps[1].innerHTML);
-  assert.strictEqual(pairsOf(ps[1]).get("QTE"), "キューティーイー");
+  // 打码：后面跟日语词尾 -> 留白
+  assert.strictEqual(rubyCount(ps[0]), 0, "打码的 XX 要留白：" + ps[0].innerHTML);
+  // 缩写：独立写的 -> 标字母名
+  assert.strictEqual(pairsOf(ps[1]).get("YY"), "ワイワイ", "YY 要标：" + ps[1].innerHTML);
+  // 同一行里两种都有：YY 标、XX（后面跟 の）留白
+  const mixed = pairsOf(ps[2]);
+  assert.strictEqual(mixed.get("YY"), "ワイワイ", ps[2].innerHTML);
+  assert.strictEqual(mixed.has("XX"), false, "XXの… 也按打码留白：" + ps[2].innerHTML);
+  // 成串的大写单字母
+  assert.strictEqual(pairsOf(ps[3]).get("A"), "エー", "成串的 A 读字母名：" + ps[3].innerHTML);
+  assert.strictEqual(pairsOf(ps[3]).get("B"), "ビー", "成串的 B 读字母名：" + ps[3].innerHTML);
+  assert.strictEqual(pairsOf(ps[3]).get("QTE"), "キューティーイー");
   // 反向：英文行里的冠词 A 还是 ア、代词 I 还是 アイ（这行只有两个单字母，不算成串）
-  assert.strictEqual(pairsOf(ps[2]).get("A"), "ア", "冠词 A 不能读成 エー：" + ps[2].innerHTML);
-  assert.strictEqual(pairsOf(ps[2]).get("I"), "アイ");
+  assert.strictEqual(pairsOf(ps[4]).get("A"), "ア", "冠词 A 不能读成 エー：" + ps[4].innerHTML);
+  assert.strictEqual(pairsOf(ps[4]).get("I"), "アイ");
   // 孤零零一个大写字母（B面）照旧留白
-  assert.strictEqual(rubyCount(ps[3]), 0, "孤立的 B 还是留白：" + ps[3].innerHTML);
+  assert.strictEqual(rubyCount(ps[5]), 0, "孤立的 B 还是留白：" + ps[5].innerHTML);
 });
 
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {

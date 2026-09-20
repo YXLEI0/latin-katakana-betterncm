@@ -485,6 +485,39 @@
     return false;
   }
 
+  /**
+   * 像**打码**的重复字母串：后面紧挨着平假名（`“XX”してる`、`XXの…`、`XXする`）。
+   *
+   * 用户先说 `YY` 要标、又说"打码的 XX 还是留白更好" —— 两者拼写一模一样
+   * （都是全大写 2~3 个重复字母），本地只能看**用法**：
+   *   打码词是当**句子里一个词**用的，后面必然跟着日语词尾/助词（してる・の・する…）；
+   *   缩写是**独立**写的（`「YY」`、`YY!`、`YY と`）。
+   * 所以判据就是"后面紧挨着的一个字符是不是平假名"。两可的极端情况宁可留白 ——
+   * 留白只是少一个注音，标错是错的读音。
+   */
+  function censorLikeRun(word, line) {
+    var w = String(word == null ? "" : word);
+    if (!/^([BCDFGHJKLMNPQRSTVWXYZ])\1{1,2}$/.test(w)) return false;
+    var s = String(line == null ? "" : line);
+    if (!s) return false;
+    var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // 中间允许夹一个收尾的引号/括号（`“XX”してる`、`（XX）する`）
+    var tail = "[\u2019\u201D\u300D\u300F\uFF09\u3011\"']*[\u3041-\u3096]";
+    return new RegExp(esc + tail).test(s);
+  }
+
+  /** 这段文字里有没有"后面紧跟日语词尾"的重复字母串（打码）—— 给排障用 */
+  function looksCensoredRun(text) {
+    var s = String(text == null ? "" : text);
+    var runs = s.match(/[A-Za-z]{2,3}/g);
+    if (!runs) return false;
+    for (var i = 0; i < runs.length; i++) {
+      if (!/^([A-Za-z])\1+$/.test(runs[i])) continue;
+      if (censorLikeRun(runs[i], s)) return true;
+    }
+    return false;
+  }
+
   function localReading(word, line) {
     /*
      * 先看「学会的词」（core/learn.js）：模型在两个不同句子里答过同一个读音、
@@ -495,6 +528,11 @@
       var learned = state.learned.get(word);
       if (learned) return { kana: learned, source: "learned", confident: true };
     }
+    /*
+     * 像打码的重复字母串（后面紧跟着假名，`“XX”してる`）：留白。
+     * 缩写成串的（`「YY」` 这种独立的）继续往下走，按字母名读成 ワイワイ。
+     */
+    if (censorLikeRun(word, line)) return null;
     /*
      * 大写单字母：成串的读字母名（`(A, B)` -> エー / ビー），
      * 孤零零一个的照旧 —— `A` 是冠词（ア）、`I` 是代词（アイ），
@@ -1817,6 +1855,10 @@
         // 暂定读音（在线那层还在问）会在注音上打一个淡一点的标记
         pending: function (word, line) {
           return isProvisional(word, line);
+        },
+        // 排障用：这段文字里有没有被判成"打码"的重复字母串
+        censoredRun: function (text) {
+          return looksCensoredRun(text);
         },
         annotateAll: config.annotateAll !== false,
         log: function () {
