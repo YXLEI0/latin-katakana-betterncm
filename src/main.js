@@ -208,6 +208,23 @@
   var romajiLineCache = new Map();
   var ROMAJI_LINE_CACHE_MAX = 200;
 
+  /*
+   * 只在**英语拼写**里出现的字母组合：日语罗马字里没有 th / wh / ck / gh / ph，
+   * 也没有 q 和 x（θ・w・ク・q・x 都不是日语音节）。
+   *
+   * 用户报的：`Knock knock! Let me go in and get the ace` 里的 `me` 被读成 メ。
+   * `me` 的词典读音是 ミー（对），但这一行被判成了"罗马字行" —— 于是整行的短词
+   * 都改按罗马音读，`me`→メ、`go`→ゴ…。这类英文行只要**再多一个**打架的短词
+   * （`so`/`no`/`you`…）就会凑够 5 个门槛，靠"数短词"分不开英文行和罗马字行。
+   *
+   * 能分开的是拼写：罗马字写不出 `ck`（knock）、`th`（the/with）、`wh`（what）、
+   * `q`（question）。所以只要这一行里出现这类组合，就不是罗马字行，
+   * 词典读音照用 —— 这比"再调几个数字"稳得多。
+   * 对照：`PA PI PU PE PO POP UP!` / `MA MI MU ME MO MORE JUMP!` 里一个都没有 ✓，
+   * 仍然是罗马字行（那里要的正是 パピプペポ）。
+   */
+  var RE_ENGLISH_ONLY = /(th|wh|ck|gh|ph|q|x)/;
+
   /** ≤3 个纯字母、且能干净地切成日语罗马音 -> 返回那个读音，否则 null */
   function shortRomajiOf(word) {
     var w = String(word || "").toLowerCase();
@@ -232,11 +249,13 @@
       var distinct = 0;
       var latin = 0;
       var short = 0;
+      var englishOnly = false;
       for (var i = 0; i < tokens.length; i++) {
         var w0 = String(tokens[i].text || "").toLowerCase();
         if (!/^[a-z]+$/.test(w0)) continue;
         latin++;
         if (/^[a-z]{1,3}$/.test(w0)) short++;
+        if (RE_ENGLISH_ONLY.test(w0)) englishOnly = true;
         if (seen[w0]) continue;
         seen[w0] = true;
         var rom = shortRomajiOf(w0);
@@ -252,7 +271,11 @@
        * 所以再加一条"拉丁词里 ≤3 字母的占 60% 以上"。
        */
       var shortRatio = latin ? short / latin : 0;
-      looks = distinct >= ROMAJI_LINE_MIN && shortRatio >= ROMAJI_LINE_SHORT_RATIO;
+      /*
+       * 三条一起看：打架的短音节够多 ✓、整行几乎都是短词 ✓、**拼写上不像英语** ✓
+       * （见 RE_ENGLISH_ONLY：出现 th/wh/ck/q/x 就说明这是英文行，不是罗马字行）。
+       */
+      looks = !englishOnly && distinct >= ROMAJI_LINE_MIN && shortRatio >= ROMAJI_LINE_SHORT_RATIO;
     } catch (e) {
       looks = false; // 判断失败就当它不是罗马字行，绝不因此影响注音
     }

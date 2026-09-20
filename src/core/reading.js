@@ -50,6 +50,12 @@
   // 超过 4 个就认为没把握（confident:false）。
   var RE_CONSONANT = /[bcdfghjklmnpqrstvwxyz]/;
 
+  /*
+   * 词首不发音的字母组合（knock / wrap / gnome / psalm / pneumonia）。
+   * 这几组在英语里没有例外，见 convertEnglish 里的第 0 条。
+   */
+  var EN_SILENT_HEAD = /^(kn|wr|gn|ps|pn)/;
+
   // ------------------------------------------------------------ 罗马音表
 
   /*
@@ -1017,6 +1023,34 @@
       var nxt = word.charAt(i + 1);
       var nxt2 = word.charAt(i + 2);
       var pair;
+
+      /*
+       * ---- 0. 词首不发音的字母：kn- / wr- / gn- / ps- / pn-。
+       *
+       * 用户报的 `Knock knock!` 被规则读成「ナオック」—— `k` 是哑音。
+       * 这几组在英语里**从不**发音（knock/knee/knight、wrap/write/wrong、
+       * gnome、psalm/psychology、pneumonia），所以整组丢掉首字母就行。
+       *
+       * `wh-` 不在此列：who 哑 w、what 哑 h，得靠词表（词典里有 who/what/why）
+       * 或者 `hasUnsureSpelling` 的标记，不能一刀切。
+       * 词尾的 -mb 同理（comb/climb/lamb/bomb/thumb），但那是 b 哑，见下一条。
+       */
+      if (i === 0 && EN_SILENT_HEAD.test(word)) {
+        i++;
+        continue;
+      }
+
+      /*
+       * ---- 0b. 词尾 -mb：b 不发音（comb コーム、climb クライム、lamb ラム、
+       *          bomb ボム、thumb サム、tomb トゥーム、dumb ダム）。
+       *          只处理**词尾**这一种：number / amber / timber 的 b 是发音的
+       *          （ナンバー・アンバー・ティンバー），而 plumber 又哑 —— 词中
+       *          的 mb 分不出来，那些交给词典。
+       */
+      if (ch === "b" && rest === 1 && i > 0 && word.charAt(i - 1) === "m") {
+        i++;
+        continue;
+      }
 
       // ---- 1. 词尾不发音的 e。
       //      -ce / -ge / -Cle 这些固定收尾由后面 3b/3c 处理，这里只丢掉 e；

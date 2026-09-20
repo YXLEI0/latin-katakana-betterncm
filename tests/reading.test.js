@@ -867,6 +867,49 @@ test("首音校验：th 的两种读法都放行（the ザ / think シンク）�
   assert.strictEqual(LK.looksLikeTransliteration("write", "ライト"), true);
 });
 
+// ============================================================ 不发音字母
+
+test("词首不发音的字母：kn- / wr- / gn- / ps- / pn- 不许读出来", () => {
+  // 用户报的 `Knock knock!` 被规则读成「ナオック」（k 是哑音）。
+  // 这几组在英语里从不发音，整组丢掉首字母就对了。
+  for (const [w, kana] of [
+    ["knock", "ノック"],
+    ["knit", "ニット"],
+    ["knob", "ノブ"],
+    ["knot", "ノット"],
+    ["knack", "ナック"],
+    ["wrap", "ラップ"],
+    ["wreck", "レック"],
+    ["gnat", "ナット"],
+    ["gnaw", "ナウ"],
+    ["wring", "リン"], // w 哑
+  ]) {
+    assert.strictEqual(LK.englishToKatakana(w).kana, kana, w);
+  }
+  // 词首那一格绝不能再出现 kn/wr/gn 的第一个音（ナ/ラ/グ 之类）
+  for (const w of ["knee", "kneel", "knife", "knight", "write", "wrong", "wrist", "gnome"]) {
+    const kana = LK.englishToKatakana(w).kana;
+    assert.ok(!/^[クラグ]/.test(kana), w + " 的首字母是哑音，不能读出来：" + kana);
+  }
+});
+
+test("词尾 -mb：b 不发音（comb / climb / lamb / bomb / thumb）", () => {
+  for (const w of ["comb", "climb", "lamb", "bomb", "thumb", "tomb", "dumb", "crumb", "rhomb", "aplomb", "coomb"]) {
+    const kana = LK.englishToKatakana(w).kana;
+    // 词尾不能落在バ行上（老引擎的错法：bomb ボンブ、climb クルンブ）。
+    // 词首的 b 该读还得读（bomb 的 ボ 是对的），所以只看结尾。
+    assert.ok(!/[バビブベボ]$/.test(kana), w + " 词尾的 b 不发音，不该以バ行收尾：" + kana);
+  }
+  // 词中的 mb 不能一起哑掉：number / amber / timber 的 b 是发音的
+  for (const [w, kana] of [
+    ["number", "ヌンバー"],
+    ["amber", "アンバー"],
+    ["timber", "ティンバー"],
+  ]) {
+    assert.strictEqual(LK.englishToKatakana(w).kana, kana, w + " 词中的 b 要读出来");
+  }
+});
+
 // ============================================================ 边界
 
 test("边界：stats 初值都是 0", () => {

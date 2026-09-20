@@ -1554,6 +1554,86 @@ test("罗马音节行：短音节按罗马音读（PI→ピ / ME→メ），普�
   assert.strictEqual(en2.get("sea"), "シー");
 });
 
+test("英文行里有 th/ck 这类拼写时，绝不当成罗马字行（`me` 不许读成 メ）", async () => {
+  // 用户报的截图：`Knock knock! Let me go in and get the ace` 里的 `me` 被标成 メ。
+  // 病因是"数短词"这条判据分不开英文行和罗马字行：这行本来只有 4 个打架的短词，
+  // 可整首歌里再随便多一个（so/no/you…）就凑够 5 个门槛，于是整行改按罗马音读。
+  // 能分开的是**拼写**：日语罗马字写不出 ck / th / wh / q / x。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Knock knock! Let me go in and get the ace, so no, do you know</p></li>
+  <li class="line"><p>Knock knock! Let me go in and get the ace</p></li>
+  <li class="line"><p>Yes, PA PI PU PE PO POP UP!(Hey!!)Yes, MA MI MU ME MO MORE JUMP!(Yeah!!)</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(250);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const reading = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+        r.childNodes[0].nodeValue,
+        r.querySelector(".lt-rt").textContent,
+      ])
+    );
+
+  // 前提：这一行按老判据会被当成罗马字行（6 个打架短词、80% 短词）
+  const long = reading(ps[0]);
+  assert.strictEqual(long.get("me"), "ミー", "带 ck/th 的英文行里 me 要读 ミー：" + JSON.stringify([...long]));
+  assert.strictEqual(long.get("go"), "ゴー");
+  assert.strictEqual(long.get("so"), "ソー");
+  assert.strictEqual(long.get("no"), "ノー");
+  assert.strictEqual(long.get("you"), "ユー");
+  assert.strictEqual(long.get("the"), "ザ");
+  assert.strictEqual(long.get("Knock"), "ノック", "knock 的 k 是哑音：" + JSON.stringify([...long]));
+
+  const short = reading(ps[1]);
+  assert.strictEqual(short.get("me"), "ミー");
+
+  // 反向的一半：真正的罗马音行（没有 ck/th/q/x）照旧按罗马音读
+  const romaji = reading(ps[2]);
+  assert.strictEqual(romaji.get("PI"), "ピ", "PA PI PU PE PO 那一行仍然是罗马字行");
+  assert.strictEqual(romaji.get("ME"), "メ");
+});
+
+test("不发音字母的英文词：直接进词典（用户问的「没歧义就写进词典」）", async () => {
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>knock knee knit knob knot wrist wreck</p></li>
+  <li class="line"><p>comb climb lamb bomb thumb tomb dumb plumber</p></li>
+  <li class="line"><p>subtle island aisle castle listen whistle fasten sword</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(250);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const reading = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+        r.childNodes[0].nodeValue,
+        r.querySelector(".lt-rt").textContent,
+      ])
+    );
+  const want = [
+    ["knock", "ノック"], ["knee", "ニー"], ["knit", "ニット"], ["knob", "ノブ"], ["knot", "ノット"],
+    ["wrist", "リスト"], ["wreck", "レック"],
+    ["comb", "コーム"], ["climb", "クライム"], ["lamb", "ラム"], ["bomb", "ボム"],
+    ["thumb", "サム"], ["tomb", "トゥーム"], ["dumb", "ダム"], ["plumber", "プラマー"],
+    ["subtle", "サトル"], ["island", "アイランド"], ["aisle", "アイル"], ["castle", "キャッスル"],
+    ["listen", "リスン"], ["whistle", "ウィッスル"], ["fasten", "ファスン"], ["sword", "ソード"],
+  ];
+  const got = new Map();
+  for (const p of ps) for (const [k, v] of reading(p)) got.set(k, v);
+  for (const [w, kana] of want) {
+    assert.strictEqual(got.get(w), kana, w + " 该是 " + kana + "：" + JSON.stringify([...got]));
+  }
+  // 词典是"人工核过"的，要标成确定（不然大模型还要再问一遍，白白花钱）
+  assert.strictEqual(env.api.read("knock").source, "dict");
+  assert.strictEqual(env.api.read("knock").confident, true);
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

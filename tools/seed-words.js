@@ -732,4 +732,56 @@ module.exports = [
   { en: "wishes", kana: "ウィッシズ" },
   { en: "wow", kana: "ワウ" },
   { en: "yesterday", kana: "イエスタデイ" },
+  /*
+   * 不发音字母的常用英文词 —— 用户问的正是这一类：
+   * "没有歧音的词语能否直接写入词典"。能，而且**就该**这么办。
+   *
+   * 背景：规则层是"照拼写猜"，哑音猜不出来（`Knock`→ナオック、`wrist`→ライサト、
+   * 词尾 `-mb` 的 b 也照读）。规则层的两条通例已经补上了（词首 kn/wr/gn/ps/pn、
+   * 词尾 -mb，见 reading.js 的 EN_SILENT_HEAD），但下面这些词要么有例外
+   * （number ナンバー vs plumber プラマー）、要么连着其它不规则拼写
+   * （subtle サトル、island アイランド、people ピープル），人工钉死最省事。
+   *
+   * 判据只有一条：**读法唯一**（日语里就这么写，没有第二种）。两可的照旧不收。
+   */
+  { en: "knock", kana: "ノック" },
+  { en: "knocking", kana: "ノッキング" },
+  { en: "knocked", kana: "ノックド" },
+  { en: "knee", kana: "ニー" },
+  { en: "kneel", kana: "ニール" },
+  { en: "knit", kana: "ニット" },
+  { en: "knob", kana: "ノブ" },
+  { en: "knot", kana: "ノット" },
+  { en: "wrist", kana: "リスト" },
+  { en: "wreck", kana: "レック" },
+  { en: "wrapped", kana: "ラップト" },
+  { en: "wrapping", kana: "ラッピング" },
+  { en: "psalm", kana: "サーム" },
+  { en: "pneumonia", kana: "ニューモニア" },
+  { en: "comb", kana: "コーム" },
+  { en: "climb", kana: "クライム" },
+  { en: "climbing", kana: "クライミング" },
+  { en: "climber", kana: "クライマー" },
+  { en: "lamb", kana: "ラム" },
+  { en: "bomb", kana: "ボム" },
+  { en: "thumb", kana: "サム" },
+  { en: "tomb", kana: "トゥーム" },
+  { en: "dumb", kana: "ダム" },
+  { en: "plumber", kana: "プラマー" },
+  { en: "subtle", kana: "サトル" },
+  { en: "island", kana: "アイランド" },
+  { en: "aisle", kana: "アイル" },
+  { en: "castle", kana: "キャッスル" },
+  { en: "listen", kana: "リスン" },
+  { en: "listening", kana: "リスニング" },
+  { en: "whistle", kana: "ウィッスル" },
+  { en: "fasten", kana: "ファスン" },
+  { en: "sword", kana: "ソード" },
+  { en: "muscle", kana: "マッスル" },
+  { en: "science", kana: "サイエンス" },
+  { en: "receipt", kana: "レシート" },
+  { en: "guess", kana: "ゲス" },
+  { en: "foreign", kana: "フォーリン" },
+  { en: "who", kana: "フー" },
+  { en: "whole", kana: "ホール" },
 ];

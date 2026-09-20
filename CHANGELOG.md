@@ -4,6 +4,52 @@
 
 首个版本：给日语歌歌词里的**拉丁字母**标注**片假名读音**。
 
+### 英文行不再被当成罗马字行（`me`→メ）+ 不发音字母的词进词典（本次）
+
+用户两张图 / 一个问题，一起处理。
+
+**一、`Knock knock! Let me go in and get the ace` 里的 `me` 被标成 メ。**
+病例是**罗马字行规则误判**：那条规则靠"数打架的短词"（≥5 个、短词占比 ≥60%），
+而这行本来只有 4 个，可整句里再多一个（`so`/`no`/`you`…）就凑够门槛 ——
+于是整行改按罗马音读，`me`→メ、`go`→ゴ…
+
+能分开英文行和罗马字行的不是**数量**而是**拼写**：日语罗马字里没有 θ（`th`）、
+没有 `ck`/`gh`/`ph`，也没有 `q` 和 `x`。现在只要一行里出现
+`th|wh|ck|gh|ph|q|x`，就直接当英文行、词典读音照用：
+
+- `Knock knock! Let me go in and get the ace, so no, do you know`（6 个打架短词、
+  短词 80%，老判据必中）→ 现在 `me` ミー ✓、`go` ゴー ✓、`so` ソー ✓、`no` ノー ✓；
+- `PA PI PU PE PO POP UP!` / `MA MI MU ME MO MORE JUMP!` 里一个都没有 ✓ →
+  仍然是罗马字行，`PI` ピ ✓、`ME` メ ✓（那正是罗马字行要的）。
+
+**二、`Knock` 被规则读成ナオック —— 用户问「没有歧音的词语能否直接写入词典」。
+答案：能，而且就该这么办，这一版一次做了两层：**
+
+- **通例进规则**（`reading.js`）：词首不发音的 `kn-`/`wr-`/`gn-`/`ps-`/`pn-`
+  （knock / wrap / gnome / psalm / pneumonia）整组丢掉首字母；词尾 `-mb` 的哑 b
+  （comb / climb / lamb / bomb / thumb）也丢掉。没进词典的生词跟着沾光：
+  `knack` ナック、`gnat` ナット、`gnaw` ナウ、`wring` リン。
+  词中的 `mb` 故意不碰：`number` ナンバー 的 b 发音、`plumber` プラマー 的不发音，
+  分不出来，两个都进词典。
+- **常用词人工进词典**（`tools/seed-words.js` +40 条，词典 6192 → **6226 条**）：
+  `knock` ノック、`knee` ニー、`knit` ニット、`knob` ノブ、`knot` ノット、
+  `wrist` リスト、`wreck` レック、`psalm` サーム、`pneumonia` ニューモニア、
+  `comb` コーム、`climb` クライム、`lamb` ラム、`bomb` ボム、`thumb` サム、
+  `tomb` トゥーム、`dumb` ダム、`plumber` プラマー、`subtle` サトル、
+  `island` アイランド、`aisle` アイル、`castle` キャッスル、`listen` リスン、
+  `whistle` ウィッスル、`fasten` ファスン、`sword` ソード、`muscle` マッスル、
+  `science` サイエンス、`receipt` レシート、`guess` ゲス、`foreign` フォーリン、
+  `who` フー、`whole` ホール …。人工词表压过所有层、还带"确定"标记，
+  不会再送去问大模型（等于省一次请求）。
+
+判据只有一条：**读法唯一**。两可的照旧不收（`do`/`re`/`mi`/`me`/`mo` 这类
+英文读音和唱名/罗马音节都成立的），钉死反而会错 —— 那些交给大模型按整句语境判。
+
+测试：`reading.test.js` +2（词首哑音、词尾 -mb 不许收在バ行上；同时守住
+`number`/`amber`/`timber` 词中的 b 要发音）、`integration.test.js` +2
+（带 ck/th 的英文行里 `me` 必须是 ミー、罗马字行不受影响；40 个不发音字母词
+逐个核对读音与"确定"标记），全套 **260 → 264 全绿**。
+
 ### `XX` 被念成 エックスエックス + 「MWAH 一直没注音」：认输判据放宽、诊断一次给结论（本次）
 
 用户两条反馈，一起处理。
