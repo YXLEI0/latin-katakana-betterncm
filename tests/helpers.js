@@ -79,15 +79,18 @@ function loadCore(html, options) {
 function makeAnnotator(ctx, opts) {
   opts = opts || {};
   const reader = opts.reader || ctx.reader;
-  return ctx.LKAnnotate.createAnnotator({
-    document: ctx.document,
-    lookup: function (word) {
-      const r = reader ? reader.read(word) : null;
-      return r && r.kana ? r.kana : null;
-    },
-    annotateAll: opts.annotateAll !== false,
-    log: opts.log || function () {},
-  });
+  // opts.annotator 里可以塞任意 createAnnotator 选项（motionWindowMs / churnBaseMs 这类排障旋钮）
+  return ctx.LKAnnotate.createAnnotator(
+    Object.assign({}, opts.annotator || {}, {
+      document: ctx.document,
+      lookup: function (word) {
+        const r = reader ? reader.read(word) : null;
+        return r && r.kana ? r.kana : null;
+      },
+      annotateAll: opts.annotateAll !== false,
+      log: opts.log || function () {},
+    })
+  );
 }
 
 /** 把 jsdom 的 ruby 支持探针固定住，免得测试结果依赖布局引擎 */

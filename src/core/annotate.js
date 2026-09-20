@@ -137,7 +137,22 @@
      * 稳定性优先于覆盖率。
      */
     var motionByHost = new WeakMap();
-    var MOTION_LIMIT = 3; // 连续变化超过这个次数就判定为"在动"，放弃
+    /*
+     * 同一个宿主的可见文本一直在变（对方插件每帧重建 / 歌词列表复用行滚动）时，
+     * 先别追着重注 —— 追就是抽搐。
+     *
+     * 但这必须是**滑动窗口**，不能是一辈子的黑名单。老版本 `changes` 只加不减，
+     * 同一个元素被复用超过 3 次就**永久**不再碰它 —— 用户报的
+     * 「换歌后 KiLLKiSS judy.., … 这句没注音了」就是这个：网易云换歌时复用同一批
+     * `<li>/<p>`，只把文本换掉，于是第 4 首之后那一行再也不标；更糟的是整行被跳过，
+     * 连上一首残留的旧注音都没人去清（探针里能看到新旧注音混在一行）。
+     *
+     * 现在按窗口计数：窗口内变了 MOTION_LIMIT 次以上，才在本轮放弃；窗口一过自动重试
+     * （真正的死循环还有 churn 认输机制兜着，见 noteChurn）。
+     */
+    var MOTION_LIMIT = 3;
+    var MOTION_WINDOW_MS =
+      typeof options.motionWindowMs === "number" ? options.motionWindowMs : 3000;
 
     /*
      * 自动避让：认输，别再跟一个"无条件重建这一行"的插件对打。
@@ -705,7 +720,22 @@
         node.nodeValue = pieces[0].text;
         startIndex = 1;
       } else if (node.parentNode === host) {
-        host.removeChild(node);
+        /*
+         * 行首就是词（`KiLLKiSS judy..,` 这种）：原文本节点**留在原地、值清空**，
+         * 注音插在它后面。
+         *
+         * 老版本是把它从 host 里摘掉（注音取而代之）。摘掉看着更"干净"，但有个
+         * 要命的副作用：**框架（React）还攥着这个文本节点的引用**，换歌时它执行的是
+         * `node.nodeValue = 新歌词` —— 节点一旦脱链，那句话说给空气听，页面上什么都
+         * 不变。于是我们永远看不到"这行换了"，旧注音留在新歌的行里，而且框架认为
+         * 这行没变、不会自己修回来。用户报的「换歌后这句没注音 / 混着上一首的注音」
+         * 就有这一份。
+         *
+         * 留在 DOM 里（哪怕暂时是空串）就没这个问题：框架写进来的新歌词立刻可见，
+         * 我们下一轮就能判定"这行失效"、还原、重注。
+         * 空文本节点不占位置、不影响排版，还原时按 kept=true 那条路把原文写回去。
+         */
+        node.nodeValue = "";
       }
       // inserted 要记「我们插进去的每一个节点」—— 包括那些纯文本分段。
       // 只记注音的话，还原时这些分段会留在 DOM 里，原文就会重复一遍。
@@ -726,12 +756,12 @@
       // 从而分辨"死循环"（几十毫秒就没）和"正常重绘"（活了一两秒）
       host.__ltAt = Date.now();
 
-      // 记录：原节点是否还留在 host 里（leadIsRuby 时它已被移除）、
-      // 注音节点清单，以及它原来插在哪个位置（host 的子节点下标）。
-      // 记下标是为了让 kept=false 的形态能原样还原 —— 还原时我们插的节点
-      // 会被逐个摘掉，届时再想找"插回哪儿"就已经晚了。
-      // 数值同样要在动 DOM 之前算：原节点摘掉之后遍历就再也找不到它，
-      // index 会留在 0，还原时把整段原文插到宿主行首。
+      // 记录：原节点是否还留在 host 里、注音节点清单，以及它原来插在哪个位置
+      // （host 的子节点下标）。
+      // 记下标是为了还原 —— 还原时我们插的节点会被逐个摘掉，届时再想找"插回哪儿"
+      // 就已经晚了。数值同样要在动 DOM 之前算好。
+      // kept 现在**总是 true**（两种形态都保留原节点，见上面 leadIsRuby 那段），
+      // 保留这个字段是因为还原逻辑按它分支（万一哪天又需要摘掉节点）。
       records.set(node, {
         host: host,
         nodes: inserted,
@@ -742,9 +772,12 @@
         // kept=true 时我们写在原节点上的那截文字（前缀）。框架换歌会把它的值
         // 换成新歌词，那时就**绝对**不能照着 plain 写回去 —— 写回去就是把上一首
         // 的歌词搬进新歌的行里。还原前拿它确认"这截还是我们写的"。
-        head: leadIsRuby ? null : pieces[0].text,
+        // 行首就是词的那种，我们写进去的是空串，所以这里也存空串（不是 null）——
+        // 判据是 `rec.head == null || node.nodeValue === rec.head`，
+        // 存 null 会变成"不检查"，框架写进去的新歌词就会被我们覆盖掉。
+        head: leadIsRuby ? "" : pieces[0].text,
         region: region,
-        kept: !leadIsRuby,
+        kept: node.parentNode === host,
         index: origIndex,
         // 记下当时所在的行元素（jp-furigana 会给它挂 __fgText）。
         // 只能在注音时抓：等到出问题（宿主被摘掉）再顺着 host 往上找就已经晚了，
@@ -1453,21 +1486,39 @@
           continue;
         }
 
-        // 这个 host 的可见文本是不是一直在变？一直在变就放弃它，
-        // 别再追着重注 —— 追就是抽搐。
+        // 这个 host 的可见文本是不是一直在变？一直在变就**这一轮**放弃它，
+        // 别再追着重注 —— 追就是抽搐。窗口过了会自动重试（见 MOTION_WINDOW_MS）。
         if (hostEl) {
           var motion = motionByHost.get(hostEl);
+          var nowMs = Date.now();
           if (!motion) {
             // 第一次见：只登记，不算变化（否则我们自己注音造成的可见文本变化
             // 会被记成"在动"，把正常的行也放弃掉）
-            motion = { text: visibleNow, changes: 0 };
+            motion = { text: visibleNow, changes: 0, since: nowMs };
             motionByHost.set(hostEl, motion);
-          } else if (motion.text !== visibleNow) {
-            motion.text = visibleNow;
-            motion.changes++;
+          } else {
+            /*
+             * 窗口过期就重新起算 —— 而且**每次扫描都要判**，不能只在"文本又变了"时判。
+             *
+             * 只判变化有个致命的洞：文本变快了几次被跳过之后，文本就**安定下来了**，
+             * 于是再也不会有人来重置计数，那一行就永久不再注音 ——
+             * 用户报的「换歌后这句没注音了」正是这个形态（换歌时抖了几下，
+             * 之后歌词不动，行也永远不标了）。
+             */
+            if (motion.changes > 0 && nowMs - motion.since > MOTION_WINDOW_MS) {
+              motion.changes = 0;
+              motion.since = nowMs;
+            }
+            if (motion.text !== visibleNow) {
+              if (motion.changes === 0) motion.since = nowMs;
+              motion.text = visibleNow;
+              motion.changes++;
+            }
           }
           if (motion.changes >= MOTION_LIMIT) {
             unstable++;
+            // 这一条以前不留痕，"某一行不注音"时轨迹里什么都看不到 —— 必须记
+            noteSkip("文本在动 " + motion.changes + " 次/" + Math.round(MOTION_WINDOW_MS / 1000) + "s", visibleNow, region);
             continue;
           }
         }

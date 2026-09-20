@@ -79,12 +79,98 @@ test("词正好在文本开头时，注音不能跑到行尾", () => {
   ann.pass();
 
   const p = ctx.document.querySelector("p");
-  // 第一个子节点就该是 clover 的 ruby（行首）
-  const first = p.firstChild;
-  assert.strictEqual(first.nodeType, 1);
-  assert.ok(first.classList.contains("lt-ruby"));
-  assert.strictEqual(first.childNodes[0].nodeValue, "clover");
+  /*
+   * 行首那个**空的原文本节点**是刻意留着的（框架还攥着它的引用，摘掉就收不到
+   * 换歌时写进来的新歌词 —— 见 annotate.js 里 leadIsRuby 那段）。所以判"注音在行首"
+   * 要看**第一个看得见的东西**，而不是 firstChild。
+   */
+  const firstVisible = [...p.childNodes].find(
+    (n) => n.nodeType === 1 || (n.nodeValue || "").length > 0
+  );
+  assert.strictEqual(firstVisible.nodeType, 1);
+  assert.ok(firstVisible.classList.contains("lt-ruby"));
+  assert.strictEqual(firstVisible.childNodes[0].nodeValue, "clover");
   assert.strictEqual(baseText(p), "clover と dream の 話はなし");
+});
+
+test("换歌：行首是拉丁词的行，框架改写原文本节点之后必须能重新注音", () => {
+  // 用户报的「换歌后 KiLLKiSS judy.., KiLLKiSS jude.., KiLLKiSS juda.., 没注音了」。
+  // 这种行**行首就是词**，老版本会把它那个原文本节点从 DOM 里摘掉，而框架（React）
+  // 还攥着那个节点的引用 —— 换歌时它执行 `node.nodeValue = 新歌词`，
+  // 说给一个脱链节点听，页面上什么都不变，我们也就永远看不到"这行换了"。
+  const ctx = newCtx(`<!doctype html><html><body>
+<ul class="lyric"><li class="line"><p>KiLLKiSS judy.., KiLLKiSS jude..,</p></li></ul>
+</body></html>`);
+  forceRubyLayout(ctx, true);
+  const ann = makeAnnotator(ctx);
+  ann.pass();
+
+  const p = ctx.document.querySelector("p");
+  assert.deepStrictEqual(
+    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    ["KiLLKiSS", "judy", "KiLLKiSS", "jude"]
+  );
+
+  // 换歌：框架复用同一个文本节点，只把值换成新歌词（React 的老套路）
+  const orig = p.firstChild;
+  assert.strictEqual(orig.nodeType, 3, "原文本节点必须还在 DOM 里（不能被我们摘掉）");
+  assert.strictEqual(orig.nodeValue, "", "行首形态下我们把它清空，词都在 ruby 里");
+  orig.nodeValue = "そして light が 消えた";
+
+  ann.pass();
+  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+    r.childNodes[0].nodeValue,
+    r.querySelector(".lt-rt").textContent,
+  ]);
+  assert.deepStrictEqual(pairs, [["light", "ライト"]], "只该剩新歌词里的注音：" + JSON.stringify(pairs));
+  assert.strictEqual(p.textContent, "そして lightライト が 消えた", "新歌词一个字都不许丢");
+  assert.strictEqual(p.textContent.indexOf("KiLLKiSS"), -1, "上一首的注音必须撤干净");
+});
+
+test("换歌：同一个元素被快速复用很多次，跳过只是暂时的（窗口一过自动重试）", async () => {
+  // 用户报的「换歌后 KiLLKiSS judy.., … 没注音了」的另一个成因：
+  // motion 计数器老版本**只加不减**，同一个元素被复用超过 3 次就永久不再注音
+  // （连上一首残留的旧注音都没人清）。现在按滑动窗口计数：窗口内变太快才跳过，
+  // 窗口一过自动重试。
+  const ctx = newCtx(`<!doctype html><html><body>
+<ul class="lyric"><li class="line"><p>きらめく light と clover</p></li></ul>
+</body></html>`);
+  forceRubyLayout(ctx, true);
+  const skips = [];
+  const ann = makeAnnotator(ctx, {
+    annotator: { motionWindowMs: 60 },
+    log: (m) => skips.push(String(m)),
+  });
+  const p = ctx.document.querySelector("p");
+  const setText = (t) => {
+    while (p.firstChild) p.removeChild(p.firstChild);
+    p.appendChild(ctx.document.createTextNode(t));
+  };
+
+  ann.pass();
+  const texts = ["新しい歌の light", "そして clover", "遠くの dream", "最後の sky"];
+  for (const t of texts) {
+    setText(t);
+    ann.pass(); // 四次都挤在一个窗口里，第 3、4 次会被判成"文本在动"
+  }
+  assert.strictEqual(
+    p.querySelectorAll("ruby.lt-ruby").length,
+    0,
+    "窗口内变太快时确实该跳过（追就是抽搐）：" + p.innerHTML
+  );
+  assert.ok(
+    skips.join(" | ").indexOf("文本在动") >= 0,
+    "跳过原因要留在轨迹里，不然『某行没注音』根本查不出来：" + skips.join(" | ")
+  );
+
+  // 窗口一过：同样的那一行必须能注回来（老版本这里就永远回不来了）
+  await new Promise((r) => setTimeout(r, 80));
+  ann.pass();
+  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+    r.childNodes[0].nodeValue,
+    r.querySelector(".lt-rt").textContent,
+  ]);
+  assert.deepStrictEqual(pairs, [["sky", "スカイ"]], "窗口过后要恢复正常注音：" + JSON.stringify(pairs));
 });
 
 test("单字母：a / I 要标，其它单字母不标", () => {
