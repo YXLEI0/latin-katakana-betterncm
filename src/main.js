@@ -609,6 +609,14 @@
      * 结果一律 confident:false —— 法语拼读是近似，配了 key 就交给大模型按整句定。
      */
     if (line && typeof LKReading !== "undefined" && LKReading.frenchToKatakana && lineLooksFrench(line)) {
+      /*
+       * 借词表优先（`frenchWord`）：那是"日语里就是这么写的"（ユーザー给的
+       * sljfaq 法语借词表），连英语词典都要让路 —— rose 在英语行是 ローズ、
+       * 在法语行是 ロゼ；lame 在英语行是 レイム、在法语行是 ラメ。
+       * 表里没有才退回规则近似。
+       */
+      var loan = typeof LKReading.frenchWord === "function" ? LKReading.frenchWord(word) : null;
+      if (loan) return { kana: loan, source: "dict", confident: true };
       var frKey = typeof LKMatcher !== "undefined" ? LKMatcher.normalize(word) : String(word == null ? "" : word).toLowerCase();
       var frNeedEngine = r.source === "romaji" || r.source === "rule" || FR_HOMOGRAPH[frKey] === true;
       if (frNeedEngine) {

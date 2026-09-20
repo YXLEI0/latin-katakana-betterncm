@@ -57,10 +57,14 @@
   `ou`/`eu` ウ、`oi` ワ、`ch` シュ/シェ、`gn` ニュ、`qu` ク，词尾辅音大多不发音，
   撇号与连字符直接忽略。**一律 `confident:false`**（法语的联诵、哑音 e、开闭音节
   拼不准），配了 key 就交给大模型按整句定，判完自动沉淀成离线词条。
-- **优先级**：词典命中的优先（法语常用词人工钉在词表里：`je` ジュ、`et` エ、`que` ク…），
-  但**英法同形异音**的走规则层（`main.js` 的 `FR_HOMOGRAPH`：plus プリュ / son ソン /
-  grand グラン / cent / pain / main / coin / fin / long…）—— 那些在英语词典里是英语读音。
-  专有名词（`Paris`）仍然走词典。
+- **优先级**：**先查法语借词表**（`frenchWord`，用户给的
+  [sljfaq 法语借词表](https://www.sljfaq.org/afaq/french.html) —— 那是"日语里就是这么写的"，
+  连英语词典都要让路：rose 在英语行 ローズ、法语行 ロゼ；lame 在英语行 レイム、法语行 ラメ），
+  再看法语常用词（人工钉在词表里：`je` ジュ、`et` エ、`que` ク…），
+  最后才用规则近似；**英法同形异音**的若不在借词表里就走规则层
+  （`main.js` 的 `FR_HOMOGRAPH`：plus プリュ / son ソン / grand グラン / cent / pain / main / coin / fin / long…）。
+  专有名词（`Paris`）仍然走词典。表里没收 EDICT 那几个"日语借过去改了意思"的词
+  （jupon→ズボン、piment→ピーマン、sabot→サボ、aventure→アバンチュール）。
 - **不误伤**：判定只在整行成立时生效，英文行与日语行走原来的路径（有测试锁着）。
 
 ## 读音从哪来

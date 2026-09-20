@@ -89,6 +89,15 @@
     "i"
   );
 
+  /*
+   * 光凭关键词就足以判定的署名行：这些词**开头就写明了这是版权/署名**，
+   * 后面不一定要冒号 —— `Copyright MGMT :Fann`（用户截图）就是这种，
+   * 冒号在名字后面，上面那条判据够不着，结果 MGMT 被念成 エムジーエムティー、
+   * Fann 被念成 ファン。
+   * 歌词不会以这些词开头，所以这里放宽是安全的。
+   */
+  var RE_CREDIT_HARD = /^\s*(?:copyright\b|copyrighted\b|©|\(c\)|℗|\(p\)|all rights reserved\b|presented by\b|published by\b|licensed by\b)/i;
+
   // ---------------------------------------------------------------- 注入
 
   var styleCache = null;
@@ -1712,14 +1721,14 @@
         // 每次重新读值：上面可能刚把原文写回来
         var text = node.nodeValue || "";
         if (text.length < 2) continue;
-        if (RE_CREDIT.test(text)) continue; // 制作信息行跳过
+        if (RE_CREDIT.test(text) || RE_CREDIT_HARD.test(text)) continue; // 制作信息行跳过
         /*
          * 制作信息行被拆成好几个节点时（RNP 常见），碎片本身不像制作信息 ——
          * 往上拿整行的文字再判一次，否则 `混音&母带处理：宫奇` 旁边的 `Gon`
          * 会被注上音（用户截图）。判到了就记一笔跳过原因，方便排障。
          */
         var lineForCredit = enclosingLineText(hostEl);
-        if (lineForCredit && lineForCredit !== text && RE_CREDIT.test(lineForCredit)) {
+        if (lineForCredit && lineForCredit !== text && (RE_CREDIT.test(lineForCredit) || RE_CREDIT_HARD.test(lineForCredit))) {
           noteSkip("制作信息行（同行的另一个片段）", text, region);
           continue;
         }
@@ -1856,7 +1865,7 @@
         if (skippable) out.push("  祖先被跳过（别的插件的注音节点 / 表单等）：" + skippable);
         if (host && !isVisible(host)) out.push("  不可见（隐藏的原生播放页副本？）");
         try {
-          if (host && RE_CREDIT.test(visibleText(host))) out.push("  这行被当成制作信息行（作词/作曲/编曲…）");
+          if (host && (RE_CREDIT.test(visibleText(host)) || RE_CREDIT_HARD.test(visibleText(host)))) out.push("  这行被当成制作信息行（作词/作曲/编曲…）");
         } catch (e) {
           /* 诊断不该因为读文本失败而中断 */
         }
@@ -1892,7 +1901,7 @@
             out.push("  → 文本节点已经脱链（播放器刚重建了这行），等下一轮扫描补");
           } else if (val.length < 2) {
             out.push("  → 这段文字太短（不到 2 个字符），跳过");
-          } else if (RE_CREDIT.test(val)) {
+          } else if (RE_CREDIT.test(val) || RE_CREDIT_HARD.test(val)) {
             // 上面已经单独报过"被当成制作信息行"，这里只把链子接上，别重复一整句
             out.push("  → 原因就是上面那条：制作信息行不标");
           } else if (censoredRun && censoredRun(val)) {

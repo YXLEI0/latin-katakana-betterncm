@@ -2174,6 +2174,43 @@ test("RNP 的复制模式（总览视图）整块不注音", async () => {
   assert.strictEqual(rubyCount(hidden), 0, "被复制模式隐藏的那块也不许注音：" + hidden.innerHTML);
 });
 
+test("法语借词表只作用于法语行（`rose`：法语行 ロゼ / 英文行 ローズ）", async () => {
+  // 用户给的 sljfaq 借词表是"日语里就这么写"，但它只该在**法语行**上生效：
+  // rose 在英语歌里是 ローズ、在法语歌里是 ロゼ；lame 在英语里是 レイム、法语里是 ラメ。
+  // 这就是把法语判定放在整行级别的原因。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>La rose et le château, merci !</p></li>
+  <li class="line"><p>a rose is a rose is a rose</p></li>
+  <li class="line"><p>Merci, mon ami. Bonjour !</p></li>
+  <li class="line"><p>Copyright MGMT :Fann</p></li>
+  <li class="line"><p>℗ 2024 Some Label</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(350);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (i) =>
+    new Map(
+      [...ps[i].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    );
+
+  const fr = pairsOf(0);
+  assert.strictEqual(fr.get("rose"), "ロゼ", "法语行的 rose 是 ロゼ：" + JSON.stringify([...fr]));
+  assert.strictEqual(fr.get("château"), "シャトー");
+  assert.strictEqual(fr.get("merci"), "メルシー");
+  const en = pairsOf(1);
+  assert.strictEqual(en.get("rose"), "ローズ", "英文行的 rose 还是 ローズ：" + JSON.stringify([...en]));
+  const fr2 = pairsOf(2);
+  assert.strictEqual(fr2.get("Merci"), "メルシー");
+  assert.strictEqual(fr2.get("ami"), "アミ");
+  assert.strictEqual(fr2.get("Bonjour"), "ボンジュール");
+  // 版权行：关键词开头就足以判定（冒号在名字后面，老判据够不着）
+  assert.strictEqual(rubyCount(ps[3]), 0, "`Copyright MGMT :Fann` 不许注音：" + ps[3].innerHTML);
+  assert.strictEqual(rubyCount(ps[4]), 0, "`℗ 2024 Some Label` 不许注音：" + ps[4].innerHTML);
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

@@ -332,6 +332,70 @@
     return kana ? { kana: kana, confident: false } : null;
   }
 
+  /*
+   * 法语借词表（用户给的测试用例：https://www.sljfaq.org/afaq/french.html，
+   * 那份表是从 EDICT 提取的"日语里来自法语的词"，即**日语通行写法**）。
+   *
+   * 它和规则层是两回事：规则层是"照拼写猜"，这张表是"日语里就是这么写的"。
+   * 所以法语行上**先查这张表**（连英语词典也要让路 —— rose 在英语行是 ローズ、
+   * 在法语行是 ロゼ，lame 在英语行是 レイム、在法语行是 ラメ）。
+   * 表里查不到才用规则近似，再让大模型兜底。
+   *
+   * 几条**故意的例外**（EDICT 里那几个是"日语借过去改了意思"的：
+   * jupon → ズボン「裤子」、piment → ピーマン「青椒」、sabot → サボ「逃课」、
+   * aventure → アバンチュール「婚外情」），它们在歌词里按法语原义读更合理，
+   * 所以没收进来。
+   */
+  var FR_LOAN_RAW =
+    "aventure:アバンチュール avantguerre:アバンゲール avec:アベック habitation:アビタシオン adieu:アデュー acme:アクメ " +
+    "accessoiriste:アクセソワリスト amant:アマン ami:アミ amour:アムール ennui:アンニュイ encore:アンコール " +
+    "enquete:アンケート apache:アパッシュ atelier:アトリエ vacances:バカンス baccalaureat:バカロレア bisque:ビスク " +
+    "vis:ビス bonjour:ボンジュール bonsoir:ボンソワール brasserie:ブラスリー brioche:ブリオッシ bourgeoisie:ブルジョアジー " +
+    "bourgeois:ブルジョア bruxelles:ブリュッセル boutique:ブティック baiser:ベーゼ debutante:デビュタント debut:デビュー " +
+    "deformer:デフォルメ decalcomanie:デカルコマニー decoupage:デコパージュ decolletee:デコルテ declasse:デクラッセ " +
+    "dessiner:デシネ dessin:デッサン ecriture:エクリチュール epee:エペ echalote:エシャロット escargot:エスカルゴ " +
+    "escalope:エスカロープ esquisse:エスキス espoir:エスポワール esprit:エスプリ esthetique:エステティック " +
+    "etranger:エトランゼ etoile:エトワール fraise:フライス francais:フランセ frappe:フラッペ fricassee:フリカッセ " +
+    "fromage:フロマージュ garcon:ギャルソン gateau:ガトー gratin:グラタン guignol:ギニョール carillon:カリヨン " +
+    "cathedrale:カテドラル coquetterie:コケットリー cocu:コキュ coquille:コキール concours:コンクール " +
+    "conservatoire:コンセルバトワール consomme:コンソメ conte:コント couturier:クチュリエ createur:クレアトゥール " +
+    "croquis:クロッキー cabinet:キャビネ calotte:キャロット culotte:キュロット coupe:クーペ matiere:マチエール " +
+    "marinade:マリネ marron:マロン merci:メルシー mecenat:メセナ maison:メゾン miserable:ミゼラブル " +
+    "monographie:モノグラフィー meuniere:ムニエル mouton:ムトン moule:ムール napolitain:ナポリタン narcisse:ナルシス " +
+    "noel:ノエル nombre:ノンブル non:ノン objet:オブジェ onomatopee:オノマトペ pate:パテ pensee:ペンセ peste:ペスト " +
+    "pierrot:ピエロ pincette:ピンセット pilotis:ピロティ poesie:ポエジー pochette:ポシェット pomade:ポマード " +
+    "potage:ポタージュ petit:プチ printemps:プランタン poudre:プードル lame:ラメ rentier:ランチエ rendezvous:ランデブー " +
+    "langue:ラング resume:レジメ restaurant:レストラン lycee:リセ luge:リュージュ rose:ロゼ roux:ルー savarin:サバラン " +
+    "sable:サブレ ceinture:サンチュール salopette:サロペット saison:セゾン chaconne:シャコンヌ chapeau:シャポー " +
+    "charmant:シャルマン charme:シャルム chateau:シャトー savate:ソバット sommelier:ソムリエ tarte:タルト " +
+    "travail:トラバーユ truffe:トリュフ oui:ウイ noel:ノエル ballet:バレエ chanson:シャンソン musique:ミュジック";
+
+  var FR_LOAN = (function () {
+    var out = {};
+    var parts = FR_LOAN_RAW.split(/\s+/);
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      if (!p) continue;
+      var at = p.indexOf(":");
+      if (at <= 0) continue;
+      out[p.slice(0, at)] = p.slice(at + 1);
+    }
+    return out;
+  })();
+
+  /**
+   * 法语借词表查询：命中返回**日语通行写法**，没有返回 null。
+   * 表里的键已经把撇号/连字符/重音折掉了（rendez-vous → rendezvous）。
+   */
+  function frenchWord(raw) {
+    if (typeof raw !== "string") return null;
+    var w = raw
+      .toLowerCase()
+      .replace(/['\u2019\u2011-]/g, "");
+    if (!w) return null;
+    return FR_LOAN[w] || null;
+  }
+
   /** 这一行是不是法语（给 main.js 决定用哪套拼读规则） */
   var FR_WORDS = {};
   (function () {
@@ -2630,8 +2694,10 @@
     ENGLISH_EXCEPTIONS: ENGLISH_EXCEPTIONS,
     LETTER_KANA: LETTER_KANA,
     RE_KATAKANA: RE_KATAKANA,
-    // 法语：拼读近似 + "这行是不是法语"（main.js 用它决定用哪套规则）
+    // 法语：拼读近似 + "这行是不是法语"（main.js 用它决定用哪套规则）+ 借词表
     frenchToKatakana: frenchToKatakana,
     looksFrench: looksFrench,
+    frenchWord: frenchWord,
+    FR_LOAN: FR_LOAN,
   };
 });

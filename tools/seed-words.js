@@ -1114,5 +1114,12 @@ module.exports = [
   { en: "ensemble", kana: "アンサンブル" },
   { en: "regard", kana: "ルガール" },
   { en: "voix", kana: "ヴォワ" },
-  { en: "nom", kana: "ノン" },
+  { en: "quel", kana: "ケル" },
+  { en: "quelle", kana: "ケル" },
+  { en: "quelque", kana: "ケルク" },
+  { en: "merci", kana: "メルシー" },
+  { en: "bonjour", kana: "ボンジュール" },
+  { en: "chateau", kana: "シャトー" },
+  { en: "rose", kana: "ローズ" },
+  { en: "note", kana: "ノート" },
 ];

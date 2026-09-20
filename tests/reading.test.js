@@ -974,6 +974,64 @@ test("法语：拼读近似 + 整行判定（用户给的那首歌词）", () =>
   assert.strictEqual(LK.frenchToKatakana(""), null);
 });
 
+test("法语借词表（用户给的 sljfaq 测试用例）", () => {
+  // 用户给了 https://www.sljfaq.org/afaq/french.html —— 那份表是从 EDICT 提取的
+  // "日语里来自法语的词"，也就是**日语通行写法**。它和规则层是两回事：
+  // 规则层照拼写猜，这张表是"日语里就是这么写的"，所以法语行上要先查它
+  //（连英语词典也要让路：rose 在英语行是 ローズ、在法语行是 ロゼ）。
+  const pairs = [
+    ["adieu", "アデュー"],
+    ["amour", "アムール"],
+    ["ami", "アミ"],
+    ["atelier", "アトリエ"],
+    ["bonjour", "ボンジュール"],
+    ["bonsoir", "ボンソワール"],
+    ["boutique", "ブティック"],
+    ["chateau", "シャトー"],
+    ["chanson", "シャンソン"],
+    ["chapeau", "シャポー"],
+    ["concours", "コンクール"],
+    ["croquis", "クロッキー"],
+    ["encore", "アンコール"],
+    ["escargot", "エスカルゴ"],
+    ["etoile", "エトワール"],
+    ["fromage", "フロマージュ"],
+    ["garcon", "ギャルソン"],
+    ["gateau", "ガトー"],
+    ["maison", "メゾン"],
+    ["marron", "マロン"],
+    ["merci", "メルシー"],
+    ["noel", "ノエル"],
+    ["non", "ノン"],
+    ["oui", "ウイ"],
+    ["pierrot", "ピエロ"],
+    ["printemps", "プランタン"],
+    ["rendezvous", "ランデブー"],
+    ["restaurant", "レストラン"],
+    ["rose", "ロゼ"],
+    ["saison", "セゾン"],
+    ["salopette", "サロペット"],
+    ["sommelier", "ソムリエ"],
+    ["tarte", "タルト"],
+    ["truffe", "トリュフ"],
+    ["vacances", "バカンス"],
+  ];
+  for (const [w, kana] of pairs) {
+    assert.strictEqual(LK.frenchWord(w), kana, w);
+  }
+  // 带连字符/撇号的写法要能折到同一个键上
+  assert.strictEqual(LK.frenchWord("rendez-vous"), "ランデブー");
+  assert.strictEqual(LK.frenchWord("Rendez-Vous"), "ランデブー");
+  // 表外的词返回 null（交给规则层/大模型）
+  assert.strictEqual(LK.frenchWord("ordinateur"), null);
+  assert.strictEqual(LK.frenchWord(""), null);
+  // 表里的键值是纯片假名（构建期/人工都这么写）
+  for (const k in LK.FR_LOAN) {
+    if (!Object.prototype.hasOwnProperty.call(LK.FR_LOAN, k)) continue;
+    assert.match(LK.FR_LOAN[k], /^[\u30A0-\u30FF\u30FC]+$/, k + " -> " + LK.FR_LOAN[k]);
+  }
+});
+
 // ============================================================ 缩写与元音串
 
 test("全大写缩写：无元音的照旧，有元音但既不是词、也切不成罗马音的也逐字母", () => {
