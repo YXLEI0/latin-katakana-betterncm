@@ -18,11 +18,15 @@ module.exports = [
   // 它们不在词频表的候选里（那份表只取长度 >= 2 的词），所以人工放进来。
   { en: "a", kana: "ア" },
   /*
-   * `Ave`（拉丁语的"万福"）：アヴェ，不是 avenue 的缩写。
-   * 用户报的 `Ave Mujica` 被注成 アベニュー ムジカ —— 那是大模型把 Ave 当成
-   * 地址里的 "Ave." 展开了。Ave Maria = アヴェ・マリア 是通行写法，定死在这里。
+   * `Ave`（拉丁语的"万福"）：**アベ**。
+   *
+   * 这条改过一次：一开始定的是 アヴェ（Ave Maria = アヴェ・マリア 是通行写法），
+   * 但用户指出乐队 `Ave Mujica` 的官方读法就是 **アベ ムジカ** ——
+   * 它是歌名/歌手栏里会反复出现的那一个，按用户的口径定死。
+   * （阿ヴェ・マリア 写成 アベ・マリア 也通行，所以这一步不亏。）
    */
-  { en: "ave", kana: "アヴェ" },
+  { en: "ave", kana: "アベ" },
+  { en: "mujica", kana: "ムジカ" },
   /*
    * `Georgette`：ジョージェット（人名/织物）。
    * 用户报的：不在词典时走英文拼写规则，geo / rge 这种拼法规则只能瞎猜，
@@ -948,4 +952,20 @@ module.exports = [
   { en: "advise", kana: "アドバイズ" },
   { en: "precise", kana: "プリサイス" },
   { en: "surprising", kana: "サプライジング" },
+  /*
+   * 用户截图：`KiLLKiSS judy... / jude... / juda...`（Ave Mujica 的歌）。
+   * 三个里 `juda` ジュダ 是对的，`jude` 被罗马音层切成 ju-de 读成 ジュデ ✗
+   * （规则层已经补了词尾 -ude 那条通例，见 reading.js 的 EN_UDE），
+   * `judy` ジュダイー ✗ 与 `KiLLKiSS` キララキス ✗ 规则层猜不出来，人工钉死。
+   * 顺带把 -ude 那一族的常用词也钉住（规则层现在读得对，钉住只是防回归）。
+   */
+  { en: "judy", kana: "ジュディ" },
+  { en: "jude", kana: "ジュード" },
+  { en: "juda", kana: "ジュダ" },
+  { en: "killkiss", kana: "キルキス" },
+  { en: "rude", kana: "ルード" },
+  { en: "gratitude", kana: "グラティテュード" },
+  { en: "solitude", kana: "ソリテュード" },
+  { en: "magnitude", kana: "マグニテュード" },
+  { en: "interlude", kana: "インタールード" },
 ];

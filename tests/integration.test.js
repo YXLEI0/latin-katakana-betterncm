@@ -772,9 +772,13 @@ test("用户报的一行：Ave Mujica 不能被展开成 アベニュー", async
   await sleep(600);
 
   const p = env.document.querySelector("ul.lyric li p");
-  // Ave 是拉丁语的"万福"（Ave Maria = アヴェ・マリア），不是 avenue 的缩写
+  /*
+   * 关键是**不能被展开成 アベニュー**（那是把 Ave 当成地址缩写）。
+   * 读音 2025 版按用户口径改成 アベ：乐队 Ave Mujica 的官方读法就是 アベ ムジカ
+   * （Ave Maria 写成 アベ・マリア 也通行，所以这一步不亏）。
+   */
   assert.deepStrictEqual(PAIRS(p), [
-    ["Ave", "アヴェ"],
+    ["Ave", "アベ"],
     ["Mujica", "ムジカ"],
   ]);
   assert.strictEqual(baseText(p), "Ave Mujica の 世界へ", "原文一字不改");
@@ -1882,6 +1886,39 @@ test("缩写 / 喊叫 / 署名行：SOS・QTE・AAAAA 读对，署名行的碎�
   assert.ok(words.indexOf("at") >= 0, "AT 要问模型：" + words.join(","));
   assert.ok(words.indexOf("sos") < 0, "SOS 有确定答案（字母名），不该问：" + words.join(","));
   assert.ok(words.indexOf("gon") < 0, "署名行的名字不该问：" + words.join(","));
+});
+
+test("`KiLLKiSS judy / jude / juda` 与乐队名 `Ave Mujica`（アベ ムジカ）", async () => {
+  // 用户截图：三行 KiLLKiSS 后面跟 judy / jude / juda。原来 judy 被规则读成
+  // ジュダイー ✗、jude 被罗马音层读成 ジュデ ✗、KiLLKiSS 被规则读成 キララキス ✗。
+  // 另外用户指出乐队 `Ave Mujica` 的官方读法是 **アベ ムジカ**
+  //（词典里原本定的是拉丁语的 アヴェ）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>KiLLKiSS judy... KiLLKiSS jude... KiLLKiSS juda...</p></li>
+</ul></div>
+<div class="m-playbar"><div class="words"><span class="by"><a href="#">Ave Mujica</a></span></div></div>
+</div></body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(300);
+  const p = env.document.querySelector("ul.lyric li p");
+  const got = new Map(
+    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+  assert.strictEqual(got.get("KiLLKiSS"), "キルキス", JSON.stringify([...got]));
+  assert.strictEqual(got.get("judy"), "ジュディ");
+  assert.strictEqual(got.get("jude"), "ジュード");
+  assert.strictEqual(got.get("juda"), "ジュダ");
+  // 歌手栏的乐队名（Ave / Mujica 是两个词，分别注音）
+  assert.strictEqual(env.api.read("ave").kana, "アベ");
+  assert.strictEqual(env.api.read("mujica").kana, "ムジカ");
+  // 都是离线词条，不该去问模型
+  for (const w of ["judy", "jude", "juda", "killkiss", "ave", "mujica", "rude", "gratitude"]) {
+    const r = env.api.read(w);
+    assert.strictEqual(r.confident, true, w);
+    assert.strictEqual(r.source, "dict", w + " 要来自离线词典：" + r.source);
+  }
 });
 
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {

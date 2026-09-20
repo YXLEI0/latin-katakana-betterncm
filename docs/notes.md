@@ -204,6 +204,11 @@ memorize = メモ + ラ + イズ），软音 g/c 走 ジャ/サ。变形一起�
 （idolize アイドライズ、mesmerize メズマライズ、socialize ソーシャライズ…）
 和 `-ise` 拼法（两可：promise プロミス vs surprise サプライズ）还是进词表。
 
+**词尾 `-ude`（第四批通例）**：那个 e 不发音、u 是长音 —— `jude` ジュード、
+`rude` ルード、`gratitude` グラティテュード、`interlude` インタールード。
+罗马音层同样拒绝这个形状（否则 `jude` 会被切成 ju-de 读成 ジュデ）。
+`du` / `tu` 按日语惯例读 デュ / テュ（`dude` デュード、`attitude` アティテュード）。
+
 ### 模型答案自动沉淀成离线词条（「学会的词」）
 
 用户要的：「让运行期模型给的答案自动沉淀进词典」。做在 `src/core/learn.js` 里。

@@ -67,8 +67,22 @@
    */
   var EN_IZE = /^([a-z]*?)([bcdfghjklmnpqrstvwxyz])(iz|yz)(e[sd]?|ing)$/;
 
-  /** 同一个形状，但用来在罗马音层**拒绝**它（见 LAYER_FN.romaji 的第一条） */
-  var RE_ENGLISH_IZE = /^[a-z]+[bcdfghjklmnpqrstvwxyz](iz|yz)(e[sd]?|ing)$/;
+  /** 同一个形状，但用来在罗马音层**拒绝**它（词干可以是空的：size / prize） */
+  var RE_ENGLISH_IZE = /^[a-z]*[bcdfghjklmnpqrstvwxyz](iz|yz)(e[sd]?|ing)$/;
+
+  /*
+   * 词尾 -ude（jude / rude / nude / dude / gratitude / solitude / interlude…）：
+   * 那个 e 不发音，u 是 /uː/（jude ジュード、rude ルード），辅音并入 u 那一拍。
+   *
+   * 为什么单列：罗马音层会把 `jude` 切成 ju-de 读成 ジュデ（用户截图里的
+   * `KiLLKiSS jude...`），规则层也会把 gratitude 读成 グラティトゥデ。
+   * 英语里 du/tu 的惯例读法是 デュ/テュ（dude デュード、attitude アティテュード），
+   * 所以这两个辅音单独指定；别的走"辅音 + u"的默认行（rude ルード、nude ヌード）。
+   */
+  var EN_UDE = /^([a-z]*)([bcdfghjklmnpqrstvwxyz])ude$/;
+
+  /** 同一个形状，用来在罗马音层拒绝它（词干可以是空的：jude / size） */
+  var RE_ENGLISH_UDE = /^[a-z]*[bcdfghjklmnpqrstvwxyz]ude$/;
 
   // ------------------------------------------------------------ 罗马音表
 
@@ -1039,9 +1053,25 @@
      * 词干是空的（size / prize 这类词根本身就是 "…ize"）就交给下面普通那条路，
      * 免得把 s 当尾巴的辅音读出个"サイズ"来。
      */
+    var ude = EN_UDE.exec(word);
+    if (ude) {
+      var stemUde = ude[1] ? convertEnglish(ude[1]) : { kana: "", confident: true };
+      var consUde = ude[2];
+      var headUde =
+        consUde === "d" ? "\u30C7\u30E5" // デュ（dude デュード）
+          : consUde === "t" ? "\u30C6\u30E5" // テュ（attitude アティテュード）
+            : enConsonantVowel(consUde, "u");
+      if (headUde) {
+        return {
+          kana: stemUde.kana + headUde + "\u30FC\u30C9", // ー + ド
+          confident: stemUde.confident && !hasUnsureSpelling(word),
+        };
+      }
+    }
+
     var ize = EN_IZE.exec(word);
-    if (ize && ize[1]) {
-      var stem = convertEnglish(ize[1]);
+    if (ize) {
+      var stemIze = ize[1] ? convertEnglish(ize[1]) : { kana: "", confident: true };
       var cons = ize[2];
       var head = cons === "g" ? "\u30B8\u30E3" : cons === "c" ? "\u30B5" : enConsonantVowel(cons, "a");
       if (head) {
@@ -1057,8 +1087,8 @@
               : ending === "ing" ? "\u30A4\u30B8\u30F3\u30B0" // イジング
                 : "\u30A4\u30BA"; // イズ
         return {
-          kana: stem.kana + head + body,
-          confident: stem.confident && !hasUnsureSpelling(word),
+          kana: stemIze.kana + head + body,
+          confident: stemIze.confident && !hasUnsureSpelling(word),
         };
       }
     }
@@ -2026,6 +2056,8 @@
          * メモリゼ（用户截图里的 `memorize` 就是这么来的）。
          */
         if (RE_ENGLISH_IZE.test(c.shown)) return null;
+        // 词尾 -ude 同理（jude 该是 ジュード，不是 ju-de ジュデ）
+        if (RE_ENGLISH_UDE.test(c.shown)) return null;
         var res = null;
         // 用 shown（已小写、去了首尾标点）而不是 stripNonLetters，
         // 因为 "saka-" 词尾的连字符是长音符，不能被吃掉。

@@ -950,6 +950,29 @@ test("同一个元音重复成串：按那个元音叠出来（AAAAA -> アア�
   assert.strictEqual(r.read("XX").kana, "エックスエックス");
 });
 
+test("词尾 -ude：读「辅音 + ウー + ド」，不许被罗马音层切成 ジュデ", () => {
+  // 用户截图（Ave Mujica 的歌）：`KiLLKiSS jude...` 里的 jude 被罗马音层
+  // 切成 ju-de 读成 ジュデ。英语 -ude 的 e 不发音、u 是长音
+  // （jude ジュード、rude ルード、gratitude グラティテュード）。
+  const r = LK.createReader({ dict: {}, enWords: null });
+  assert.strictEqual(r.read("jude").source, "rule", "jude 不该走罗马音层");
+  for (const [w, kana] of [
+    ["jude", "ジュード"],
+    ["rude", "ルード"],
+    ["gratitude", "グラティテュード"],
+    ["solitude", "ソリテュード"],
+    ["magnitude", "マグニテュード"],
+    ["interlude", "インタールード"],
+  ]) {
+    assert.strictEqual(LK.englishToKatakana(w).kana, kana, w);
+  }
+  // du / tu 按日语惯例读 デュ / テュ（dude デュード、attitude アティテュード）
+  assert.strictEqual(LK.englishToKatakana("dude").kana, "デュード");
+  // 词干为空的 -ize 也要能读（size / prize，词典里本来就有，规则层不能崩）
+  assert.strictEqual(LK.englishToKatakana("size").kana, "サイズ");
+  assert.strictEqual(LK.englishToKatakana("prize").kana, "プライズ");
+});
+
 // ============================================================ 不发音字母
 
 test("词首不发音的字母：kn- / wr- / gn- / ps- / pn- 不许读出来", () => {
