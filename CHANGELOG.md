@@ -4,6 +4,48 @@
 
 首个版本：给日语歌歌词里的**拉丁字母**标注**片假名读音**。
 
+### 音乐术语整批进词典（`Lento, presto, andante larghetto`）（本次）
+
+用户发的截图：`(Lento, presto, andante larghetto)` 标的是 レント / プレスト /
+アンダンテ / ラルゲット。
+
+**四个读音都对**，但查下来问题在别处：这四个词**词典里都没有**，截图里之所以对，
+是大模型临时给的 —— **离线时 `presto` 会被规则读成 プレサト、`larghetto` 读成
+ラーーエタト**，而且每听一遍都要重花一次请求。再一查，整个音乐术语区在词典里
+几乎是空的（只有 `tempo` / `opera` / `symphony` 这种通用词），而这一区的读法
+**唯一**（日语音乐术语有固定写法）—— 正是该人工钉死的类型。
+
+这一版把 **75 个**音乐术语钉进人工词表（词典 6240 → **6315 条**）：
+
+- 速度：`lento` レント、`presto` プレスト、`prestissimo` プレスティッシモ、
+  `andante` アンダンテ、`andantino` アンダンティーノ、`larghetto` ラルゲット、
+  `adagio` アダージョ、`allegro` アレグロ、`allegretto` アレグレット、
+  `moderato` モデラート、`vivace` ヴィヴァーチェ、`largo` ラルゴ、
+  `ritardando` リタルダンド、`accelerando` アッチェレランド；
+- 力度：`forte` フォルテ、`fortissimo` フォルティッシモ、`pianissimo` ピアニッシモ、
+  `mezzo` メッゾ、`mezzoforte` / `mezzopiano`、`crescendo` クレッシェンド、
+  `decrescendo` デクレッシェンド、`diminuendo` ディミヌエンド、`sforzando` スフォルツァンド；
+- 奏法：`legato` レガート、`staccato` スタッカート、`dolce` ドルチェ、
+  `cantabile` カンタービレ、`pizzicato` ピッツィカート、`glissando` グリッサンド、
+  `vibrato` ビブラート、`portamento` ポルタメント、`tremolo` トレモロ、`marcato` マルカート、
+  `tenuto` テヌート、`arco` アルコ、`tutti` トゥッティ、`fermata` フェルマータ、
+  `maestoso` マエストーソ、`giocoso` ジョコーソ、`tranquillo` トランクィッロ、
+  `animato` アニマート、`rubato` ルバート、`ostinato` オスティナート、`cadenza` カデンツァ；
+- 曲式/体裁：`minuet` メヌエット、`scherzo` スケルツォ、`rondo` ロンド、
+  `toccata` トッカータ、`fugue` フーガ、`etude` エチュード、`nocturne` ノクターン、
+  `waltz` ワルツ、`tango` タンゴ、`rhapsody` ラプソディー、`ballade` バラード、
+  `sonata` ソナタ、`concerto` コンチェルト、`quartet` カルテット、`quintet` クインテット、
+  `trio` トリオ、`ensemble` アンサンブル、`overture` オーバーチュア、`prelude` プレリュード、
+  `aria` アリア、`soprano` ソプラノ、`tenor` テノール、`octave` オクターヴ、`chord` コード、
+  `coda` コーダ、`segno` セーニョ、`trill` トリル、`cello` チェロ、`flute` フルート、
+  `trumpet` トランペット。
+
+**唯一的例外是 `grave`**：意大利语术语读 グラーヴェ、英语"墓"读 グレイヴ，两可 ——
+按老规矩**不收**，留给大模型按整句语境判（测试里也锁了这条）。
+
+测试：`integration.test.js` +1（截图那一行 + 22 个"规则原本读歪"的术语逐个核对读音、
+来源必须是离线词典且确定；顺带断言 `grave` 没被钉死），全套 **277 → 278 全绿**。
+
 ### 词典纠错：`know` / `notes` 一族的读音（本次）
 
 用户连着问了两句：「know 的读音是否正确」「notes 的读音」。

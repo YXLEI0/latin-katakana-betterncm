@@ -1723,6 +1723,62 @@ test("notes 一族：复数/变形形的读音（notes→ノーツ，不是单�
   assert.strictEqual(env.api.read("note").kana, "ノート");
 });
 
+test("音乐术语：`(Lento, presto, andante larghetto)` 离线也要读对", async () => {
+  // 用户发的截图。四个读音都对，但当时**离线是两个错的**（presto→プレサト、
+  // larghetto→ラーーエタト），对大模型临时给的 —— 每听一遍都要花一次请求。
+  // 整个音乐术语区在词典里都是空的（只有 tempo/opera/symphony 这种通用词），
+  // 而这一区读法唯一，所以整批人工钉进词表（75 个）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>(Lento, presto, andante larghetto)</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(250);
+  const p = env.document.querySelector("ul.lyric li p");
+  const got = new Map(
+    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+  assert.strictEqual(got.get("Lento"), "レント", JSON.stringify([...got]));
+  assert.strictEqual(got.get("presto"), "プレスト", JSON.stringify([...got]));
+  assert.strictEqual(got.get("andante"), "アンダンテ");
+  assert.strictEqual(got.get("larghetto"), "ラルゲット");
+
+  // 规则层原本读歪的那批也一起锁住（离线、零请求）
+  for (const [w, kana] of [
+    ["adagio", "アダージョ"],
+    ["allegro", "アレグロ"],
+    ["vivace", "ヴィヴァーチェ"],
+    ["crescendo", "クレッシェンド"],
+    ["decrescendo", "デクレッシェンド"],
+    ["forte", "フォルテ"],
+    ["pianissimo", "ピアニッシモ"],
+    ["dolce", "ドルチェ"],
+    ["cantabile", "カンタービレ"],
+    ["fermata", "フェルマータ"],
+    ["scherzo", "スケルツォ"],
+    ["fugue", "フーガ"],
+    ["etude", "エチュード"],
+    ["pizzicato", "ピッツィカート"],
+    ["glissando", "グリッサンド"],
+    ["waltz", "ワルツ"],
+    ["rhapsody", "ラプソディー"],
+    ["concerto", "コンチェルト"],
+    ["quartet", "カルテット"],
+    ["octave", "オクターヴ"],
+    ["chord", "コード"],
+    ["trill", "トリル"],
+  ]) {
+    const r = env.api.read(w);
+    assert.strictEqual(r.kana, kana, w + " 该是 " + kana);
+    assert.strictEqual(r.source, "dict", w + " 要来自离线词典（不花请求）");
+    assert.strictEqual(r.confident, true, w + " 要是确定值");
+  }
+  // 两可的 `grave`（意大利语 グラーヴェ / 英语"墓" グレイヴ）故意不收，交给模型判
+  assert.strictEqual(env.api.read("grave").source !== "dict", true, "grave 是有歧义的，不该钉死");
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
