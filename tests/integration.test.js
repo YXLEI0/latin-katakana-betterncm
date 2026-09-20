@@ -1698,6 +1698,59 @@ test("设置面板：排障区块能直接查「这一行为什么没注音 / �
   assert.ok(t.indexOf("本地层：") >= 0 && t.indexOf("页面实际用的：") >= 0, t);
 });
 
+test("设置面板：默认只有三块（开关 / 大模型 / 预览），其余收进「高级设置」", async () => {
+  // 面板这些轮下来加了太多东西（外观/范围/层序/用量/排障/操作），用户要求简化。
+  // 现在默认只留最常用的，其余折进一个 details。
+  const env = bootPlugin(NCM_HTML, { dev: true });
+  await env.runLoad();
+  const root = env.listeners.config[0]();
+  const adv = root.querySelector("details.lk-adv");
+  assert.ok(adv, "要有「高级设置」折叠块");
+  assert.strictEqual(adv.open, false, "默认应该收起");
+
+  const outside = [
+    '[data-k="enabled"]',
+    '[data-k="online"]',
+    '[data-k="annotateAll"]',
+    '[data-k="llmEnabled"]',
+    '[data-k="llmKey"]',
+    '[data-a="llmTest"]',
+    ".lk-llm-state",
+    ".lk-preview",
+  ];
+  for (const sel of outside) {
+    const el = root.querySelector(sel);
+    assert.ok(el, "要有 " + sel);
+    assert.strictEqual(adv.contains(el), false, sel + " 应该默认就能看到（别收进高级）");
+  }
+
+  const inside = [
+    '[data-k="llmEndpoint"]',
+    '[data-k="llmModel"]',
+    '[data-k="rtSize"]',
+    '[data-k="rtOpacity"]',
+    '[data-k="scope"]',
+    ".lk-layers",
+    ".lk-usage",
+    ".lk-diag-input",
+    '[data-a="diagWhy"]',
+    '[data-a="rescan"]',
+    ".lk-status",
+  ];
+  for (const sel of inside) {
+    const el = root.querySelector(sel);
+    assert.ok(el, "高级里也要有 " + sel);
+    assert.strictEqual(adv.contains(el), true, sel + " 应该收在高级设置里");
+  }
+  // 折叠块里仍然按标题分好组（别把东西堆成一坨）
+  const titles = [...adv.querySelectorAll("h3")].map((h) => h.textContent);
+  assert.deepStrictEqual(
+    titles,
+    ["接口", "外观", "范围", "读音来源顺序", "API 用量", "排障", "操作"],
+    "高级里的分组：" + titles.join(" / ")
+  );
+});
+
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
   // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
   //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；

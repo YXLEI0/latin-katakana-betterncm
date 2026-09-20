@@ -779,50 +779,63 @@
     root.id = "latin-katakana-config";
     root.innerHTML =
       "<style>" +
-      "#latin-katakana-config { font-size: 14px; line-height: 2; }" +
-      "#latin-katakana-config h3 { margin: 14px 0 6px; font-size: 15px; }" +
-      "#latin-katakana-config .lk-row { margin: 4px 0; }" +
-      "#latin-katakana-config .lk-hint { opacity: .65; font-size: 12px; line-height: 1.6; }" +
-      "#latin-katakana-config input[type=text] { width: 320px; padding: 2px 6px; }" +
-      "#latin-katakana-config .lk-preview { padding: 10px 12px; border: 1px solid rgba(128,128,128,.35); border-radius: 6px; font-size: 18px; }" +
-      "#latin-katakana-config .lk-preview-trans { margin-top: 4px; font-size: 14px; opacity: .6; }" +
+      "#latin-katakana-config { font-size: 14px; line-height: 1.9; }" +
+      "#latin-katakana-config h3 { margin: 12px 0 4px; font-size: 15px; }" +
+      "#latin-katakana-config .lk-row { margin: 3px 0; }" +
+      "#latin-katakana-config .lk-hint { opacity: .65; font-size: 12px; line-height: 1.5; }" +
+      "#latin-katakana-config input[type=text], #latin-katakana-config input[type=password] { width: 300px; padding: 2px 6px; }" +
+      "#latin-katakana-config .lk-preview { padding: 8px 10px; border: 1px solid rgba(128,128,128,.35); border-radius: 6px; font-size: 18px; }" +
+      "#latin-katakana-config .lk-preview-trans { margin-top: 2px; font-size: 14px; opacity: .6; }" +
       "#latin-katakana-config .lk-status { white-space: pre-wrap; font-family: monospace; font-size: 12px; opacity: .8; }" +
-      "#latin-katakana-config .lk-layer { display: flex; align-items: center; gap: 6px; line-height: 1.9; }" +
+      "#latin-katakana-config .lk-layer { display: flex; align-items: center; gap: 6px; line-height: 1.8; }" +
       "#latin-katakana-config .lk-layer-name { min-width: 110px; }" +
       "#latin-katakana-config .lk-layer-note { opacity: .6; font-size: 12px; flex: 1; }" +
       "#latin-katakana-config .lk-layer-btn { min-width: 26px; }" +
       "#latin-katakana-config .lk-layer-btn[disabled] { opacity: .35; }" +
       "#latin-katakana-config .lk-layer-warn { color: #e8a33d; margin-top: 4px; }" +
       "#latin-katakana-config .lk-warn { color: #e8a33d; }" +
-      "#latin-katakana-config .lk-llm-state { margin: 4px 0; }" +
+      "#latin-katakana-config .lk-llm-state { margin: 2px 0; }" +
+      "#latin-katakana-config .lk-links { margin-bottom: 4px; }" +
       "#latin-katakana-config .lk-links a { margin-right: 14px; }" +
+      // 高级设置整块折叠：面板默认只有"开关 / 大模型 / 预览"三块，其余收起来
+      "#latin-katakana-config details.lk-adv { margin-top: 12px; border-top: 1px solid rgba(128,128,128,.25); padding-top: 6px; }" +
+      "#latin-katakana-config details.lk-adv > summary { cursor: pointer; opacity: .8; }" +
+      "#latin-katakana-config details.lk-adv > summary:hover { opacity: 1; }" +
       "</style>" +
       '<div class="lk-links">' +
       '<a href="#" data-open="' + REPO + '">源码仓库</a>' +
       '<a href="#" data-open="' + REPO + '/issues">反馈问题</a>' +
       "</div>" +
-      "<h3>预览</h3>" +
-      '<div class="lk-preview"></div>' +
       "<h3>开关</h3>" +
       '<div class="lk-row"><label><input type="checkbox" data-k="enabled"> 启用拉丁字母注音</label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="online"> 规则没把握时联网校正读音</label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="annotateAll"> 除歌词外，也标注播放栏的歌曲名 / 歌手</label></div>' +
-      '<div class="lk-hint">只处理歌词原文行和播放栏标题 —— 不会扫描整个页面。' +
-      "RNP 歌词页的<b>罗马音层</b>和<b>中文翻译层</b>会跳过：那两层本身已经是读音或译文，标上去是噪音。</div>" +
+      '<div class="lk-row"><label><input type="checkbox" data-k="online"> 规则没把握时联网校正读音（免费接口）</label></div>' +
+      '<div class="lk-row"><label><input type="checkbox" data-k="annotateAll"> 也标注播放栏的歌名 / 歌手</label></div>' +
+      "<h3>大模型校正</h3>" +
+      '<div class="lk-row"><label><input type="checkbox" data-k="llmEnabled"> 用大模型校正读音</label></div>' +
+      '<div class="lk-row"><label>API Key <input type="password" data-k="llmKey" placeholder="sk-..."></label> ' +
+      '<button data-a="llmTest">测试连接</button> <span data-v="llmTest"></span></div>' +
+      '<div class="lk-llm-state"></div>' +
+      '<div class="lk-hint">Key 只存在本机 localStorage，不会进仓库。留空则这一层不工作，' +
+      "自动退回免费接口。补上 key 之后，词典里没有的词和<b>两可的短音节</b>（Do/Re/PI/ME…）都由它按整句语境判。</div>" +
+      "<h3>预览</h3>" +
+      '<div class="lk-preview"></div>' +
+      '<details class="lk-adv"><summary>高级设置（接口地址 / 外观 / 范围 / 读音来源顺序 / 用量 / 排障）</summary>' +
+      "<h3>接口</h3>" +
+      '<div class="lk-row"><label>接口地址 <input type="text" data-k="llmEndpoint"></label></div>' +
+      '<div class="lk-row"><label>模型 <input type="text" data-k="llmModel"></label></div>' +
+      '<div class="lk-hint">粘服务商文档里的 <code>base_url</code> 也行，会自动补成 <code>/chat/completions</code>。</div>' +
       "<h3>外观</h3>" +
       '<div class="lk-row"><label>注音字号 <input type="range" data-k="rtSize" min="30" max="120" step="1"> <span data-v="rtSize"></span></label></div>' +
       '<div class="lk-row"><label>注音不透明度 <input type="range" data-k="rtOpacity" min="10" max="100" step="1"> <span data-v="rtOpacity"></span></label></div>' +
       '<div class="lk-row"><label><input type="checkbox" data-k="focusDebug"> 给已注音区域描边（排障）</label></div>' +
       '<div class="lk-row"><label><input type="checkbox" data-k="colorBySource"> 按读音来源给注音上色（排障）</label></div>' +
       '<div class="lk-hint">' +
-      '<span style="color:#46d17e">■ 离线词典</span>　' +
-      '<span style="color:#3fb6d8">■ 记号 / 字母名</span>　' +
+      '<span style="color:#46d17e">■ 词典</span>　' +
+      '<span style="color:#3fb6d8">■ 记号/字母名</span>　' +
       '<span style="color:#6f8ff0">■ 罗马音</span>　' +
-      '<span style="color:#e8a33d">■ 英文规则（拼写猜的）</span>　' +
+      '<span style="color:#e8a33d">■ 英文规则</span>　' +
       '<span style="color:#c07ce8">■ 大模型</span>　' +
-      '<span style="color:#e0629a">■ 免费接口</span><br>' +
-      "淡显（暂定）的是在线层还在问、先拿低优先层的读音顶着的词；等结果回来会换成对应颜色。" +
-      "</div>" +
+      '<span style="color:#e0629a">■ 免费接口</span>　淡显＝暂定值</div>' +
       "<h3>范围</h3>" +
       '<div class="lk-row"><label>标注范围 <select data-k="scope">' +
       '<option value="all">歌词 + 播放栏（默认）</option>' +
@@ -831,43 +844,24 @@
       '<option value="custom">自定义选择器</option>' +
       "</select></label></div>" +
       '<div class="lk-row"><label>自定义选择器 <input type="text" data-k="customSelector" placeholder="例如 ul.lyric > li"></label></div>' +
-      '<div class="lk-hint">选择器留空或匹配不到元素时会自动回退。</div>' +
       "<h3>读音来源顺序</h3>" +
-      '<div class="lk-hint">越靠上越优先。把<b>英文音译规则</b>提到在线层前面 = <b>一个请求都不发</b>（纯离线）；' +
-      "把<b>大模型</b>提到词典前面 = 连词典命中的词也让大模型判一遍（词典偶有错条目，这是逃生门）。<br>" +
-      "记号 / 缩写 / 字母名 / 长音符罗马字（<code>D/N/A</code>、<code>I'll</code>、<code>LDK</code>、" +
-      "<code>Tōkyō</code>）不参与排序 —— 它们定的是「这个词该怎么断」，永远最先判。</div>" +
+      '<div class="lk-hint">越靠上越优先。把<b>英文音译规则</b>提到在线层前面＝一个请求都不发（纯离线）。' +
+      "记号 / 缩写 / 字母名（<code>D/N/A</code>、<code>I'll</code>、<code>LDK</code>）不参与排序，永远最先判。</div>" +
       '<div class="lk-layers"></div>' +
       '<div class="lk-row"><button data-a="layersReset">恢复默认顺序</button> <span data-v="layersReset"></span></div>' +
-      "<h3>大模型校正（推荐）</h3>" +
-      '<div class="lk-row"><label><input type="checkbox" data-k="llmEnabled"> 用大模型校正规则读出来的词</label></div>' +
-      '<div class="lk-row"><label>接口地址 <input type="text" data-k="llmEndpoint"></label></div>' +
-      '<div class="lk-row"><label>模型 <input type="text" data-k="llmModel"></label></div>' +
-      '<div class="lk-row"><label>API Key <input type="password" data-k="llmKey" placeholder="sk-..."></label></div>' +
-      '<div class="lk-row"><button data-a="llmTest">测试连接</button> <span data-v="llmTest"></span></div>' +
-      '<div class="lk-llm-state"></div>' +
-      '<div class="lk-hint">规则层是拼写音译（<code>hello</code> 会读成 ヘッラオ、' +
-      "<code>question</code> 读成 クワエサション），所以词典之外交给大模型更准。" +
-      "Key <b>只存在本机 localStorage</b>，除了你填的这个接口地址之外不会发到别处，也永远不会进仓库。" +
-      "留空则整层不工作，自动退回下面的免费接口。</div>" +
       "<h3>API 用量</h3>" +
       '<div class="lk-usage"></div>' +
-      '<div class="lk-row"><label>输入单价 <input type="number" data-k="usagePriceIn" min="0" step="0.01" style="width:90px"> 元/百万 token</label></div>' +
-      '<div class="lk-row"><label>输出单价 <input type="number" data-k="usagePriceOut" min="0" step="0.01" style="width:90px"> 元/百万 token</label></div>' +
+      '<div class="lk-row"><label>输入单价 <input type="number" data-k="usagePriceIn" min="0" step="0.01" style="width:80px"> 元/百万 token　' +
+      '输出单价 <input type="number" data-k="usagePriceOut" min="0" step="0.01" style="width:80px"> 元/百万 token</label></div>' +
       '<div class="lk-row">' +
       '<button data-a="usageReset" data-scope="session">清零本次</button> ' +
       '<button data-a="usageReset" data-scope="today">清零今天</button> ' +
       '<button data-a="usageReset" data-scope="all">清零累计</button>' +
       "</div>" +
-      '<div class="lk-hint">只统计<b>发出去的请求</b>：命中缓存不算（省下来的量另外显示）。' +
-      "token 数取自接口响应里的 <code>usage</code>；免费接口没有 token，用请求数与字符数衡量。" +
-      "填了单价就会多算一行估算花费（单价按你接口的现价来，默认 0 = 不算钱）。</div>" +
       "<h3>排障</h3>" +
-      '<div class="lk-row"><label>词 / 一段歌词 <input type="text" class="lk-diag-input" placeholder="例如 MWAH 或 the"></label></div>' +
-      '<div class="lk-row">' +
+      '<div class="lk-row"><label>词 / 一段歌词 <input type="text" class="lk-diag-input" placeholder="例如 MWAH 或 the"></label> ' +
       '<button data-a="diagWhy">查这一行为什么没注音</button> ' +
-      '<button data-a="diagWord">查这个词的读音来源</button>' +
-      "</div>" +
+      '<button data-a="diagWord">查这个词的读音来源</button></div>' +
       '<div class="lk-hint lk-diag-out"></div>' +
       "<h3>操作</h3>" +
       '<div class="lk-row">' +
@@ -875,10 +869,8 @@
       '<button data-a="retry">重试没结果的词</button> ' +
       '<button data-a="clearCache">清除校正缓存</button>' +
       "</div>" +
-      '<div class="lk-hint">「重试没结果的词」清掉那些<b>问过但没收下</b>的记录（模型当时给的答案被' +
-      "首音校验或格式检查判掉、或者服务商干脆没给），让它们有机会再问一次 —— 修完判据之后点它，" +
-      "比清整个缓存温和得多。</div>" +
-      '<div class="lk-status"></div>';
+      '<div class="lk-status"></div>' +
+      "</details>";
 
     function fmt(key) {
       return config[key] + "%";
