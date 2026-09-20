@@ -103,6 +103,13 @@
     usagePriceIn: 0,
     usagePriceOut: 0,
     annotateAll: true, // 除歌词外，也标播放栏的歌名/歌手
+    /*
+     * 非日语歌（歌词里一个假名都没有，比如纯英语/法语/中文歌）是否也注音。
+     * 默认 true = 照旧全标；打开「只标日语歌」就整首跳过（含播放栏标题）。
+     * 判据看**整首**歌词（有一行含假名就算日语歌），所以日语歌里的纯英文行
+     * 不会被误伤。
+     */
+    annotateNonJapanese: true,
     scope: "all", // titles | lyrics | all | custom
     customSelector: "",
     rtSize: 55, // 注音字号（相对底字百分比）
@@ -742,11 +749,63 @@
 
   // ------------------------------------------------------------ 扫描调度
 
+  var RE_KANA_ANY = /[\u3041-\u3096\u30A1-\u30FA]/;
+
+  /**
+   * 这首歌是不是日语歌：整首歌词里**有没有一行含假名**。
+   *
+   * 为什么按整首判、而不是按行：日语歌里常有纯英文行（`I love you` 那种），
+   * 按行判会把它们当成"非日语"跳过 —— 那正是要注音的行。
+   * 非日语歌（纯英语/法语/中文）一行假名都没有，所以整首判定很稳。
+   * 结论按歌词文本缓存：同一首歌每轮扫描都要问一次，没必要每次重算。
+   */
+  var japaneseSongCache = { key: "", value: true };
+  function songLooksJapanese() {
+    if (!state.annotator || !state.annotator.findRegions) return true;
+    var regions = [];
+    try {
+      regions = state.annotator.findRegions("lyrics");
+    } catch (e) {
+      return true;
+    }
+    if (!regions || !regions.length) return true; // 歌词还没加载出来：先别下结论
+    var texts = [];
+    var kanaLines = 0;
+    for (var i = 0; i < regions.length; i++) {
+      var t = "";
+      try {
+        t = regions[i].textContent || "";
+      } catch (e2) {
+        t = "";
+      }
+      texts.push(t);
+      if (RE_KANA_ANY.test(t)) kanaLines++;
+    }
+    var key = kanaLines + "|" + texts.join("\n").slice(0, 4000);
+    if (japaneseSongCache.key === key) return japaneseSongCache.value;
+    var value = kanaLines >= 1;
+    japaneseSongCache = { key: key, value: value };
+    return value;
+  }
+
   function pass() {
     if (!config.enabled || !state.annotator) return;
     if (emergencyOff()) {
       warn("检测到紧急开关，停用插件");
       disable();
+      return;
+    }
+    /*
+     * 设置里关掉「非日语歌也注音」时：整首跳过（连播放栏标题一起），
+     * 并把之前已经注上的**撤掉** —— 否则换歌之后还留着上一首的注音。
+     */
+    if (config.annotateNonJapanese === false && !songLooksJapanese()) {
+      try {
+        if (state.annotator.injectedCount && state.annotator.injectedCount() > 0) state.annotator.restoreAll();
+      } catch (e0) {
+        /* 还原失败不影响下面 */
+      }
+      state.lastResult = { scanned: 0, changed: 0, restored: 0, skipped: 0, unstable: 0, nonJapanese: true };
       return;
     }
     var t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -1113,6 +1172,9 @@
       '<option value="custom">自定义选择器</option>' +
       "</select></label></div>" +
       '<div class="lk-row"><label>自定义选择器 <input type="text" data-k="customSelector" placeholder="例如 ul.lyric > li"></label></div>' +
+      '<div class="lk-row"><label><input type="checkbox" data-k="annotateNonJapanese"> 非日语歌（纯英文 / 法语 / 中文歌）也注音</label></div>' +
+      '<div class="lk-hint">关掉它 = 只标日语歌：整首歌词里一个假名都没有的（纯英文歌、法语歌那种）整首跳过，' +
+      "连播放栏标题也不标。判据看**整首**，所以日语歌里的纯英文行照旧注音。</div>" +
       "<h3>读音来源顺序</h3>" +
       '<div class="lk-hint">越靠上越优先。把<b>英文音译规则</b>提到在线层前面＝一个请求都不发（纯离线）。' +
       "记号 / 缩写 / 字母名（<code>D/N/A</code>、<code>I'll</code>、<code>LDK</code>）不参与排序，永远最先判。</div>" +
@@ -1136,6 +1198,7 @@
       '<div class="lk-row">' +
       '<button data-a="rescan">重新扫描</button> ' +
       '<button data-a="retry">重试没结果的词</button> ' +
+      '<button data-a="exportWords">导出词库素材</button> ' +
       '<button data-a="clearCache">清除校正缓存</button>' +
       "</div>" +
       '<div class="lk-status"></div>' +
@@ -1579,7 +1642,7 @@
 
     if (!DEV && status) status.style.display = "none";
 
-    var NEEDS_RESCAN = ["annotateAll", "scope", "customSelector"];
+    var NEEDS_RESCAN = ["annotateAll", "scope", "customSelector", "annotateNonJapanese"];
     var NEEDS_RESTYLE = ["rtSize", "rtOpacity", "focusDebug"];
 
     var inputs = root.querySelectorAll("[data-k]");
@@ -1685,6 +1748,37 @@
             setTimeout(function () {
               b.textContent = "重试没结果的词";
             }, 1500);
+          } else if (what === "exportWords") {
+            /*
+             * 导出「可以沉淀进离线词典」的素材（已学会的词 + 两层缓存命中）。
+             * 面板里没有文件系统可用，所以：打一份到控制台 + 尽量复制到剪贴板，
+             * 用户存成 data/learned.json 之后跑 npm run promote:learned。
+             */
+            var payload = collectWordExport();
+            var json = JSON.stringify(payload, null, 2);
+            var count = payload.learned.length + payload.llm.length + payload.google.length;
+            var copied = false;
+            try {
+              var ta = root.ownerDocument.createElement("textarea");
+              ta.value = json;
+              ta.style.position = "fixed";
+              ta.style.opacity = "0";
+              root.ownerDocument.body.appendChild(ta);
+              ta.select();
+              copied = root.ownerDocument.execCommand && root.ownerDocument.execCommand("copy");
+              root.ownerDocument.body.removeChild(ta);
+            } catch (eCopy) {
+              copied = false;
+            }
+            try {
+              console.log("[latin-katakana] 词库素材（" + count + " 条）：", json);
+            } catch (eLog) {
+              /* 控制台打不出来就算了 */
+            }
+            b.textContent = copied ? "已复制 " + count + " 条" : "已打印到控制台 " + count + " 条";
+            setTimeout(function () {
+              b.textContent = "导出词库素材";
+            }, 2500);
           } else if (what === "clearCache") {
             if (state.corrector) state.corrector.clearCache();
             if (state.llm) state.llm.clearCache();
@@ -1742,6 +1836,26 @@
 
     refreshAll();
     return root;
+  }
+
+  /**
+   * 收集「可以沉淀进离线词典」的素材：已学会的词 + 两层缓存的命中。
+   * 只收集，不筛选 —— 筛选在构建期（tools/promote-learned.js），
+   * 那里能看到完整词典、黑名单，也能调阈值。
+   */
+  function collectWordExport() {
+    var learned = state.learned ? state.learned.list() : [];
+    var llm = state.llm && state.llm.exportWords ? state.llm.exportWords() : [];
+    var google = state.corrector && state.corrector.exportWords ? state.corrector.exportWords() : [];
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      learned: learned.map(function (x) {
+        return { word: x.word, kana: x.kana, at: x.at };
+      }),
+      llm: llm,
+      google: google,
+    };
   }
 
   function notifyConfigUI() {
@@ -2033,6 +2147,24 @@
        *   LK.learn.forget('xxx') 忘掉一个（读音不对时用）
        *   LK.learn.clear()       全清（等于回到"每次都得问模型"）
        */
+      /*
+       * 「把常用词沉淀进离线词典」的素材导出。
+       *
+       * 运行期写不进仓库里的 src/core/dict.js（那是构建产物），所以流程是：
+       *   面板「操作 → 导出词库素材」或控制台 LK.exportWords()
+       *   → 得到一段 JSON（已学会的词 + 大模型缓存命中 + 免费接口缓存命中）
+       *   → 存成 data/learned.json
+       *   → `npm run promote:learned` 筛选后写进 tools/seed-words-learned.js
+       *   → `npm run build:dict` 合并进词典
+       * 筛选（一致性、纯片假名、与现有词典冲突、黑名单）都在构建期做，
+       * 见 tools/promote-learned.js。
+       */
+      exportWords: function () {
+        return collectWordExport();
+      },
+      exportWordsJson: function () {
+        return JSON.stringify(collectWordExport(), null, 2);
+      },
       learn: {
         list: function () {
           return state.learned ? state.learned.list() : [];

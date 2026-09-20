@@ -889,6 +889,32 @@
     return {
       lookup: lookup,
       peek: peek,
+      /**
+       * 导出缓存里"问出来过"的词 —— 给「把常用词沉淀进离线词典」用。
+       *
+       * 缓存是按「词 + 语境」存的，这里按**词**归并：同一个词在几个不同句子里
+       * 得到过答案、答案是不是一致，都报出来（构建期的筛选脚本靠这些字段决定收不收）。
+       * 只导出命中（miss 不导）。
+       *
+       * @returns {Array} [{ word, kana, lines, consistent }]
+       */
+      exportWords: function () {
+        var grouped = {};
+        mem.forEach(function (v, k) {
+          if (!v || v.miss === true || typeof v.k !== "string" || !v.k) return;
+          var at = String(k).indexOf("\u0000"); // 键是 word + \u0000 + 语境
+          var word = at >= 0 ? String(k).slice(0, at) : String(k);
+          var rec = grouped[word];
+          if (!rec) rec = grouped[word] = { word: word, kana: v.k, lines: 0, consistent: true };
+          rec.lines++;
+          if (rec.kana !== v.k) rec.consistent = false;
+        });
+        var out = [];
+        for (var w in grouped) {
+          if (Object.prototype.hasOwnProperty.call(grouped, w)) out.push(grouped[w]);
+        }
+        return out;
+      },
       isWaiting: isWaiting,
       flush: flush,
       test: test,

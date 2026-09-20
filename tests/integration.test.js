@@ -2211,6 +2211,105 @@ test("法语借词表只作用于法语行（`rose`：法语行 ロゼ / 英文�
   assert.strictEqual(rubyCount(ps[4]), 0, "`℗ 2024 Some Label` 不许注音：" + ps[4].innerHTML);
 });
 
+test("非日语歌是否注音可以开关（默认注音，关掉只标日语歌）", async () => {
+  // 用户要的「非日语歌可选是否标注」。判据看**整首**：整首歌词里一个假名都没有
+  // （纯英文歌 / 法语歌 / 中文歌）才算非日语歌 —— 所以日语歌里的纯英文行不会被误伤。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>I love you so much</p></li>
+  <li class="line"><p>Every night brings a dream</p></li>
+</ul></div></div>
+</body></html>`;
+  const JP_HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>きらめく light と clover</p></li>
+  <li class="line"><p>I love you so much</p></li>
+</ul></div></div>
+</body></html>`;
+
+  // 默认（annotateNonJapanese 缺省 true）：照旧注音
+  const envOn = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await envOn.runLoad();
+  await sleep(300);
+  assert.strictEqual(
+    envOn.document.querySelectorAll("ul.lyric li p ruby.lt-ruby").length > 0,
+    true,
+    "默认要照旧注音（英文歌也标）"
+  );
+
+  // 关掉它：英文歌整首跳过，而且之前注上的要撤掉
+  const envOff = bootPlugin(HTML, { config: { online: false, llmEnabled: false, annotateNonJapanese: false } });
+  await envOff.runLoad();
+  await sleep(300);
+  assert.strictEqual(
+    envOff.document.querySelectorAll("ul.lyric li p ruby.lt-ruby").length,
+    0,
+    "关掉之后英文歌不许注音：" + envOff.document.querySelector("ul.lyric").innerHTML
+  );
+  assert.strictEqual(envOff.api.state.lastResult.nonJapanese, true, "统计里要能看出是「非日语歌」跳过");
+
+  // 日语歌：即使有纯英文行，也照旧注音
+  const envJp = bootPlugin(JP_HTML, { config: { online: false, llmEnabled: false, annotateNonJapanese: false } });
+  await envJp.runLoad();
+  await sleep(300);
+  const ps = envJp.document.querySelectorAll("ul.lyric li p");
+  assert.ok(rubyCount(ps[0]) >= 2, "日语歌照常注音：" + ps[0].innerHTML);
+  assert.ok(rubyCount(ps[1]) >= 3, "日语歌里的纯英文行也要注音：" + ps[1].innerHTML);
+});
+
+test("导出词库素材：已学会的词 + 两层缓存命中", async () => {
+  // 用户要的「从学会的词和缓存中筛选填进离线词典」：运行期写不进 src/core/dict.js，
+  // 所以先导出素材，再由 npm run promote:learned 筛选、npm run build:dict 合并。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>serendipity の 夜</p></li>
+  <li class="line"><p>また serendipity を 探して</p></li>
+</ul></div></div>
+</body></html>`;
+  const CONFIG = {
+    llmEnabled: true,
+    llmKey: "sk-test",
+    llmEndpoint: "https://api.example.com/v1/chat/completions",
+    online: false,
+  };
+  const env = bootPlugin(HTML, {
+    config: CONFIG,
+    fetch: function (url, init) {
+      const items = JSON.parse(JSON.parse(init.body).messages[0].content.slice(JSON.parse(init.body).messages[0].content.indexOf("[")));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = "セレンディピティ";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1600);
+
+  const dump = env.api.exportWords();
+  assert.strictEqual(dump.version, 1);
+  assert.deepStrictEqual(
+    [...dump.learned].map((x) => [x.word, x.kana]),
+    [["serendipity", "セレンディピティ"]],
+    "已学会的词要出现在素材里：" + JSON.stringify(dump.learned)
+  );
+  // 大模型缓存也按词归并导出（构建期靠 lines / consistent 决定收不收）
+  const llmHit = [...dump.llm].find((x) => x.word === "serendipity");
+  assert.ok(llmHit, "缓存命中要出现在素材里：" + JSON.stringify(dump.llm));
+  assert.strictEqual(llmHit.kana, "セレンディピティ");
+  assert.ok(llmHit.lines >= 1);
+  assert.strictEqual(llmHit.consistent, true);
+  // JSON 版给面板按钮用（要能 parse 回来）
+  const back = JSON.parse(env.api.exportWordsJson());
+  assert.strictEqual(back.learned.length, 1);
+  // 免费接口那层即使没开也占一个字段，构建期脚本不用判空
+  assert.ok(Array.isArray(dump.google));
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

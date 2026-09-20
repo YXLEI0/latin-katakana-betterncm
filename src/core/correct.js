@@ -399,6 +399,17 @@
 
     return {
       lookup: lookup,
+      /**
+       * 导出这份缓存里"问出来过"的词（给控制台/构建期把常用词沉淀进离线词典用）。
+       * 键就是词本身，值是片假名读音；给不出结果的（null）不导。
+       */
+      exportWords: function () {
+        var out = [];
+        mem.forEach(function (v, k) {
+          if (typeof v === "string" && v) out.push({ word: String(k), kana: v });
+        });
+        return out;
+      },
       isWaiting: isWaiting,
       clearCache: clearCache,
       flushCache: function () {

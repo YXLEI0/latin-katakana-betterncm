@@ -94,6 +94,7 @@ console.log("[0/7] 运行时版本");
     "tests/llm.test.js",
     "tests/usage.test.js",
     "tests/learn.test.js",
+    "tests/promote.test.js",
     "tests/integration.test.js",
     "tests/patch.test.js",
   ];

@@ -105,8 +105,39 @@ if (llmProblems) {
   console.error("生成词表里有 " + llmProblems + " 条格式不对，已跳过（修 tools/seed-words-llm.js 或重跑生成）");
 }
 
-const keys = Object.keys(words).sort();
-const body = keys
+/*
+ * 第三份数据源：tools/seed-words-learned.js —— **运行期沉淀下来的词**
+ * （面板「操作 → 导出词库素材」导出的 JSON，经 tools/promote-learned.js 筛选）。
+ *
+ * 优先级夹在中间：人工核过的 seed-words.js **高于**它，它**高于**大模型批量生成的
+ * seed-words-llm.js —— 那些词来自真机听歌的上下文（同一个词在两个句子里读音一致
+ * 才收），比"按词频一次生成"更可信。
+ */
+const LEARNED_SEED = path.join(__dirname, "seed-words-learned.js");
+let learnedAdded = 0;
+let learnedSkipped = 0;
+if (fs.existsSync(LEARNED_SEED)) {
+  let rows = [];
+  try {
+    rows = require(LEARNED_SEED) || [];
+  } catch (e) {
+    console.error("读不了 " + path.relative(ROOT, LEARNED_SEED) + "：" + e.message + "（跳过）");
+    rows = [];
+  }
+  for (const row of rows) {
+    const en = String((row && row.en) || "").trim().toLowerCase();
+    const kana = String((row && row.kana) || "").trim();
+    if (!RE_EN.test(en) || !RE_KANA.test(kana)) continue;
+    if (words[en] !== undefined) {
+      learnedSkipped++; // 人工词表里有，人工优先
+      continue;
+    }
+    words[en] = kana;
+    learnedAdded++;
+  }
+}
+
+const keys = Object.keys(words).sort();const body = keys
   .map((k) => "    " + JSON.stringify(k) + ": " + JSON.stringify(words[k]) + ",")
   .join("\n");
 
@@ -142,5 +173,6 @@ ${body}
 
 fs.writeFileSync(OUT, out);
 console.log("已生成 " + path.relative(ROOT, OUT) + "：" + keys.length + " 条" +
-  "（人工 " + handCount + " 条 + 大模型 " + llmAdded + " 条，生成物里被人工覆盖 " + llmSkipped + " 条" +
+  "（人工 " + handCount + " 条 + 沉淀 " + learnedAdded + " 条 + 大模型 " + llmAdded + " 条，生成物里被人工覆盖 " +
+  (llmSkipped + learnedSkipped) + " 条" +
   (llmBlocked ? "，黑名单拦下 " + llmBlocked + " 条" : "") + "）");
