@@ -222,6 +222,46 @@ test("retryNow：把退避清掉、马上重发（用户看到「全都没矫正
   assert.strictEqual(c.client.peek("clover"), "クローバー", "重试之后要收下答案");
 });
 
+test("超时：批次减半再试，成功之后恢复（用户截图里的 The user aborted a request.）", async () => {
+  // 这条错误是**我们自己的超时**掐的（20s -> 45s，且现在会自适应减半）。
+  // 光退避再原样重发同一大批，很容易一直超时。
+  const ctx = loadCore();
+  let abort = true;
+  const c = makeClient(ctx, {
+    cooldownMs: 30,
+    reply: () => {
+      if (abort) {
+        const e = new Error("The user aborted a request.");
+        e.name = "AbortError";
+        return e;
+      }
+      return {}; // 请求成功（模型没给答案也无所谓，这一条测的是超时处理）
+    },
+  });
+  const words = [];
+  for (let i = 0; i < 20; i++) words.push("w" + String.fromCharCode(97 + i));
+  for (const w of words) c.client.lookup(w, "line " + w);
+  await c.client.flush();
+
+  assert.strictEqual(c.calls[0].words.length, 20, "第一批按配置大小发");
+  assert.strictEqual(c.client.stats().batchCap, 10, "超时之后批次减半");
+  assert.ok(
+    c.client.stats().lastError.indexOf("下次改成 10 个") >= 0,
+    "错误信息要说清下一步：" + c.client.stats().lastError
+  );
+  assert.ok(
+    c.client.stats().lastError.indexOf("我们自己的超时") >= 0,
+    "要说清这是插件自己的超时（不是 key/余额/网络）：" + c.client.stats().lastError
+  );
+
+  // 退避一过自动重试：这次只发 10 个
+  abort = false;
+  await new Promise((r) => setTimeout(r, 400));
+  assert.ok(c.calls.length >= 2, "要自动重试（" + c.calls.length + " 次）");
+  assert.strictEqual(c.calls[1].words.length, 10, "重试用减半的批次");
+  assert.strictEqual(c.client.stats().batchCap, 0, "成功之后恢复原批次大小");
+});
+
 test("stalled：连着失败而且队列还有词 = 这层现在彻底不工作（面板据此报警告）", async () => {
   const ctx = loadCore();
   const c = makeClient(ctx, { reply: () => new Error("offline") });

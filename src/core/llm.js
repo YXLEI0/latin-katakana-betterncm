@@ -32,8 +32,14 @@
   var CACHE_TTL_MS = 180 * 24 * 60 * 60 * 1000; // 半年
   var CACHE_MAX = 6000;
   var FLUSH_DELAY_MS = 400; // 攒批窗口
-  var BATCH_SIZE = 40; // 一次问多少个词（词典外词多的歌一次能排上百个，批大点少发几次）
-  var REQUEST_TIMEOUT_MS = 20000;
+  var BATCH_SIZE = 30; // 一次问多少个词
+  /*
+   * 单个请求的超时。原来是 20 秒 —— 真机上报过「The user aborted a request.」
+   * 就是被这个掐掉的（用户截图里的报错）。一批几十个词、每句都带整行语境，
+   * 服务商忙的时候首字节就可能等十几秒，20 秒太紧；45 秒更稳，
+   * 而且超时之后我们会**把批次减半再试**（见 send/fail 里的 batchCap）。
+   */
+  var REQUEST_TIMEOUT_MS = 45000;
   var MAX_REQ_PER_MIN = 20; // 限流：再准也不该把页面拖垮
   var COOLDOWN_MS = 60000; // 失败后的退避起点
   /*
@@ -210,7 +216,12 @@
     var name = (err && err.name) || "";
     var text = ((err && err.message) || "") + " " + name;
     if (!/fetch|network|load failed|abort|timeout|ECONN|ENOTFOUND|CORS/i.test(text)) return "";
-    if (/abort/i.test(text)) return "（请求超时/被取消）";
+    if (/abort/i.test(text)) {
+      return (
+        "（我们自己的超时掐的：等了 " + Math.round(REQUEST_TIMEOUT_MS / 1000) +
+        " 秒还没回来 —— 一般是批次太大或服务商在排队。插件会把批次减半自动重试，不用管它）"
+      );
+    }
     return (
       "（网络不通或被跨域拦住：这个接口地址要在网易云里能直接访问，" +
       "并且允许 https://music.163.com 这个来源；换成服务商的官方地址试试）"
@@ -262,9 +273,25 @@
     var cooldownBase = typeof options.cooldownMs === "number" ? options.cooldownMs : COOLDOWN_MS;
     var cooldownMs = cooldownBase;
     var cooldownUntil = 0;
+    /*
+     * 自适应批次上限：0 = 用 cfg.batchSize。
+     *
+     * 为什么要它：请求超时（用户截图里的 "The user aborted a request."）几乎都是
+     * "这批太大 / 服务商在排队"。超时之后把上限减半再试，成功的概率立刻高很多；
+     * 一旦成功就恢复原大小。比单纯"退避 60 秒再原样重发同一大批"有效得多。
+     */
+    var batchCap = 0;
+    function currentBatchSize() {
+      if (batchCap > 0 && batchCap < cfg.batchSize) return batchCap;
+      return cfg.batchSize;
+    }
+    function isTimeoutError(err) {
+      var text = ((err && err.message) || "") + " " + ((err && err.name) || "");
+      return /abort|timeout|timed out/i.test(text);
+    }
     var requestTimes = [];
     var lastError = null;
-    var stats = { hits: 0, cacheHits: 0, misses: 0, rejected: 0, requests: 0, failures: 0, words: 0 };
+    var stats = { hits: 0, cacheHits: 0, misses: 0, rejected: 0, requests: 0, failures: 0, words: 0, batchCap: 0 };
     /*
      * 连续失败了几批、期间一次都没成功过。用来判断"这层现在是彻底不工作"：
      * 用户看到的症状就是"读音全都没矫正"（本地读音照旧，模型一条都没改）。
@@ -485,7 +512,7 @@
         return Promise.resolve(null);
       }
 
-      var batch = queue.splice(0, cfg.batchSize);
+      var batch = queue.splice(0, currentBatchSize());
       for (var i = 0; i < batch.length; i++) queued.delete(batch[i].key);
       if (!batch.length) return Promise.resolve(null);
 
@@ -640,6 +667,11 @@
       cooldownMs = cooldownBase;
       cooldownUntil = 0;
       failedSinceHit = 0;
+      // 这一批成了 -> 自适应上限也恢复（之前可能因为超时被减半过）
+      if (batchCap) {
+        batchCap = 0;
+        stats.batchCap = 0;
+      }
       log("大模型校正回来 " + batch.length + " 个词：命中 " + hits + "，没给 " + missed);
       /*
        * **不管有没有命中都要通知上层重扫**。
@@ -665,6 +697,19 @@
       var hint = err && err.status ? "" : networkHint(err);
       lastError = hint ? raw + " " + hint : raw;
       stats.failures++;
+      /*
+       * 超时（"The user aborted a request."）多半是这批太大 / 服务商在排队：
+       * 把自适应批次减半，下一轮用更小的批去试，成功之后自动恢复。
+       * 只减不加，所以不会来回震荡。
+       */
+      if (isTimeoutError(err)) {
+        // 按**这一批实际的大小**减半（而不是配置里的上限）：这次发出去多少，
+        // 下次就砍一半，最贴近"这批太大了"的实际原因；下限 5 个。
+        var base = batch.length || (batchCap > 0 ? batchCap : cfg.batchSize);
+        batchCap = Math.max(5, Math.floor(base / 2));
+        stats.batchCap = batchCap;
+        lastError += "（这批 " + batch.length + " 个词，下次改成 " + batchCap + " 个再试）";
+      }
       var u = usage || { words: batch.length, chars: 0, sent: true };
       onUsage({
         requests: u.sent ? 1 : 0,
@@ -927,6 +972,7 @@
           missesCached: countMisses(),
           pending: queue.length,
           roomThisMinute: roomThisMinute(),
+          batchCap: batchCap, // 超时之后的"临时小批"上限（0 = 正常大小）
           failedSinceHit: failedSinceHit,
           stalled: failedSinceHit >= 2 && queue.length > 0,
           inflight: inflight,
