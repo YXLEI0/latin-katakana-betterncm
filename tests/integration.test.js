@@ -1969,6 +1969,56 @@ test("`YY` 标字母名、打码的 `XX` 留白；成串的大写单字母读字
   assert.strictEqual(rubyCount(ps[5]), 0, "孤立的 B 还是留白：" + ps[5].innerHTML);
 });
 
+test("署名行：中文制作信息的各种写法都不注音（演唱/美工/策划/导唱/封面/曲绘…）", async () => {
+  // 用户两张截图里的署名行。原来只认 作词/作曲/编曲/混音/母带/制作人 这几种，
+  // `演唱：`、`美工：`、`策划：`、`导唱：`、`封面：`、`曲绘：`、`调校：`、`后期：`
+  // 全都没认出来 —— 名字里的拉丁字母（如 `作曲/和声编写：CC` 的 CC）就被注上音了。
+  // 还有 `/` 这种分隔符也要能跨过（`作曲/和声编写：`）。
+  const lines = [
+    "演唱：CC",
+    "美工：CC",
+    "策划：CC",
+    "作词：CC&DD",
+    "作曲/和声编写：CC",
+    "编曲：sea云",
+    "导唱：CC",
+    "混音&母带处理：Gon",
+    "制作人：Zoe",
+    "和声：CC",
+    "封面：CC",
+    "曲绘：CC",
+    "调校：CC",
+    "后期：CC",
+    "混音师：CC",
+    "Lyrics by CC",
+  ];
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+${lines.map((l) => `  <li class="line"><p>${l}</p></li>`).join("\n")}
+  <li class="line"><p>Music と light の 中</p></li>
+  <li class="line"><p>I love you CC</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(300);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  for (let i = 0; i < lines.length; i++) {
+    assert.strictEqual(rubyCount(ps[i]), 0, "署名行不该注音：" + lines[i] + " -> " + ps[i].innerHTML);
+  }
+  // 反向：只是带词头的正常歌词、以及名字出现在歌词里，照标
+  const lyric1 = new Map(
+    [...ps[lines.length].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+  assert.strictEqual(lyric1.get("Music"), "ミュージック", "正常歌词不能被误杀：" + ps[lines.length].innerHTML);
+  assert.strictEqual(lyric1.get("light"), "ライト");
+  const lyric2 = new Map(
+    [...ps[lines.length + 1].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+  assert.strictEqual(lyric2.get("love"), "ラブ", "歌词里的词照标：" + ps[lines.length + 1].innerHTML);
+  assert.strictEqual(lyric2.get("CC"), "シーシー");
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
