@@ -68,6 +68,117 @@ module.exports = [
   { en: "pence", kana: "ペンス" },
   { en: "penny", kana: "ペニー" },
   /*
+   * 被罗马音层读歪的常用英文词（审计出来的一批）。
+   *
+   * 怎么发现的：用户问「the pretender up, … shake, shake, shake it up 里
+   * 为什么只有 the 没被矫正」。查下来 the/up/it 是**词典命中**（本来就对，
+   * 按设计不问模型），而 `shake` 是**罗马音层**给的 —— `sha-ke` 正好切得干净，
+   * 于是读成 **シャケ**（鮭）。层序是「词典 > 罗马音 > 大模型」，
+   * 罗马音层一答就没模型什么事了，所以这类词**永远不会被矫正**。
+   *
+   * 顺手拿 google-10000 英文词频表做了一次审计：9974 个词里 3960 个不在词典，
+   * 其中 **240 个**会被罗马音层读成日语罗马字（下面是最常见的一批）。
+   * `shake` 在词频表第 8150 位 —— 当初的词典扩展只做了前 6000，它从来没进过候选；
+   * `open`(283) / `again`(515) 虽然在 6000 以内，那条生成记录也漏了。
+   *
+   * **故意不收**的：在日语罗马音里也是真词、两种读法都成立的那些 ——
+   * `sake`(サケ)、`dare`(ダレ)、`dame`(ダメ)、`ate`(アテ)、`sage`(サゲ)、
+   * `bare`(バレ)、`kai`/`cho`/`sen` 这类。钉死反而会毁掉罗马音歌词，
+   * 交给大模型按语境判更合适（把「大模型」拖到「罗马音」上面就是让模型仲裁）。
+   */
+  { en: "open", kana: "オープン" },
+  { en: "again", kana: "アゲイン" },
+  { en: "tongue", kana: "タン" },
+  { en: "gauge", kana: "ゲージ" },
+  { en: "gage", kana: "ゲージ" },
+  { en: "engage", kana: "エンゲージ" },
+  { en: "noon", kana: "ヌーン" },
+  { en: "dozen", kana: "ダズン" },
+  { en: "mate", kana: "メイト" },
+  { en: "pie", kana: "パイ" },
+  { en: "chose", kana: "チョーズ" },
+  { en: "ripe", kana: "ライプ" },
+  { en: "joke", kana: "ジョーク" },
+  { en: "bean", kana: "ビーン" },
+  { en: "bee", kana: "ビー" },
+  { en: "retain", kana: "リテイン" },
+  { en: "begun", kana: "ビガン" },
+  { en: "parade", kana: "パレード" },
+  { en: "pope", kana: "ポープ" },
+  { en: "rebate", kana: "リベート" },
+  { en: "immune", kana: "イミューン" },
+  { en: "arise", kana: "アライズ" },
+  { en: "intense", kana: "インテンス" },
+  { en: "intake", kana: "インテイク" },
+  { en: "assure", kana: "アシュア" },
+  { en: "refuse", kana: "リフューズ" },
+  { en: "nuke", kana: "ニューク" },
+  { en: "arrange", kana: "アレンジ" },
+  { en: "horizon", kana: "ホライズン" },
+  { en: "minimize", kana: "ミニマイズ" },
+  { en: "gotten", kana: "ガトゥン" },
+  { en: "shade", kana: "シェイド" },
+  { en: "sudden", kana: "サドゥン" },
+  { en: "rope", kana: "ロープ" },
+  { en: "hose", kana: "ホース" },
+  { en: "tattoo", kana: "タトゥー" },
+  { en: "shake", kana: "シェイク" },
+  { en: "sunrise", kana: "サンライズ" },
+  { en: "shame", kana: "シェイム" },
+  { en: "metadata", kana: "メタデータ" },
+  { en: "basename", kana: "ベースネーム" },
+  { en: "roommate", kana: "ルームメイト" },
+  { en: "reggae", kana: "レゲエ" },
+  { en: "gore", kana: "ゴア" },
+  { en: "gazette", kana: "ガゼット" },
+  { en: "rage", kana: "レイジ" },
+  { en: "undo", kana: "アンドゥ" },
+  { en: "bite", kana: "バイト" },
+  { en: "ozone", kana: "オゾン" },
+  { en: "penguin", kana: "ペンギン" },
+  { en: "terrain", kana: "テレイン" },
+  { en: "mime", kana: "マイム" },
+  { en: "keen", kana: "キーン" },
+  { en: "dosage", kana: "ドーセージ" },
+  { en: "token", kana: "トークン" },
+  { en: "kinda", kana: "カインダ" },
+  { en: "gotta", kana: "ガタ" },
+  { en: "duo", kana: "デュオ" },
+  { en: "dome", kana: "ドーム" },
+  { en: "ware", kana: "ウェア" },
+  { en: "jade", kana: "ジェイド" },
+  { en: "pose", kana: "ポーズ" },
+  { en: "dense", kana: "デンス" },
+  { en: "mandate", kana: "マンデート" },
+  { en: "maiden", kana: "メイデン" },
+  { en: "pike", kana: "パイク" },
+  { en: "poison", kana: "ポイズン" },
+  { en: "potato", kana: "ポテト" },
+  { en: "marijuana", kana: "マリファナ" },
+  { en: "mediterranean", kana: "メディタレニアン" },
+  { en: "pete", kana: "ピート" },
+  { en: "aurora", kana: "オーロラ" },
+  { en: "jake", kana: "ジェイク" },
+  { en: "jamie", kana: "ジェイミー" },
+  { en: "joan", kana: "ジョーン" },
+  { en: "annie", kana: "アニー" },
+  { en: "robbie", kana: "ロビー" },
+  { en: "shannon", kana: "シャノン" },
+  { en: "morrison", kana: "モリソン" },
+  { en: "monroe", kana: "モンロー" },
+  { en: "diane", kana: "ダイアン" },
+  { en: "diana", kana: "ダイアナ" },
+  { en: "eugene", kana: "ユージン" },
+  { en: "reunion", kana: "リユニオン" },
+  { en: "sudan", kana: "スーダン" },
+  { en: "guyana", kana: "ガイアナ" },
+  { en: "andorra", kana: "アンドラ" },
+  { en: "dubai", kana: "ドバイ" },
+  { en: "yukon", kana: "ユーコン" },
+  { en: "tahoe", kana: "タホー" },
+  { en: "oman", kana: "オマーン" },
+  { en: "niagara", kana: "ナイアガラ" },
+  /*
    * 常见缩写（用户报的 `Mr.` / `Dr.`）：日语里念的是**整个词**，不是字母名。
    * 它们会先于规则层命中，所以放在这里就是权威写法。
    * 有歧义的没收：`St.`（セント / ストリート）、`No.`（ナンバー / ノー）。

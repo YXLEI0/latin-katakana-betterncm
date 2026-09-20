@@ -16,6 +16,7 @@
 		"Main": [
 			{ "file": "core/latin.js" },
 			{ "file": "core/dict.js" },
+			{ "file": "core/enwords.js" },
 			{ "file": "core/reading.js" },
 			{ "file": "core/correct.js" },
 			{ "file": "core/llm.js" },

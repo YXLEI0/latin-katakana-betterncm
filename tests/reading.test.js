@@ -854,6 +854,35 @@ test("边界：多个 reader 之间互不干扰", () => {
   assert.strictEqual(b.stats().onlineHits, 0);
 });
 
+// ============================================================ 罗马音 vs 英文词
+
+test("罗马音：在英文词表里的（shake/open）标成没把握，好让在线层仲裁", () => {
+  // 罗马音层只判"整串能不能切干净"，于是 shake(sha-ke) -> シャケ、open -> オペン
+  // 这种英文词会被当成日语罗马字；而层序里罗马音排在大模型前面，它一答就没人能纠。
+  const enWords = { shake: true, open: true };
+  const r = LK.createReader({ dict: {}, enWords: enWords });
+  const got = r.read("shake");
+  assert.strictEqual(got.source, "romaji");
+  assert.strictEqual(got.kana, "シャケ", "读音本身还是罗马音切的（等在线层回来再换）");
+  assert.strictEqual(got.confident, false, "要标成没把握");
+  assert.strictEqual(r.read("open").confident, false);
+});
+
+test("罗马音：真正的日语罗马字不受影响（sekai / kaze 仍然是确定的）", () => {
+  const enWords = { shake: true, open: true };
+  const r = LK.createReader({ dict: {}, enWords: enWords });
+  for (const w of ["sekai", "kaze", "shinjiteru"]) {
+    const got = r.read(w);
+    assert.strictEqual(got.source, "romaji", w);
+    assert.strictEqual(got.confident, true, w + " 不该被误判成英文词");
+  }
+});
+
+test("罗马音：不传英文词表时行为跟以前一样（罗马音一律算确定）", () => {
+  const r = LK.createReader({ dict: {} });
+  assert.strictEqual(r.read("shake").confident, true);
+});
+
 test("边界：dict 里塞了空值不会把结果读成空串", () => {
   const r = LK.createReader({ dict: { clover: "" } });
   const got = r.read("clover");

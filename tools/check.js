@@ -163,6 +163,7 @@ console.log("[3/7] 注入清单");
 const WANT_ORDER = [
   "core/latin.js",
   "core/dict.js",
+  "core/enwords.js",
   "core/reading.js",
   "core/correct.js",
   "core/llm.js",

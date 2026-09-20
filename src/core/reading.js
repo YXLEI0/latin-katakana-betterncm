@@ -1811,6 +1811,11 @@
     var options = opts || {};
     // 词表可能直接传进来，也可能什么都没传
     var dict = options.dict && typeof options.dict === "object" ? options.dict : {};
+    /*
+     * 英文常用词表（core/enwords.js）：罗马音层用它判断"这看着像英文词"，
+     * 判出来的结果标成没把握、交给上层让在线层仲裁。不给就退化成老行为（罗马音全信）。
+     */
+    var enWords = options.enWords && typeof options.enWords === "object" ? options.enWords : null;
     // 联网校正结果只放内存，进程退出就没了（下次联网再学一遍）
     var online = {};
     var log = typeof options.log === "function" ? options.log : null;
@@ -1892,6 +1897,7 @@
         return null;
       },
       romaji: function (c) {
+        var res = null;
         // 用 shown（已小写、去了首尾标点）而不是 stripNonLetters，
         // 因为 "saka-" 词尾的连字符是长音符，不能被吃掉。
         // 折叠过的写法先试：`to-kyo-` 这种末尾的长音符在 normalize 里会被去掉，
@@ -1901,15 +1907,36 @@
           if (foldKana) {
             trace("romaji（折叠）命中：" + c.fold.text + " -> " + foldKana);
             // 只有长音符（日语罗马字）才算确定；别的变音符号交给上层去修
-            return { kana: foldKana, source: "romaji", confident: c.fold.pureMacron };
+            res = { kana: foldKana, source: "romaji", confident: c.fold.pureMacron };
           }
         }
-        var kana = romajiToKatakana(c.shown);
-        if (kana) {
-          trace("romaji 命中：" + c.shown + " -> " + kana);
-          return { kana: kana, source: "romaji", confident: !c.fold };
+        if (!res) {
+          var kana = romajiToKatakana(c.shown);
+          if (kana) {
+            trace("romaji 命中：" + c.shown + " -> " + kana);
+            res = { kana: kana, source: "romaji", confident: !c.fold };
+          }
         }
-        return null;
+        if (!res) return null;
+        /*
+         * 「看着像英文词」的罗马音答案标成**没把握**。
+         *
+         * 为什么必须有这一手：罗马音层的判据只是"整串都切得干净"，于是
+         * `shake`(sha-ke) -> シャケ、`open`(o-pe-n) -> オペン、`again` -> アガイン
+         * 这种英文词会被它当成日语罗马字。而层序里罗马音排在**大模型前面**，
+         * 它一答，大模型就没机会纠正 —— 这些词就**永远读错**（用户报的
+         * 「the pretender up, … shake, shake, shake it up, it up」里的 shake 就是）。
+         *
+         * 判据是英文常用词表（core/enwords.js，已剔除词典里已有的词）：
+         * 在里面 = 大概率是英文词。标成 confident:false 之后，上层的层序逻辑
+         * 会把这个答案当成"垫底的那种"，让在线层来仲裁（结果没回来之前先显示它，
+         * 标记成暂定），而不是就此拍板。
+         */
+        if (res.confident && enWords && enWords[c.shown]) {
+          trace("romaji 可疑（英文词表里有）：" + c.shown + " -> " + res.kana);
+          res.confident = false;
+        }
+        return res;
       },
       rule: function (c) {
         // 英文规则永远有结果（最差也是个不 confident 的读音）

@@ -1166,6 +1166,96 @@ test("设置面板：粘进来的 key 会自动洗掉引号 / 空格 / Bearer，
   assert.strictEqual(saved.llmKey, "sk-abc123456789012345", "落盘的也要是干净的");
 });
 
+test("罗马音像英文词时交给大模型仲裁；真罗马音一个请求都不发", async () => {
+  // 用户报的「the pretender up, … shake, shake, shake it up, it up 里只有 the 没被矫正」。
+  // the/up/it 是词典命中（本来就对，按设计不问模型）；shake 是罗马音层读成了 シャケ。
+  // 现在：罗马音答案若在英文词表里就标成"没把握"，让在线层接手；
+  // 真正的日语罗马字（sekai）仍然是确定的，不会被无谓地送去问模型。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-lyric">
+    <ul class="lyric">
+      <li class="line"><p>sake sekai the shake</p></li>
+    </ul>
+  </div>
+</div>
+</body></html>`;
+  const asked = [];
+  const env = bootPlugin(HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions", online: false },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const body = JSON.parse(init.body);
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      asked.push(items.map((it) => it.w));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = it.w === "sake" ? "セイク" : "ダミー";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(200); // 趁模型还没回来：本地答案是"暂定"
+  const p = env.document.querySelector("ul.lyric li p");
+  const pendingNow = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue);
+  assert.ok(pendingNow.indexOf("sake") >= 0, "sake 要先标上（暂定）：" + p.innerHTML);
+
+  await sleep(1400);
+  const words = [].concat.apply([], asked);
+  assert.deepStrictEqual(words, ["sake"], "只该问 sake：词典词和真罗马音都不该浪费请求（实际 " + words.join(",") + "）");
+
+  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+    r.childNodes[0].nodeValue,
+    r.querySelector(".lt-rt").textContent,
+  ]);
+  assert.deepStrictEqual(
+    pairs,
+    [
+      ["sake", "セイク"],
+      ["sekai", "セカイ"],
+      ["the", "ザ"],
+      ["shake", "シェイク"],
+    ],
+    "sake 要被模型换成 セイク；其它三个保持本地答案：" + JSON.stringify(pairs)
+  );
+  const shakeRuby = p.querySelectorAll("ruby.lt-ruby")[3];
+  assert.ok(shakeRuby.classList.contains("lt-src-dict"), "shake 现在是词典命中：" + shakeRuby.className);
+  assert.strictEqual(baseText(p), "sake sekai the shake");
+});
+
+test("罗马音像英文词：用户把「英文规则」提到在线层前面时，照样一个请求都不发", async () => {
+  // 排序是用户说了算：规则提到最上面 = 纯离线。这条不因为"没把握"就被破坏。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+<li class="line"><p>sake の sekai</p></li>
+</ul></div></div>
+</body></html>`;
+  let called = 0;
+  const env = bootPlugin(HTML, {
+    config: {
+      llmEnabled: true,
+      llmKey: "sk-test",
+      llmEndpoint: "https://api.example.com/v1/chat/completions",
+      layerOrder: ["dict", "rule", "romaji", "llm", "google"],
+    },
+    fetch: function () {
+      called++;
+      return Promise.reject(new Error("offline (test)"));
+    },
+  });
+  await env.runLoad();
+  await sleep(1600);
+  assert.strictEqual(called, 0, "纯离线顺序下一个请求都不该发");
+  const p = env.document.querySelector("ul.lyric li p");
+  assert.strictEqual(p.querySelectorAll("ruby.lt-ruby.lt-pending").length, 0, "也不该标成暂定");
+  assert.strictEqual(rubyCount(p), 2);
+});
+
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
   // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
   //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；

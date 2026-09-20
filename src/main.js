@@ -154,6 +154,24 @@
     return i < 0 ? -1 : i;
   }
 
+  /**
+   * 一个本地答案在"谁说了算"这件事上的**实际名次**。
+   *
+   * 一般情况下就是它所在层的名次，但有个例外：**没把握的答案（confident:false）
+   * 一律按最低那层（英文音译规则）算** —— 于是排在它后面的在线层就有资格覆盖它。
+   *
+   * 为什么：罗马音层只是"整串能切成日语音节"，`shake`(sha-ke) / `open`(o-pe-n)
+   * 这种英文词会被它读成 シャケ / オペン。如果按名次拍板（罗马音排在在线层前面），
+   * 这些词就永远读错、大模型也没机会纠。标成"没把握"之后再按这个名次算，
+   * 在线层就能接手；而用户如果把「英文音译规则」拖到在线层前面（纯离线用法），
+   * 这个名次也跟着变成最优先，在线层照样不会被打扰。
+   */
+  function effectiveRank(r) {
+    if (!r) return -1;
+    if (r.source !== "letters" && r.confident === false) return layerRank("rule");
+    return layerRank(r.source);
+  }
+
   /** 大模型那层现在能不能用（开关 + 填了 key） */
   function llmAvailable() {
     if (!state.llm || !state.llm.config) return false;
@@ -287,7 +305,7 @@
     var r = state.reader.read(word);
     if (!r || !r.kana) return null;
 
-    var mine = layerRank(r.source); // 同步层名次；letters 等不在表里 -> -1（最优先）
+    var mine = effectiveRank(r); // 没把握的答案按最低层算，在线层可以覆盖它
     for (var i = 0; i < config.layerOrder.length; i++) {
       var id = config.layerOrder[i];
       if (!ASYNC_LAYERS[id]) continue;
@@ -330,7 +348,7 @@
     if (!word || !state.reader) return false;
     var r = state.reader.read(word);
     if (!r) return false;
-    var mine = layerRank(r.source);
+    var mine = effectiveRank(r);
     for (var i = 0; i < config.layerOrder.length; i++) {
       var id = config.layerOrder[i];
       if (!ASYNC_LAYERS[id]) continue;
@@ -1062,6 +1080,8 @@
       });
       state.reader = LKReading.createReader({
         dict: LKDict.words,
+        // 英文常用词表：罗马音层靠它判断"这看着像英文词"，判出来就交给在线层仲裁
+        enWords: typeof LKEnWords !== "undefined" ? LKEnWords.words : null,
         // 同步层按用户排的顺序（异步层由 readForDisplay 处理，见那里）
         order: syncLayerOrder(),
         log: function () {
