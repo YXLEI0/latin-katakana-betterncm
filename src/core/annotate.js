@@ -1794,7 +1794,8 @@
           } else if (val.length < 2) {
             out.push("  → 这段文字太短（不到 2 个字符），跳过");
           } else if (RE_CREDIT.test(val)) {
-            out.push("  → 这行被当成制作信息行（作词/作曲/编曲…），跳过");
+            // 上面已经单独报过"被当成制作信息行"，这里只把链子接上，别重复一整句
+            out.push("  → 原因就是上面那条：制作信息行不标");
           } else if (mo && mo.changes >= MOTION_LIMIT) {
             out.push(
               "  → 这个宿主的文本最近 " +
@@ -1842,8 +1843,6 @@
         }
         out.push("  这一段的词：" + (tokInfo.length ? tokInfo.join("，") : "（切不出词）"));
       }
-      // 一句总结：认输期里的文字段数是"故意没注音"的存量，排查时先看它
-      out.push("（全局：已插注音 " + records.size + " 处，认输期文字 " + churnUntil.size + " 段）");
       if (!found) {
         /*
          * 没找到"原文"匹配，但找到我们自己的注音节点：说明**这一段已经标上了**
@@ -1859,6 +1858,8 @@
       } else if (ours) {
         out.push("（另外 " + ours + " 处是我们已经标好的注音，忽略）");
       }
+      // 一句总结：认输期里的文字段数是"故意没注音"的存量，排查时先看它
+      out.push("（全局：已插注音 " + records.size + " 处，认输期文字 " + churnUntil.size + " 段）");
       return out;
     }
 
