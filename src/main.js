@@ -456,6 +456,35 @@
     return new RegExp("(?:" + KANA + esc + "|" + esc + KANA + ")").test(s);
   }
 
+  /**
+   * 这一行里有没有"成串的大写单字母"（`(A, B)`、`A・B`、`A B C`）。
+   *
+   * 用户要的：`(A, B) 退屈に打つ QTE (Why?)` 里的 A / B 该读字母名（エー / ビー），
+   * 而英文行里当冠词的 A 该读 ア。光看"单个大写字母"分不出来，看**整行**才行 ——
+   * 但判据不能用"这行有两个单字母"：`A story of love and I` 也有两个（冠词 A 和
+   * 代词 I），那样 A 就被读成 エー 了。所以只认两种形状：
+   *   ① 被标点串起来的：（A, B）、A・B、A&B
+   *   ② 三个以上孤立的：A B C
+   */
+  function lineLetterRun(line) {
+    var s = String(line == null ? "" : line);
+    if (!s) return false;
+    if (/[A-Z]\s*[,.\u3001\u30FB\/&|]\s*[A-Z]/.test(s)) return true;
+    if (typeof LKMatcher === "undefined") return false;
+    var toks;
+    try {
+      toks = LKMatcher.scan(s);
+    } catch (e) {
+      return false;
+    }
+    var n = 0;
+    for (var i = 0; i < toks.length; i++) {
+      if (/^[A-Z]$/.test(toks[i].text) && toks[i].glued !== true) n++;
+      if (n >= 3) return true;
+    }
+    return false;
+  }
+
   function localReading(word, line) {
     /*
      * 先看「学会的词」（core/learn.js）：模型在两个不同句子里答过同一个读音、
@@ -465,6 +494,19 @@
     if (state.learned) {
       var learned = state.learned.get(word);
       if (learned) return { kana: learned, source: "learned", confident: true };
+    }
+    /*
+     * 大写单字母：成串的读字母名（`(A, B)` -> エー / ビー），
+     * 孤零零一个的照旧 —— `A` 是冠词（ア）、`I` 是代词（アイ），
+     * 别的（`B`、`C`…）没法判，还是留白（返回 null 表示"这词不标"）。
+     */
+    if (/^[A-Z]$/.test(String(word == null ? "" : word))) {
+      if (line && lineLetterRun(line)) {
+        var letterKana =
+          typeof LKReading !== "undefined" && LKReading.LETTER_KANA ? LKReading.LETTER_KANA[String(word).toLowerCase()] : null;
+        if (letterKana) return { kana: letterKana, source: "letters", confident: true };
+      }
+      if (String(word) !== "A" && String(word) !== "I") return null;
     }
     var r = state.reader ? state.reader.read(word) : null;
     if (!r || !r.kana) return null;

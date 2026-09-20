@@ -1821,7 +1821,7 @@
           } else if (skippable) {
             out.push("  → 祖先被跳过（" + skippable + "）：别的插件的注音节点 / 表单 / 输入框，不能碰");
           } else if (!matcher.hasReadable(val)) {
-            out.push("  → 这段文字里没有值得注音的词（单字母缩写、`XX` 这种占位符），是**故意**不标的");
+            out.push("  → 这段文字里没有值得注音的词（单个小写字母、`xx` 这种重复字母/占位），是**故意**不标的");
           } else if (inChurn) {
             out.push(
               "  → 正在**认输期**（还有 " +
@@ -1865,7 +1865,7 @@
         for (var ti = 0; ti < toks.length; ti++) {
           var tkOne = toks[ti];
           if (!matcher.looksReadable(tkOne)) {
-            tokInfo.push(tkOne.text + "（不标：单字母/`XX` 这类占位符）");
+            tokInfo.push(tkOne.text + "（不标：单个小写字母 / `xx` 这类重复字母）");
             continue;
           }
           var kana = null;

@@ -168,21 +168,24 @@ test("粘在分隔符上的单字母不算词（D/N/A 里的 A 被注成 ア 是
   assert.strictEqual(latin.looksReadable(iTok), true, "I 是代词，要标");
 });
 
-test("同一个辅音字母重复的整词不标（`XX` 是打码，不是要念的缩写）", () => {
-  // 用户报的：`きみがひとり“XX”してるの知ってるよ` 里的 XX 被逐字母念成
-  // 「エックスエックス」。歌词里的 XX 是打码/占位，念出来比留白更难看。
-  for (const raw of ["XX", "XXX", "xx", "ZZZ", "YY"]) {
-    const tk = latin.scan(raw)[0];
-    assert.ok(tk, raw + " 要能扫到（不是漏扫，是不标）");
-    assert.strictEqual(latin.looksReadable(tk), false, raw + " 不该标");
+test("重复字母：全大写 2~3 个当缩写标，小写/长串留白", () => {
+  // 来龙去脉：先是用户报 `“XX”` 被读成 エックスエックス（打码不该念），
+  // 于是这类一律留白；后来用户又报 `合言葉は「YY」` —— 那个 YY 是缩写，要标。
+  // 两者拼写一模一样，本地分不出来，用户选择"标"，于是：
+  //   全大写 2~3 个 -> 标（YY ワイワイ、XX エックスエックス）
+  //   小写 / 4 个以上 -> 留白（xx 打码、XXXX 噪声）
+  for (const raw of ["YY", "XX", "XXX"]) {
+    assert.strictEqual(latin.looksReadable(latin.scan(raw)[0]), true, raw + " 要标（按字母名）");
   }
-  assert.strictEqual(latin.hasReadable("きみがひとり“XX”してるの"), false, "整段只有 XX 就不值得处理");
-  // 元音串是例外：AAAAA / OOO 是喊叫/拖长音，要按那个元音叠出来（见 reading.js）
+  for (const raw of ["xx", "zzz", "XXXX", "yyy"]) {
+    assert.strictEqual(latin.looksReadable(latin.scan(raw)[0]), false, raw + " 留白");
+  }
+  // 元音串照旧要标：AAAAA / OOO 是喊叫/拖长音，按那个元音叠出来
   for (const raw of ["AA", "aaa", "AAAAA", "OOO", "oo"]) {
     const tk = latin.scan(raw)[0];
     assert.strictEqual(latin.looksReadable(tk), true, raw + " 是喊叫/长音，要标");
   }
-  // 反例：不同字母的缩写照旧逐字母读 —— 一刀切的边界要正好落在"重复"上
+  // 反例：不同字母的缩写照旧逐字母读 —— 边界要正好落在"重复"上
   for (const raw of ["LDK", "TV", "MC", "DJ"]) {
     const tk = latin.scan(raw)[0];
     assert.strictEqual(latin.looksReadable(tk), true, raw + " 是真实缩写，要标");
@@ -193,6 +196,16 @@ test("同一个辅音字母重复的整词不标（`XX` 是打码，不是要念
     assert.strictEqual(tk.notation, true, raw + " 是记号");
     assert.strictEqual(latin.looksReadable(tk), true, raw + " 是记号，要标");
   }
+});
+
+test("大写单字母放行给读音层判，小写单字母仍只放 a / I", () => {
+  // `(A, B)` 里的 A / B 要读字母名（エー / ビー），但 `A story` 的 A 是冠词（ア）——
+  // 光看这个词分不出来，所以 matcher 放行，由 main.js 按整行判。
+  assert.strictEqual(latin.looksReadable(latin.scan("B")[0]), true, "大写 B 放行（可能是字母名）");
+  assert.strictEqual(latin.looksReadable(latin.scan("A")[0]), true, "大写 A 放行（冠词或字母名）");
+  assert.strictEqual(latin.looksReadable(latin.scan("b")[0]), false, "小写 b 仍然不标");
+  assert.strictEqual(latin.looksReadable(latin.scan("x")[0]), false, "小写 x 仍然不标");
+  assert.strictEqual(latin.looksReadable(latin.scan("A.")[0]), false, "粘着标点的 A 还是不标");
 });
 
 test("hasReadable：整段里有没有值得标的词", () => {
