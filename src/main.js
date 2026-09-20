@@ -177,6 +177,73 @@
     return out;
   }
 
+  /*
+   * 「这一行是不是日语罗马字」——用来决定短音节按罗马音还是按英文词读。
+   *
+   * 用户报的：`Yes, PA PI PU PE PO POP UP!(Hey!!)Yes, MA MI MU ME MO MORE JUMP!(Yeah!!)`
+   * 这种"罗马音节练习"式的写法，用词典效果很差。查下来打架的正是那几个**短音节**：
+   *   PI 词典=パイ（英文 pi）  罗马音=ピ
+   *   PE 词典=ピーイー（把 "P E" 当字母念）罗马音=ペ
+   *   PO 词典=ピーオー        罗马音=ポ
+   *   MI/ME/MO 词典=ミー/ミー/モー  罗马音=ミ/メ/モ
+   * 而 `pi/pe/po/mi/me/mo` **全都在英文常用词表里**，所以"它是不是英文词"这条判据
+   * 分不开它们（`me`/`no`/`so` 真是英文词，`pi`/`po` 只是被词表收进去了）。
+   * 能分开的是**整行的构成**：一行里同时出现好几个"词典读音和罗马音读音打架"的短音节，
+   * 那就是罗马字行（英文歌词不会这么写）。
+   *
+   * 判据：一行里 **≥5 个不同的**「≤3 字母 + 能切成罗马音 + 词典里有条目但读音不同」的词。
+   *   `PA PI PU PE PO`（5 个）✓、`MA MI MU ME MO`（5 个）✓、用户那行（6 个）✓
+   *   `No, no, no, I need you so`（no/i/so/you = 4 个）✗ 英文行，保持词典读音
+   *   `we can go to the sea`（we/go/to = 3 个）✗ 同上
+   * 3 个 / 4 个都不行：常见英文短词凑到四个太容易（实测那两行就是这么被判进去的，
+   * 结果 go/to/no/you 被读成 ゴ/ト/ノ/ヨウ）。5 个才真正是"罗马音节练习"。
+   * 而且命中之后这些词会标成**没把握** —— 在线层（大模型）拿到整句语境还能改回去。
+   */
+  var ROMAJI_LINE_MIN = 5;
+  var romajiLineCache = new Map();
+  var ROMAJI_LINE_CACHE_MAX = 200;
+
+  /** ≤3 个纯字母、且能干净地切成日语罗马音 -> 返回那个读音，否则 null */
+  function shortRomajiOf(word) {
+    var w = String(word || "").toLowerCase();
+    if (!/^[a-z]{1,3}$/.test(w)) return null;
+    if (typeof LKReading === "undefined" || !LKReading.romajiToKatakana) return null;
+    try {
+      return LKReading.romajiToKatakana(w) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function lineLooksRomaji(line) {
+    if (!line) return false;
+    var key = String(line);
+    if (romajiLineCache.has(key)) return romajiLineCache.get(key);
+    var looks = false;
+    try {
+      var tokens = LKMatcher.scan(key);
+      var dict = typeof LKDict !== "undefined" ? LKDict.words : {};
+      var seen = {};
+      var distinct = 0;
+      for (var i = 0; i < tokens.length; i++) {
+        var w = String(tokens[i].text || "").toLowerCase();
+        if (seen[w]) continue;
+        seen[w] = true;
+        var rom = shortRomajiOf(w);
+        if (!rom) continue;
+        var dictKana = dict[w];
+        // 词典里有、而且和罗马音读音不一样 —— 这才是"会读歪"的那种词
+        if (dictKana && dictKana !== rom) distinct++;
+      }
+      looks = distinct >= ROMAJI_LINE_MIN;
+    } catch (e) {
+      looks = false; // 判断失败就当它不是罗马字行，绝不因此影响注音
+    }
+    if (romajiLineCache.size > ROMAJI_LINE_CACHE_MAX) romajiLineCache.clear();
+    romajiLineCache.set(key, looks);
+    return looks;
+  }
+
   /**
    * 一个本地答案在"谁说了算"这件事上的**实际名次**。
    * 一般情况下就是它所在层的名次，但有个例外：**没把握的答案（confident:false）
@@ -322,9 +389,34 @@
    * source 是给排障用的（「按来源着色」把每一层染成不同颜色），
    * 单独一个 readForDisplay() 只返回 kana，控制台 LK.display() 用它。
    */
+  /**
+   * 本地几层给的答案（含"罗马字行里的短音节改读罗马音"这条修正）。
+   *
+   * resolveReading 和 isProvisional 必须用**同一个**答案，否则会出现
+   * "页面上显示得很确定、其实正在问模型"这种不同步。
+   */
+  function localReading(word, line) {
+    var r = state.reader ? state.reader.read(word) : null;
+    if (!r || !r.kana) return null;
+    /*
+     * 词典是**英文**词典，`PI` 会被读成 パイ、`ME` 读成 ミー、
+     * `PE` 甚至读成 ピーイー（把 "P E" 当字母念）—— 在一首日语歌的罗马字行里
+     * 这些全错。这一行的构成已经说明它是罗马字（见 lineLooksRomaji），
+     * 所以用罗马音读音覆盖词典读音，但**标成没把握**：在线层（大模型）
+     * 拿到整句语境后可以改回去（英文行不会被读歪），离线时就按罗马音。
+     */
+    if (line && r.source === "dict") {
+      var rom = shortRomajiOf(word);
+      if (rom && rom !== r.kana && lineLooksRomaji(line)) {
+        return { kana: rom, source: "romaji", confident: false };
+      }
+    }
+    return r;
+  }
+
   function resolveReading(word, line) {
     if (!state.reader) return null;
-    var r = state.reader.read(word);
+    var r = localReading(word, line);
     if (!r || !r.kana) return null;
 
     var mine = effectiveRank(r); // 没把握的答案按最低层算，在线层可以覆盖它
@@ -368,7 +460,7 @@
    */
   function isProvisional(word, line) {
     if (!word || !state.reader) return false;
-    var r = state.reader.read(word);
+    var r = localReading(word, line);
     if (!r) return false;
     var mine = effectiveRank(r);
     for (var i = 0; i < config.layerOrder.length; i++) {

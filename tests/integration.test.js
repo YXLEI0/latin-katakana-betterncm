@@ -1476,6 +1476,95 @@ test("LK.why('文本')：说清「那一行为什么没注音」（区域外 / �
   assert.ok(env.api.why().indexOf("上一轮") >= 0, "不带参数还是原来的跳过统计");
 });
 
+test("罗马音节行：短音节按罗马音读（PI→ピ / ME→メ），普通英文行不受影响", async () => {
+  // 用户报的：`Yes, PA PI PU PE PO POP UP!(Hey!!)Yes, MA MI MU ME MO MORE JUMP!(Yeah!!)`
+  // 用词典（英文词典）效果很差：PI→パイ、PE→ピーイー（把 "P E" 当字母念）、ME→ミー…
+  // 一行里同时出现 5 个以上"词典读音 vs 罗马音读音打架"的短音节 -> 这是罗马字行。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Yes, PA PI PU PE PO POP UP!(Hey!!)Yes, MA MI MU ME MO MORE JUMP!(Yeah!!)</p></li>
+  <li class="line"><p>No, no, no, I need you so</p></li>
+  <li class="line"><p>we can go to the sea</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(250);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const reading = (p) =>
+    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+      r.childNodes[0].nodeValue,
+      r.querySelector(".lt-rt").textContent,
+    ]);
+
+  const romaji = new Map(reading(ps[0]));
+  // 短音节：罗马音读法
+  assert.strictEqual(romaji.get("PI"), "ピ", "PI 该是 ピ，不是词典的 パイ");
+  assert.strictEqual(romaji.get("PE"), "ペ", "PE 该是 ペ，不是词典把 P E 念成 ピーイー");
+  assert.strictEqual(romaji.get("PO"), "ポ");
+  assert.strictEqual(romaji.get("MI"), "ミ");
+  assert.strictEqual(romaji.get("ME"), "メ", "ME 该是 メ，不是 ミー");
+  assert.strictEqual(romaji.get("MO"), "モ");
+  assert.strictEqual(romaji.get("PA"), "パ");
+  assert.strictEqual(romaji.get("MU"), "ム");
+  // 真英文词照旧走词典
+  assert.strictEqual(romaji.get("POP"), "ポップ");
+  assert.strictEqual(romaji.get("UP"), "アップ");
+  assert.strictEqual(romaji.get("MORE"), "モア");
+  assert.strictEqual(romaji.get("JUMP"), "ジャンプ");
+
+  // 普通英文行：词典读音一个字都不许变（no/so/go/to/you 这些短词不是罗马音节）
+  const en = new Map(reading(ps[1]));
+  assert.strictEqual(en.get("No"), "ノー", "英文行里的 No 是 ノー：" + JSON.stringify([...en]));
+  assert.strictEqual(en.get("I"), "アイ");
+  assert.strictEqual(en.get("you"), "ユー");
+  assert.strictEqual(en.get("so"), "ソー");
+  const en2 = new Map(reading(ps[2]));
+  assert.strictEqual(en2.get("go"), "ゴー", "英文行里的 go 是 ゴー：" + JSON.stringify([...en2]));
+  assert.strictEqual(en2.get("to"), "トゥ");
+  assert.strictEqual(en2.get("we"), "ウィー");
+  assert.strictEqual(en2.get("sea"), "シー");
+});
+
+test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>PA PI PU PE PO MA MI MU ME MO</p></li>
+  <li class="line"><p>No, no, I need you so</p></li>
+</ul></div></div>
+</body></html>`;
+  const asked = [];
+  const env = bootPlugin(HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions", online: false },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const body = JSON.parse(init.body);
+      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
+      asked.push(items.map((it) => it.w));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = "テスト";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1400);
+
+  const words = [].concat.apply([], asked).map((w) => String(w).toLowerCase());
+  for (const w of ["pi", "pe", "po", "mi", "me", "mo"]) {
+    assert.ok(words.indexOf(w) >= 0, w + " 该送去问模型（罗马音节行，词典会读歪）：" + words.join(","));
+  }
+  // 「PA」没有词典条目、罗马音本来就是对的，不必浪费请求
+  assert.ok(words.indexOf("pa") < 0, "PA 不用问：" + words.join(","));
+  // 英文行里的短词不进队列（那一行没被判成罗马字行）
+  assert.ok(words.indexOf("no") < 0, "英文行的 no 不该被问：" + words.join(","));
+});
+
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
   // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
   //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；
