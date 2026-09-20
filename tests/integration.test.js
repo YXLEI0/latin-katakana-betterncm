@@ -2019,6 +2019,33 @@ ${lines.map((l) => `  <li class="line"><p>${l}</p></li>`).join("\n")}
   assert.strictEqual(lyric2.get("CC"), "シーシー");
 });
 
+test("波浪号拉长音：`この feel~ing go~od` 读 フィーリング / グッド", async () => {
+  // 用户截图的歌词。波浪号是拉长音的排版写法，原来被当成词边界切开，
+  // 读成了 フィール + イング、ゴー + オッド。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>この feel~ing go~od</p></li>
+  <li class="line"><p>go~ の love~</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(300);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const got = new Map(
+    [...ps[0].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+  assert.strictEqual(got.get("feel~ing"), "フィーリング", "波浪号要连起来读：" + ps[0].innerHTML);
+  assert.strictEqual(got.get("go~od"), "グッド", "go~od 是 good：" + ps[0].innerHTML);
+  assert.strictEqual(baseText(ps[0]), "この feel~ing go~od", "底字一字不改");
+  // 结尾的波浪号不算连接符：还是 go / love
+  const got2 = new Map(
+    [...ps[1].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+  assert.strictEqual(got2.get("go"), "ゴー", ps[1].innerHTML);
+  assert.strictEqual(got2.get("love"), "ラブ", ps[1].innerHTML);
+});
+
 test("罗马音节行：这些短音节标成「没把握」，会送去问大模型按语境判", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

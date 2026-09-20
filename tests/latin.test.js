@@ -208,6 +208,27 @@ test("大写单字母放行给读音层判，小写单字母仍只放 a / I", ()
   assert.strictEqual(latin.looksReadable(latin.scan("A.")[0]), false, "粘着标点的 A 还是不标");
 });
 
+test("波浪号是词内连接符：`feel~ing` 是一个词（norm=feeling）", () => {
+  // 用户截图：`この feel~ing go~od` 原来按波浪号切成了 feel + ing / go + od，
+  // 读出来是 フィールイング、ゴーオッド。波浪号是拉长音的排版写法，
+  // 该按词内连接符处理（和连字符一样）。
+  const cases = [
+    ["feel~ing", "feel~ing", "feeling"],
+    ["go~od", "go~od", "good"],
+    ["feel～ing", "feel～ing", "feeling"], // 全角 ～
+    ["feel〜ing", "feel〜ing", "feeling"], // 波ダッシュ 〜
+  ];
+  for (const [src, text, norm] of cases) {
+    const toks = latin.scan(src);
+    assert.strictEqual(toks.length, 1, src + " 应该是一个词：" + JSON.stringify(toks.map((t) => t.text)));
+    assert.strictEqual(toks[0].text, text);
+    assert.strictEqual(toks[0].norm, norm, src + " 查表用的形式要去掉波浪号");
+  }
+  // 结尾的波浪号不算连接符（后面没有字母）：`go~` / `love~` 还是原来的词
+  assert.deepStrictEqual(latin.scan("go~ の love~").map((t) => t.text), ["go", "love"]);
+  assert.deepStrictEqual(latin.scan("~go").map((t) => t.text), ["go"]);
+});
+
 test("hasReadable：整段里有没有值得标的词", () => {
   assert.strictEqual(latin.hasReadable("きらめく light"), true);
   assert.strictEqual(latin.hasReadable("x y z"), false, "只有不标的单字母就不值得处理");

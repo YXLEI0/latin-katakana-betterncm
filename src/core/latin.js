@@ -36,8 +36,22 @@
   /** 整串就是一个记号（`D/N/A`、`N/A`、`A.B.C`、`R&B`、`X-Y`） */
   var RE_NOTATION_WHOLE = new RegExp("^" + LAT + "(?:" + GLUE + LAT + ")+$");
 
-  /** 普通词（含撇号/连字符） */
-  var RE_PLAIN = new RegExp(LAT + "(?:" + LAT + "|['\\u2019-](?=" + LAT + "))*", "g");
+  /*
+   * 词内连接符：撇号、连字符，以及**波浪号**。
+   *
+   * 波浪号是用户截图教出来的：`この feel~ing go~od` 原来是按波浪号切开的
+   * （feel + ing → フィール + イング、go + od → ゴー + オッド），
+   * 读出来就是"フィールイング"这种东西。它是**拉长音的排版写法**
+   * （feel~ing = feeling、go~od = good），所以当词内连接符处理：
+   * 整串算一个词，查表时把波浪号折掉（norm = feeling / good）。
+   *
+   * 结尾的那种（`go~` / `love~`）不受影响：连接符后面必须还有字母才算词内。
+   * 三种波浪号都收：ASCII `~`、全角 `～`(FF5E)、波ダッシュ `〜`(301C)。
+   */
+  var WORD_JOIN = "['\\u2019~\uFF5E\u301C-]";
+
+  /** 普通词（含撇号/连字符/波浪号） */
+  var RE_PLAIN = new RegExp(LAT + "(?:" + LAT + "|" + WORD_JOIN + "(?=" + LAT + "))*", "g");
 
   /** 这段文字里有没有拉丁字母（含带变音符号的） */
   function hasLatin(text) {
@@ -59,7 +73,7 @@
    * "A." 这种句首缩写不再注音，比把 `A.B.C` 里的 A 注成 ア 好得多。
    * 装饰性符号（`&A&`、`*A*`、`#A`）同样算粘住：那种 A 是排版效果，不是冠词。
    */
-  var GLUE_CHARS = "/\\|_.\u30FB\uFF0F\uFF3C-\u2010\u2011\u2013\u2014&#*~+=\u301C";
+  var GLUE_CHARS = "/\\|_.\u30FB\uFF0F\uFF3C-\u2010\u2011\u2013\u2014&#*~+=\u301C\uFF5E";
   function isGluedLetter(text, start, end) {
     var before = start > 0 ? text.charAt(start - 1) : "";
     var after = end < text.length ? text.charAt(end) : "";
@@ -129,12 +143,12 @@
     return m && m.index === 0 ? m[0] : null;
   }
 
-  /** 查表/音译用的规范形式：小写、去掉撇号与连字符 */
+  /** 查表/音译用的规范形式：小写、去掉撇号与连字符（波浪号同理，见 WORD_JOIN） */
   function normalize(text) {
     if (!text) return "";
     return String(text)
       .toLowerCase()
-      .replace(/['\u2019-]/g, "");
+      .replace(/['\u2019~\uFF5E\u301C-]/g, "");
   }
 
   /*
