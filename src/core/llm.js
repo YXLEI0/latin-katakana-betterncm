@@ -492,7 +492,16 @@
       } catch (e) {
         /* 引擎不支持就往下走兜底 */
       }
-      var w = raw.replace(/[\u00C0-\u024F\u1E00-\u1EFF]/g, "").replace(/[^a-z]/g, "");
+      /*
+       * 只留"西文字母"：拉丁（含 NFD 折过之后剩下的）、西里尔、希腊。
+       *
+       * `[^a-z]` 那一版把**西里尔 / 希腊**整词削成了空串 —— keyOf 返回 ""、
+       * cacheKeyOf 返回 ""，lookup 直接 return null：俄语和希腊语的词**从来没被问过**，
+       * 于是永远停在规则层（用户报的"希腊语和俄语一直是黄的"）。
+       */
+      var w = raw
+        .replace(/[\u00C0-\u024F\u1E00-\u1EFF]/g, "")
+        .replace(/[^a-z\u0370-\u03FF\u0400-\u04FF\u1F00-\u1FFF]/g, "");
       if (!w || w.length > MAX_WORD_LEN) return "";
       return w;
     }

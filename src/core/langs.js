@@ -1,16 +1,26 @@
 /*
- * 西文语言的拼读规则 + 整行语言判定。
+ * 西文语言的拼读规则 + 整行语言判定 —— **语言这件事只在这里**。
  *
- * 为什么单独一个文件：core/reading.js 里那两套是「日语罗马音」和「英语」，
- * 而德语 / 拉丁语 / 葡萄牙语 / 荷兰语 / 斯瓦希里语 / 汉语拼音 / 俄语（西里尔）/
- * 希腊语各有各的拼读，全塞进 reading.js 只会让那个文件更难读。
- * 这里只管两件事：
+ * 分工（一个关注点只放一个地方）：
+ *   core/letters.js  切词：哪些字符算"西文的一个词"（拉丁 / 西里尔 / 希腊三种字母）
+ *   core/dict.js     离线词典（人工 + 沉淀 + 大模型），优先级最高
+ *   core/reading.js  只有两套：日语罗马音、英语规则
+ *   core/langs.js    **本文件**：九种西文的拼读引擎 + 整行语言判定 + 同形异音 + 语言名
+ *   core/loan.js     借词表（tools/vendor/loan/*.txt 生成），九种语言共用一张机制
  *
+ * 九种语言：法语 fr / 德语 de / 拉丁语 la / 葡萄牙语 pt / 荷兰语 nl /
+ * 斯瓦希里语 sw / 汉语拼音 pinyin / 俄语 ru / 希腊语 el。
+ * 法语原来单独写在 core/reading.js 里（拼读 + 判据 + 借词表），现在整块搬过来了：
+ * 拼读进 ENGINE，判据进 SIGNALS，借词表进 tools/vendor/loan/fr.txt。
+ *
+ * 对外就四件事：
  *   detect(text)          这一行是什么语言（判不出来返回 null）
+ *   fits(id, text)        整首投票兜底：短行自己分不够时"像不像"那种语言
  *   toKatakana(id, word)  按那种语言拼读，把一个词读成片假名
+ *   word(id, raw)         这个词有没有"日语里就是这么写"的借词读音
  *
- * 借词表（core/loan.js，sljfaq 那份「日语里就是这么写的」）也在这里查：
- * 它是**日语通行写法**，等于人工词条，所以在外语行上比英语词典还优先。
+ * 借词表（core/loan.js，sljfaq 那份「日语里就是这么写的」）是**日语通行写法**，
+ * 等于人工词条，所以在外语行上比英语词典还优先。
  *
  * 两种字母：
  *   拉丁字母：词由 core/letters.js 切出来，读音走这里的引擎；
@@ -29,8 +39,9 @@
   "use strict";
 
   /**
-   * 运行时取依赖：注入顺序里 core/reading.js、core/loan.js 都在本文件前面，
-   * 但 Node 里单独 require 时它们可能不在，所以取不到就退化成「没有这张表」。
+   * 运行时取依赖：注入顺序里 core/loan.js 在本文件前面，但 Node 里单独 require
+   * 时它可能不在，所以取不到就退化成「没有这张表」。
+   * **只依赖 core/loan.js** —— 拼读判据全在本文件里，不再伸手去拿 core/reading.js。
    */
   function dep(name) {
     return root && root[name] ? root[name] : null;
@@ -43,10 +54,15 @@
     return String(s == null ? "" : s).toLowerCase();
   }
 
-  /** 查表/拼读用：小写 + 去掉撇号/连字符/空白 */
+  /**
+   * 查表/拼读用：小写 + 去掉撇号/连字符/空白。
+   * 注意 **ASCII 连字符也要去掉**（rendez-vous→rendezvous、Auf-Wiedersehen→
+   * aufwiedersehen）：借词表的键都是折掉的写法，法语那张表里
+   * rendez-vous / l'eau 这类词全靠这一条才查得到。
+   */
   function bare(s) {
     return lower(s)
-      .replace(/['\u2019\u2011\u2013\u2014\u30FB.\uFF0E]/g, "")
+      .replace(/['\u2019\u2011\u2013\u2014\u30FB.\uFF0E-]/g, "")
       .replace(/\s+/g, "");
   }
 
@@ -1173,6 +1189,338 @@
     return out ? { kana: out, confident: false } : null;
   }
 
+  // ------------------------------------------------------------ 法语拼读
+
+  /*
+   * 法语拼写 -> 片假名读音（近似），用于法语歌词。
+   *
+   * 用户给了一整首法语歌词（《L'Assasymphonie》那类），要求"添加对法语的支持"：
+   *   Ah, si je pouvais vivre dans l'eau, / le monde serait-il plus beau ?
+   *   Nous pardonneras-tu, ô chère mère ? / L'eau dans son courant fait danser nos vies.
+   * 目标是日语通行写法：je ジュ、le ル、monde モンド、l'eau ロー、amour アムール、
+   * toujours トゥジュール、jamais ジャメ …
+   *
+   * **这是近似**：法语的联诵、哑音 e、开闭音节、重音位置都靠拼写判不准，
+   * 所以法语行上的结果一律 `confident: false` —— 配了 key 就交给大模型按整句定，
+   * 判完还会被自动沉淀成离线词条（core/learn.js）；没配 key 时用这里的近似值。
+   *
+   * 规则按优先级从上到下试（先长后短）：
+   *   1. 元音 + r +（词尾 / 哑音 e）：拉长 + ル（amour アムール、mère メール）
+   *   2. 鼻化元音（后接辅音或词尾）：an/am/en/em/in/im/on/om/un/um/ain/ein/oin/ien
+   *   3. 元音组合：eau/au オー、ou ウ、oi ワ、ai/ei エ、eu/œu ウ
+   *   4. 辅音组合：ch シュ、gn ニュ、qu ク、ph フ、th ト、ill イユ
+   *   5. 单字母（辅音 + 元音直接拼；词尾辅音大多不发音）
+   * 撇号与连字符直接忽略：l'eau 当 leau（ロー）、serait-il 当 seraitil（スレティル）。
+   */
+
+  var FR_VOWEL = {
+    a: "\u30A2", "\u00E0": "\u30A2", "\u00E2": "\u30A2", "\u00E6": "\u30A8",
+    e: "\u30A6", "\u00E9": "\u30A8", "\u00E8": "\u30A8", "\u00EA": "\u30A8", "\u00EB": "\u30A8",
+    i: "\u30A4", "\u00EE": "\u30A4", "\u00EF": "\u30A4", y: "\u30A4",
+    o: "\u30AA", "\u00F4": "\u30AA", "\u00F6": "\u30AA",
+    u: "\u30E5", "\u00F9": "\u30E5", "\u00FB": "\u30E5", "\u00FC": "\u30E5",
+    "\u0153": "\u30A6",
+  };
+
+  var FR_UNITS = {
+    eau: { k: "\u30AA\u30FC", col: "o", len: 3 },
+    "\u0153u": { k: "\u30A6", col: "x", len: 2 },
+    eu: { k: "\u30A6", col: "x", len: 2 },
+    ou: { k: "\u30A6", col: "x", len: 2 },
+    oi: { k: "\u30EF", col: "a", len: 2, glide: true },
+    ai: { k: "\u30A8", col: "e", len: 2 },
+    ei: { k: "\u30A8", col: "e", len: 2 },
+    au: { k: "\u30AA\u30FC", col: "o", len: 2 },
+  };
+
+  var FR_NASAL = {
+    oin: "\u30EF\u30F3", ien: "\u30A4\u30A2\u30F3",
+    ain: "\u30A2\u30F3", ein: "\u30A2\u30F3",
+    an: "\u30A2\u30F3", am: "\u30A2\u30F3", en: "\u30A2\u30F3", em: "\u30A2\u30F3",
+    "in": "\u30A2\u30F3", im: "\u30A2\u30F3", yn: "\u30A2\u30F3", ym: "\u30A2\u30F3",
+    on: "\u30AA\u30F3", om: "\u30AA\u30F3", un: "\u30A2\u30F3", um: "\u30A2\u30F3",
+  };
+
+  var FR_ROW = {
+    b: { a: "\u30D0", e: "\u30D9", i: "\u30D3", o: "\u30DC", u: "\u30D3\u30E5", x: "\u30D6" },
+    c: { a: "\u30AB", e: "\u30B9", i: "\u30B7", o: "\u30B3", u: "\u30AD\u30E5", x: "\u30AF" },
+    "\u00E7": { a: "\u30B5", e: "\u30BB", i: "\u30B7", o: "\u30BD", u: "\u30B9\u30E5", x: "\u30B9" },
+    d: { a: "\u30C0", e: "\u30C9", i: "\u30C7\u30A3", o: "\u30C9", u: "\u30C9\u30A5", x: "\u30C9\u30A5" },
+    f: { a: "\u30D5\u30A1", e: "\u30D5\u30A7", i: "\u30D5\u30A3", o: "\u30D5\u30A9", u: "\u30D5\u30E5", x: "\u30D5" },
+    g: { a: "\u30AC", e: "\u30B8\u30A7", i: "\u30B8", o: "\u30B4", u: "\u30B0\u30E5", x: "\u30B0" },
+    j: { a: "\u30B8\u30E3", e: "\u30B8\u30A7", i: "\u30B8", o: "\u30B8\u30E7", u: "\u30B8\u30E5", x: "\u30B8\u30E5" },
+    k: { a: "\u30AB", e: "\u30B1", i: "\u30AD", o: "\u30B3", u: "\u30AD\u30E5", x: "\u30AF" },
+    l: { a: "\u30E9", e: "\u30EB", i: "\u30EA", o: "\u30ED", u: "\u30EA\u30E5", x: "\u30EB" },
+    m: { a: "\u30DE", e: "\u30E1", i: "\u30DF", o: "\u30E2", u: "\u30DF\u30E5", x: "\u30E0" },
+    n: { a: "\u30CA", e: "\u30CC", i: "\u30CB", o: "\u30CE", u: "\u30CB\u30E5", x: "\u30CC" },
+    p: { a: "\u30D1", e: "\u30DA", i: "\u30D4", o: "\u30DD", u: "\u30D4\u30E5", x: "\u30D7" },
+    r: { a: "\u30E9", e: "\u30EB", i: "\u30EA", o: "\u30ED", u: "\u30EA\u30E5", x: "\u30EB" },
+    s: { a: "\u30B5", e: "\u30BB", i: "\u30B7", o: "\u30BD", u: "\u30B9\u30E5", x: "\u30B9" },
+    t: { a: "\u30BF", e: "\u30C6", i: "\u30C6\u30A3", o: "\u30C8", u: "\u30C1\u30E5", x: "\u30C8\u30A5" },
+    v: { a: "\u30F4\u30A1", e: "\u30F4\u30A7", i: "\u30F4\u30A3", o: "\u30F4\u30A9", u: "\u30F4\u30E5", x: "\u30F4" },
+    w: { a: "\u30EF", e: "\u30F4\u30A7", i: "\u30A6\u30A3", o: "\u30F4\u30A9", u: "\u30F4\u30E5", x: "\u30A6" },
+    z: { a: "\u30B6", e: "\u30BC", i: "\u30B8", o: "\u30BE", u: "\u30BA", x: "\u30BA" },
+  };
+
+  var FR_SILENT_TAIL = { s: true, t: true, d: true, x: true, z: true, p: true, g: true, m: true, n: true, c: true, f: true, b: true, k: true };
+
+  /** 法语元音字母（含带符号的） */
+  function charIsVowelFr(ch) {
+    return ch !== "" && "aeiouy\u00E0\u00E2\u00E4\u00E9\u00E8\u00EA\u00EB\u00EE\u00EF\u00F4\u00F6\u00F9\u00FB\u00FC\u0153\u00E6".indexOf(ch) >= 0;
+  }
+
+  /** 从 pos 起是什么元音列（给辅音拼拍用）：返回 { col, len, nasal?, long?, glide? } */
+  function frColumn(w, pos) {
+    var three = w.substr(pos, 3);
+    var two = w.substr(pos, 2);
+    var one = w.charAt(pos);
+    /** 这一拍后面是不是"r +（词尾或哑音 e）"——法语里那种元音要拉长（mère メール） */
+    function longBeforeR(len) {
+      var after = w.charAt(pos + len);
+      if (after !== "r") return false;
+      var nxt = w.charAt(pos + len + 1);
+      return nxt === "" || (nxt === "e" && pos + len + 2 >= w.length);
+    }
+    if (FR_UNITS[three]) {
+      return { col: FR_UNITS[three].col, len: 3, long: FR_UNITS[three].k.indexOf("\u30FC") >= 0 || longBeforeR(3), glide: !!FR_UNITS[three].glide };
+    }
+    if (FR_NASAL[three] && !charIsVowelFr(w.charAt(pos + 3))) {
+      return { col: FR_NASAL[three].charAt(0) === "\u30AA" ? "o" : "a", len: 3, nasal: true };
+    }
+    if (FR_UNITS[two]) {
+      return { col: FR_UNITS[two].col, len: 2, long: FR_UNITS[two].k.indexOf("\u30FC") >= 0 || longBeforeR(2), glide: !!FR_UNITS[two].glide };
+    }
+    if (FR_NASAL[two] && !charIsVowelFr(w.charAt(pos + 2))) {
+      return { col: FR_NASAL[two].charAt(0) === "\u30AA" ? "o" : "a", len: 2, nasal: true };
+    }
+    if (one === "" || one === undefined) return null;
+    if (one === "l" && w.charAt(pos + 1) === "l") return null;
+    if ("e\u00E9\u00E8\u00EA".indexOf(one) >= 0) return { col: "e", len: 1, long: longBeforeR(1) };
+    if ("iy\u00EE\u00EF".indexOf(one) >= 0) return { col: "i", len: 1, long: longBeforeR(1) };
+    if ("o\u00F4".indexOf(one) >= 0) return { col: "o", len: 1, long: longBeforeR(1) };
+    if ("u\u00F9\u00FB\u00FC".indexOf(one) >= 0) return { col: "u", len: 1, long: longBeforeR(1) };
+    if ("a\u00E0\u00E2".indexOf(one) >= 0) return { col: "a", len: 1, long: longBeforeR(1) };
+    return null;
+  }
+
+  /** 法语词 -> 片假名（近似）。判不出来返回 null。 */
+  function frenchToKatakana(raw) {
+    if (typeof raw !== "string") return null;
+    var w = raw
+      .toLowerCase()
+      .replace(/['\u2019\u2011-]/g, "")
+      .replace(/\s+/g, "");
+    if (!w || !/^[a-z\u00E0-\u00FF\u0153]+$/.test(w)) return null;
+    /*
+     * 复数词尾 "-es" 不发音（vies ヴィ、amours アムール）—— 但三个字母以内不算：
+     * les レ、des デ、ces セ、mes メ 这些 e 是要读的。这是近似，判错了交给大模型。
+     */
+    /*
+     * 词尾的 s 大多不发音（vies ヴィ、pardonneras パルドンヌラ、plus プリュ）。
+     * 四个字母以上、且 s 前面是元音（不是鼻化元音）时直接去掉；
+     * les / des / ces / mes 这些三个字母以内的照旧读 レ / デ / セ / メ。
+     */
+    if (w.length >= 4 && /[aeiou\u00E9\u00E8\u00EA\u00E0\u00E2\u00EE\u00EF\u00F4\u00FB\u00F9]s$/.test(w)) {
+      w = w.slice(0, -1);
+    }
+    if (w.length >= 4 && /[^aeiou]es$/.test(w)) w = w.slice(0, -2);
+
+    var out = "";
+    var i = 0;
+    var len = w.length;
+    while (i < len) {
+      var rest = len - i;
+      var three = w.substr(i, 3);
+      var two = w.substr(i, 2);
+      var ch = w.charAt(i);
+
+      // ---- 1. 元音 + r +（词尾 / 哑音 e）：拉长 + ル
+      var vr = /^([aeiouy\u00E0\u00E2\u00E9\u00E8\u00EA\u00EB\u00EE\u00EF\u00F4\u00F6\u00F9\u00FB\u00FC\u0153\u00E6]+)r(e?)$/.exec(w.slice(i));
+      if (vr && vr[1].length <= 3) {
+        var vk = null;
+        if (FR_UNITS[vr[1]]) vk = FR_UNITS[vr[1]].k;
+        else {
+          var lv = vr[1].charAt(vr[1].length - 1);
+          if (FR_VOWEL[lv] !== undefined) vk = FR_VOWEL[lv];
+          else if (FR_UNITS[vr[1].slice(-2)]) vk = FR_UNITS[vr[1].slice(-2)].k;
+        }
+        if (vk) {
+          out += vk.replace(/\u30FC$/, "") + "\u30FC\u30EB";
+          i = len;
+          continue;
+        }
+      }
+
+      // ---- 2. 鼻化元音（后面是辅音或词尾）
+      if (FR_NASAL[three] && (i + 3 === len || !charIsVowelFr(w.charAt(i + 3)))) {
+        out += FR_NASAL[three];
+        i += 3;
+        continue;
+      }
+      if (FR_NASAL[two] && (i + 2 === len || !charIsVowelFr(w.charAt(i + 2)))) {
+        out += FR_NASAL[two];
+        i += 2;
+        continue;
+      }
+
+      // ---- 3. 元音组合
+      if (FR_UNITS[three]) {
+        out += FR_UNITS[three].k;
+        i += 3;
+        continue;
+      }
+      if (FR_UNITS[two]) {
+        out += FR_UNITS[two].k;
+        i += 2;
+        continue;
+      }
+
+      // ---- 4. 辅音组合
+      if (three === "ill") {
+        out += "\u30A4\u30E6";
+        i += 3;
+        continue;
+      }
+      if (two === "ch") {
+        // ch 也要按后一个元音拼：chère シェール、chose ショーズ、chut シュ
+        var chCol = frColumn(w, i + 2);
+        if (chCol) {
+          out += (chCol.col === "e" ? "\u30B7\u30A7" : chCol.col === "i" ? "\u30B7" : chCol.col === "o" ? "\u30B7\u30E7" : chCol.col === "a" ? "\u30B7\u30E3" : "\u30B7\u30E5");
+          if (chCol.nasal) out += "\u30F3";
+          if (chCol.long) out += "\u30FC";
+          i += 2 + chCol.len;
+          continue;
+        }
+        out += "\u30B7\u30E5"; // シュ
+        i += 2;
+        continue;
+      }
+      if (two === "gn") {
+        out += "\u30CB\u30E5";
+        i += 2;
+        continue;
+      }
+      if (two === "qu") {
+        out += "\u30AF";
+        i += 2;
+        continue;
+      }
+      if (two === "ph") {
+        out += "\u30D5";
+        i += 2;
+        continue;
+      }
+      if (two === "th") {
+        out += "\u30C8";
+        i += 2;
+        continue;
+      }
+      if (ch === "h") {
+        i++;
+        continue;
+      }
+
+      // ---- 5. 辅音 + 元音
+      if (FR_ROW[ch]) {
+        var col = frColumn(w, i + 1);
+        if (col) {
+          /*
+           * 一拍怎么拼：
+           *   - "oi"（glide ✓）：辅音本体 + ワ（toi トワ）
+           *   - "ou"/"eu"（col = x）：只用本体（pou プ、deux ドゥ）
+           *   - 其余（a/e/i/o/u 列）：本体换元音（dans ダン、plus プリュ…）
+           */
+          out += col.glide ? FR_ROW[ch].o + "\u30EF" : FR_ROW[ch][col.col] || FR_ROW[ch].a;
+          if (col.nasal) out += "\u30F3";
+          if (col.long) out += "\u30FC";
+          i += 1 + col.len;
+          continue;
+        }
+        if (rest === 1) {
+          if (ch === "l" || ch === "r") out += "\u30EB";
+          i++;
+          continue;
+        }
+        // 辅音连缀里的第一个：只读辅音本体（plus プリュ、grand グラン）
+        out += FR_ROW[ch].x;
+        i++;
+        continue;
+      }
+
+      // ---- 6. 元音单字母
+      if (FR_VOWEL[ch] !== undefined) {
+        out += FR_VOWEL[ch];
+        i++;
+        continue;
+      }
+
+      if (rest === 1 && FR_SILENT_TAIL[ch]) {
+        i++;
+        continue;
+      }
+      i++;
+    }
+
+    var kana = out.replace(/\u30FC{2,}/g, "\u30FC");
+    return kana ? { kana: kana, confident: false } : null;
+  }
+
+  // ------------------------------------------------------------ 法语判据
+
+  /*
+   * 法语功能词表：既是"这行有多少法语词"的分表（SIGNALS.fr.words，权重 2），
+   * 也是 looksFrench 判"没有硬信号时凑够两个法语词"的依据。
+   * 键都是 ASCII（变音符号折掉后的写法），因为 wordsOf() 折过之后才查表。
+   */
+  var FR_WORDS = {};
+  (function () {
+    var list =
+      "le la les un une des du de au aux ce cet cette ces mon ma mes ton ta tes son sa ses " +
+      "notre nos votre vos leur leurs je tu il elle on nous vous ils elles me te se moi toi lui eux " +
+      "et ou mais donc car ni que qui quoi dont si comme ne pas rien jamais toujours deja " +
+      "dans sur sous avec pour par vers chez entre sans est sont etait etaient sera serai suis es " +
+      "etre avoir ont avait fait faire dit dire voit voir sais savoir peut pouvoir veut vouloir " +
+      "doit devoir va aller vient venir vit vivre meurt mourir aime aimer chante chanter danse danser " +
+      "coeur amour vie monde ciel nuit jour temps yeux main beau belle doux douce grand petit tout tous toute " +
+      "bien mal encore aussi alors quand comment pourquoi oui non merci adieu histoire fleur mere pere soeur frere";
+    var toks = list.split(/\s+/);
+    for (var i = 0; i < toks.length; i++) if (toks[i]) FR_WORDS[toks[i]] = 2;
+  })();
+
+  /**
+   * 这一行**像不像**法语（法语判定的门槛，见 passes()）。
+   *
+   * 为什么单独一条判据、不直接用分数：法语和拉丁语/英语的词形太像了，
+   * 只按分数会把英文行和拉丁行读成法语。这里要的是"有法语独有的记号"：
+   *   硬信号（变音符号 / 省音撇号 / 法语排版的" ?"）+ 至少一个法语词，
+   *   没有硬信号时则要**两个以上**法语词 —— 而且**全大写缩写多的行不算**
+   *   （`Yes, PA PI PU PE PO… MA MI MU ME MO… JUMP!` 那种罗马音节行
+   *   也能凑出 ma / me 两个词）。
+   */
+  function looksFrench(text) {
+    var s = String(text == null ? "" : text);
+    if (!s) return false;
+    var hard =
+      /[\u00E9\u00E8\u00EA\u00E0\u00E7\u00F9\u00F4\u00EE\u00FB\u00EB\u00EF\u0153]/i.test(s) ||
+      /(^|[\s(\["'])(?:l|d|j|n|s|c|m|t|qu)['\u2019]/i.test(s) ||
+      /\s[?!;:]/.test(s);
+    var words = 0;
+    var re = /[a-zA-Z\u00C0-\u00FF\u0153'\u2019]+/g;
+    var m;
+    while ((m = re.exec(s))) {
+      var w = m[0].toLowerCase().replace(/['\u2019].*$/, "");
+      if (FR_WORDS[w]) words++;
+    }
+    if (hard && words >= 1) return true;
+    /*
+     * 没有硬信号时，只凭功能词判断的这条要小心：
+     * `Yes, PA PI PU PE PO POP UP! … MA MI MU ME MO MORE JUMP!` 这种罗马音节行里
+     * 也能凑出两个（ma / me），所以**全大写缩写多的行不算法语**。
+     */
+    if (/\b[A-Z]{2,}\b/.test(s)) return false;
+    return words >= 2;
+  }
+
   // ============================================================ 语言判定
 
   /**
@@ -1197,11 +1545,18 @@
    */
   var SIGNALS = {
     /*
-     * 法语只是一个占位项：判据本身在 core/reading.js 的 looksFrench（有意保留，
-     * 那套判据有它自己的测试）。这里给个 min，是为了让"取最高分"那段统一 ——
-     * 少了它就会出现 `SIGNALS[best]` 是 undefined 的崩溃（踩过）。
+     * 法语：词表和别的语种同一套机制（FR_WORDS 直接当这张表用），分数也走 scoreOf。
+     * 唯一特别的是**门槛**：法语和拉丁语的词形太像（Non, le grand amour ne suffit
+     * pas. 里 grand / pas / non 全是"辅音收尾"），只按分数会把英文行/拉丁行读成
+     * 法语，所以 passes() 里额外要求 looksFrench() 点头
+     * （变音符号 / 省音撇号 / 两个以上法语功能词）。
      */
-    fr: { min: 5, hard: [], words: {}, shapes: [] },
+    fr: {
+      min: 3,
+      hard: [[/[\u00E9\u00E8\u00EA\u00E0\u00E7\u00F9\u00F4\u00EE\u00FB\u00EB\u00EF\u0153]/, 3]],
+      words: FR_WORDS, // 定义在下面「法语判据」那一段（本文件在 SIGNALS 之前求值）
+      shapes: [[/(?:eau|oi|ain|ein|oin|gn|ill|qu)/, 1], [/(?:ez|er|ir)$/, 1]],
+    },
     de: {
       min: 4,
       hard: [[/\u00DF/, 3], [/[\u00E4\u00F6\u00FC]/, 3]],
@@ -1437,18 +1792,12 @@
      */
     if (/[\u3041-\u3096\u30A1-\u30FA]/.test(s)) return null;
 
+    /*
+     * 所有语种一起打分，法语也在里面（门槛交给 passes）。
+     * 顺序 = 同分时的优先级（数组顺序就是候选顺序）。
+     */
+    var ids = ["fr", "de", "la", "pt", "nl", "sw", "pinyin"];
     var cands = [];
-    var reading = dep("WKReading");
-    if (reading && typeof reading.looksFrench === "function") {
-      var isFr = false;
-      try {
-        isFr = !!reading.looksFrench(s);
-      } catch (e) {
-        isFr = false;
-      }
-      if (isFr) cands.push({ id: "fr", score: frScore(s, reading) });
-    }
-    var ids = ["de", "la", "pt", "nl", "sw", "pinyin"];
     for (var i = 0; i < ids.length; i++) cands.push({ id: ids[i], score: scoreOf(ids[i], s) });
     cands.sort(function (a, b) {
       return b.score - a.score;
@@ -1459,25 +1808,15 @@
     return null;
   }
 
-  /**
-   * 法语的分数：基础 5 分（looksFrench 为真）+ 命中的法语功能词数（最多加 3）。
-   * 为什么要按词数加权：法语和拉丁语的**词形**很像（Non, le grand amour ne suffit
-   * pas. 里 grand / pas / non 全是"辅音收尾"），只给一个固定分会被拉丁语的
-   * 词形分压过去。
-   */
-  function frScore(text, reading) {
-    var words = reading && reading.FR_WORDS ? reading.FR_WORDS : null;
-    if (!words) return 5;
-    var toks = wordsOf(text);
-    var hits = 0;
-    for (var i = 0; i < toks.length; i++) if (words[toks[i]]) hits++;
-    return 5 + Math.min(3, hits);
-  }
-
   /** 这个候选过不过得了它自己的门槛 */
   function passes(id, text, score) {
     var sig = SIGNALS[id];
     if (!sig || score < sig.min) return false;
+    /*
+     * 法语的门槛是 looksFrench：变音符号/省音撇号 + 至少一个法语词，
+     * 或者两个以上法语功能词。这一关挡住"英语行/拉丁行被法语词表蹭分"。
+     */
+    if (id === "fr" && !looksFrench(text)) return false;
     // 有的语言要求"必须命中自己的词"，光靠词形（元音收尾之类）不算
     if (sig.needWords && !hasOwnWord(id, text)) return false;
     var s = lower(text);
@@ -1623,6 +1962,7 @@
   };
 
   var ENGINE = {
+    fr: frenchToKatakana,
     de: germanToKatakana,
     la: latinToKatakana,
     pt: portugueseToKatakana,
@@ -1633,13 +1973,11 @@
     el: greekToKatakana,
   };
 
-  /** 按语言拼读一个词；法语仍走 reading.js 那套（不改已有的行为） */
+  /**
+   * 按语言拼读一个词。九种语言走同一张表，没有特例。
+   * 判不出来/抛异常都返回 null —— 调用方（main.js）会退回词典和罗马音层。
+   */
   function toKatakana(id, raw) {
-    if (id === "fr") {
-      var reading = dep("WKReading");
-      if (!reading || typeof reading.frenchToKatakana !== "function") return null;
-      return reading.frenchToKatakana(raw);
-    }
     var fn = ENGINE[id];
     if (!fn) return null;
     try {
@@ -1649,13 +1987,11 @@
     }
   }
 
-  /** 借词表查询（法语那张仍在 reading.js 里） */
+  /**
+   * 这个词有没有"日语里就是这么写"的借词读音（core/loan.js，sljfaq 那几张表）。
+   * 九种语言都一样：查同一张表，法语也在这里（原来那张表写在 reading.js 里）。
+   */
   function word(id, raw) {
-    if (id === "fr") {
-      var reading = dep("WKReading");
-      if (!reading || typeof reading.frenchWord !== "function") return null;
-      return reading.frenchWord(raw);
-    }
     return loanWord(id, raw);
   }
 

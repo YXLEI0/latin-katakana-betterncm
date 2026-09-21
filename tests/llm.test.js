@@ -783,6 +783,28 @@ test("语境过长会截断，不会把整本歌词塞进提示词", async () =>
   assert.ok(calls[0].items[0].line.length <= 160, "长度 " + calls[0].items[0].line.length);
 });
 
+// ============================================================ 非拉丁字母也要问
+
+test("西里尔 / 希腊词也要问模型（缓存键不能把它们削成空串）", async () => {
+  // 用户报的「希腊语和俄语一直是黄的」：keyOf 原来用 `replace(/[^a-z]/g, "")` 折键，
+  // 西里尔（Мы）和希腊（βίος）整词被削成空串 → lookup 直接返回 null →
+  // 那些词**从来没被问过**，于是永远停在规则层（黄色）。
+  const ctx = loadCore();
+  const c = makeClient(ctx, { reply: () => ({ "1": "ムイ", "2": "ビオス" }) });
+
+  c.client.lookup("Мы", "Мы Отчизну отстоим");
+  c.client.lookup("βίος", "【2012-《βίος》】");
+  await c.client.flush();
+
+  assert.strictEqual(c.calls.length, 1, "要真的发一批请求出去");
+  const asked = c.calls[0].words.map((w) => String(w).toLowerCase());
+  assert.ok(asked.indexOf("мы") >= 0, "俄语词要进提示词：" + JSON.stringify(asked));
+  assert.ok(asked.indexOf("βίος") >= 0 || asked.indexOf("βιος") >= 0, "希腊语词要进提示词：" + JSON.stringify(asked));
+  // 结果回来之后要能按同一个键命中
+  assert.strictEqual(c.client.lookup("Мы", "Мы Отчизну отстоим"), "ムイ");
+  assert.strictEqual(c.client.lookup("βίος", "【2012-《βίος》】"), "ビオス");
+});
+
 // ============================================================ isWaiting
 
 test("isWaiting：等待期间 true；有结论/退避/没配 key 时 false", async () => {

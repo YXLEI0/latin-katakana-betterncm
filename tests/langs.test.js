@@ -1,13 +1,14 @@
 /*
  * core/langs.js —— 西文各语种的拼读与"整行是什么语言"。
  *
- * 断言用的是**用户给的测试用例**（7 组：德语 / 拉丁语 / 斯瓦希里语 / 俄语），
+ * 断言用的是**用户给的测试用例**（德语 / 拉丁语 / 斯瓦希里语 / 俄语 / 法语），
  * 期望值是"日语里通行的写法"，不是"跑出来是什么就写什么"：
  *   - 德语：w ヴ、z ツ、sch シュ、ei アイ、ie イー、双辅音不读促音
  *   - 拉丁语：古典式（c カ行、ti ティ、v ヴ、ae アエ、-um ウム、-us ウス），
  *     用户截图里的参考答案就是这一套（Vindicia ヴィンディキア、dolor ドロル）
  *   - 斯瓦希里语：开音节语言，按音节直读（Shambulia シャンブリア）
  *   - 俄语：辅音 + 元音合成一拍（Отчизну オチズヌ），软音 е/и 走 イ 段
+ *   - 法语：拼读近似（鼻化、哑音词尾、oi/ou/eu、elision）+ sljfaq 借词表
  * 期望值写成片假名字面量（测试跑在 Node 里，不受老 CEF 的 ES5 限制）。
  */
 "use strict";
@@ -15,8 +16,8 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-// langs.js 是 UMD：Node 分支下依赖（法语引擎 / 借词表）从 globalThis 取
-globalThis.WKReading = require("../src/core/reading.js");
+// langs.js 是 UMD：Node 分支下唯一的依赖是借词表（core/loan.js），从 globalThis 取。
+// 拼读引擎和语言判据都在 langs.js 自己里面（法语原来是 reading.js 的，已整块搬过来）。
 globalThis.WKLoan = require("../src/core/loan.js");
 const L = require("../src/core/langs.js");
 
@@ -133,18 +134,136 @@ test("语言判定：用户用例 6（俄语）+ 希腊语看字母表", () => {
   assert.strictEqual(L.scriptOf("clover"), null);
 });
 
-test("语言判定：法语行、日语行、纯英文行都不会被新语种抢走", () => {
-  const fr = [
-    "Ah, si je pouvais vivre dans l'eau,",
-    "le monde serait-il plus beau ?",
-    "L'eau dans son courant fait danser nos vies.",
-    "Non, le grand amour ne suffit pas.",
-    "Nous pardonneras-tu, ô chère mère ?",
-    "Et ça ne changera jamais, jamais..",
-  ];
-  for (const line of fr) assert.strictEqual(L.detect(line), "fr", line);
+test("语言判定：日语行、纯英文行不会被新语种抢走", () => {
   assert.strictEqual(L.detect("きらめく light と clover"), null);
   assert.strictEqual(L.detect("a rose is a rose is a rose"), null);
+});
+
+// ============================================================ 法语
+
+test("法语：拼读近似 + 整行判定（用户给的那首歌词）", () => {
+  // 用户要求「添加对法语的支持」，并给了一整首法语歌词当例子。
+  // 这里测两件事：①「这行是不是法语」判得准（英文行不能被误判）；
+  // ② 拼读近似值（真机上常用词还有人工词表兜着，这里只测规则层）。
+  const french = [
+    "Ah, si je pouvais vivre dans l'eau,",
+    "le monde serait-il plus beau ?",
+    "Nous pardonneras-tu, ô chère mère ?",
+    "L'eau dans son courant fait danser nos vies.",
+    "Et la cité, elle nourrit.",
+    "Ainsi que toi, mon doux amour.",
+    "Non, le grand amour ne suffit pas.",
+    "Seul un adieu fleurira.",
+    "C'est notre histoire de vie, douce et amère.",
+    "Moi, je suis et serai toujours là,",
+    "à voir le monde et sa beauté.",
+    "Et ça ne changera jamais, jamais..",
+  ];
+  for (const line of french) {
+    assert.strictEqual(L.detect(line), "fr", "这行是法语：" + line);
+  }
+  const notFrench = [
+    "I love you so much",
+    "Every night brings a dream",
+    "The shirt is nine pounds fifteen pence.",
+    "we can go to the sea",
+    "きらめく light と clover",
+  ];
+  for (const line of notFrench) {
+    assert.strictEqual(L.detect(line), null, "这行不是法语：" + line);
+  }
+
+  // 拼读近似：鼻化、哑音词尾、oi/ou/eu、连缀、elision
+  for (const [w, kana] of [
+    ["dans", "ダン"],
+    ["monde", "モンド"],
+    ["son", "ソン"],
+    ["grand", "グラン"],
+    ["plus", "プリュ"],
+    ["toi", "トワ"],
+    ["moi", "モワ"],
+    ["amour", "アムール"],
+    ["mère", "メール"],
+    ["chère", "シェール"],
+    ["jamais", "ジャメ"],
+    ["histoire", "イストワール"],
+    ["voir", "ヴォワール"],
+    ["l'eau", "ロー"],
+    ["doux", "ドゥ"],
+    ["seul", "スル"],
+    ["non", "ノン"],
+    ["un", "アン"],
+  ]) {
+    const got = L.toKatakana("fr", w);
+    assert.ok(got, w + " 要能拼出来");
+    assert.strictEqual(got.kana, kana, w);
+    assert.strictEqual(got.confident, false, w + " 是近似，要标成「没把握」交给模型");
+  }
+  // 非拉丁（中文/假名）不给结果，不能瞎拼
+  assert.strictEqual(L.toKatakana("fr", "こんにちは"), null);
+  assert.strictEqual(L.toKatakana("fr", ""), null);
+});
+
+test("法语借词表（用户给的 sljfaq 测试用例）", () => {
+  // 用户给了 https://www.sljfaq.org/afaq/french.html —— 那份表是从 EDICT 提取的
+  // "日语里来自法语的词"，也就是**日语通行写法**。它和规则层是两回事：
+  // 规则层照拼写猜，这张表是"日语里就是这么写的"，所以法语行上要先查它
+  //（连英语词典也要让路：rose 在英语行是 ローズ、在法语行是 ロゼ）。
+  // 表本身在 tools/vendor/loan/fr.txt，由 tools/build-loan.js 编译成 core/loan.js。
+  const pairs = [
+    ["adieu", "アデュー"],
+    ["amour", "アムール"],
+    ["ami", "アミ"],
+    ["atelier", "アトリエ"],
+    ["bonjour", "ボンジュール"],
+    ["bonsoir", "ボンソワール"],
+    ["boutique", "ブティック"],
+    ["chateau", "シャトー"],
+    ["chanson", "シャンソン"],
+    ["chapeau", "シャポー"],
+    ["concours", "コンクール"],
+    ["croquis", "クロッキー"],
+    ["encore", "アンコール"],
+    ["escargot", "エスカルゴ"],
+    ["etoile", "エトワール"],
+    ["fromage", "フロマージュ"],
+    ["garcon", "ギャルソン"],
+    ["gateau", "ガトー"],
+    ["maison", "メゾン"],
+    ["marron", "マロン"],
+    ["merci", "メルシー"],
+    ["noel", "ノエル"],
+    ["non", "ノン"],
+    ["oui", "ウイ"],
+    ["pierrot", "ピエロ"],
+    ["printemps", "プランタン"],
+    ["rendezvous", "ランデブー"],
+    ["restaurant", "レストラン"],
+    ["rose", "ロゼ"],
+    ["saison", "セゾン"],
+    ["salopette", "サロペット"],
+    ["sommelier", "ソムリエ"],
+    ["tarte", "タルト"],
+    ["truffe", "トリュフ"],
+    ["vacances", "バカンス"],
+  ];
+  for (const [w, kana] of pairs) {
+    assert.strictEqual(L.word("fr", w), kana, w);
+  }
+  // 带连字符/撇号/重音符号的写法要能折到同一个键上
+  assert.strictEqual(L.word("fr", "rendez-vous"), "ランデブー");
+  assert.strictEqual(L.word("fr", "Rendez-Vous"), "ランデブー");
+  assert.strictEqual(L.word("fr", "château"), "シャトー");
+  assert.strictEqual(L.word("fr", "noël"), "ノエル");
+  // 表外的词返回 null（交给规则层/大模型）
+  assert.strictEqual(L.word("fr", "ordinateur"), null);
+  assert.strictEqual(L.word("fr", ""), null);
+  // 表里的键值是纯片假名（构建期/人工都这么写）
+  const table = globalThis.WKLoan.get("fr");
+  for (const k in table) {
+    if (!Object.prototype.hasOwnProperty.call(table, k)) continue;
+    assert.match(table[k], /^[\u30A0-\u30FF\u30FC]+$/, k + " -> " + table[k]);
+  }
 });
 
 // ============================================================ 德语

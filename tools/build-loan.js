@@ -23,8 +23,8 @@ const ROOT = path.join(__dirname, "..");
 const IN_DIR = path.join(__dirname, "vendor", "loan");
 const OUT = path.join(ROOT, "src", "core", "loan.js");
 
-/** 文件名 -> 语言 id（core/langs.js 里的 id） */
-const LANGS = { de: "de", nl: "nl", pt: "pt", ru: "ru", el: "el", la: "la" };
+/** 文件名 -> 语言 id（core/langs.js 里的 id）；法语那张原来写死在 reading.js 里，现在也走这条流水线 */
+const LANGS = { fr: "fr", de: "de", nl: "nl", pt: "pt", ru: "ru", el: "el", la: "la" };
 
 /** 只允许片假名 + 长音符 */
 const RE_KANA = /^[\u30A1-\u30F6\u30FC]+$/;
