@@ -566,6 +566,59 @@ test("ASCII art / 颜文字行不标；数字后面的单位字母要标；打�
   assert.strictEqual(l6.get("B"), "ビー");
 });
 
+test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {
+  // 用户三张截图：
+  //   ① `T氏にすべてを捧げましょう` / `T Is My Everything` —— 单字母 T 一个注音都没有（该 ティー）
+  //   ② `半径300mmの体で必死に鳴いてる` —— `mm` 没注音（那首歌罗马音行唱的就是 mi ri）
+  //   ③ `PV: 羽生まゐご`（上一行是 `曲絵: 瀬川あをじ`）—— 两行都是制作信息，PV 不该标
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>T氏にすべてを捧げましょう</p></li>
+  <li class="line"><p>T Is My Everything</p></li>
+  <li class="line"><p>半径300mmの体で必死に鳴いてる</p></li>
+  <li class="line"><p>曲絵: 瀬川あをじ</p></li>
+  <li class="line"><p>PV: 羽生まゐご</p></li>
+  <li class="line"><p>A story of love and I</p></li>
+  <li class="line"><p>B面の曲と X線</p></li>
+  <li class="line"><p>mm~ と 5kg と 60Hz と 3km</p></li>
+  <li class="line"><p>Music と light の 中</p></li>
+</ul></div></div></body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+  // ① 紧贴日文的单字母 + 英文句子里的单字母
+  assert.strictEqual(pairsOf(ps[0]).get("T"), "ティー", "T氏 的 T 该读 ティー：" + ps[0].innerHTML);
+  assert.strictEqual(baseText(ps[0]), "T氏にすべてを捧げましょう");
+  const l1 = pairsOf(ps[1]);
+  assert.strictEqual(l1.get("T"), "ティー", JSON.stringify([...l1]));
+  assert.strictEqual(l1.get("Everything"), "エブリシング");
+  // ② 数字后面的单位词
+  assert.strictEqual(pairsOf(ps[2]).get("mm"), "ミリ", "300mm 该读 ミリ：" + ps[2].innerHTML);
+  // ③ 两行制作信息都不标
+  assert.strictEqual(rubyCount(ps[3]), 0, "`曲絵:` 行不该注音：" + ps[3].innerHTML);
+  assert.strictEqual(rubyCount(ps[4]), 0, "`PV:` 行不该注音：" + ps[4].innerHTML);
+  // 反面：A / I 仍是冠词 / 代词；单字母贴日文另有 B面 / X線
+  const l5 = pairsOf(ps[5]);
+  assert.strictEqual(l5.get("A"), "ア", JSON.stringify([...l5]));
+  assert.strictEqual(l5.get("I"), "アイ");
+  const l6 = pairsOf(ps[6]);
+  assert.strictEqual(l6.get("B"), "ビー", JSON.stringify([...l6]));
+  assert.strictEqual(l6.get("X"), "エックス");
+  // 反面：`mm~`（语气词）不标；带数字的单位词照标
+  const l7 = pairsOf(ps[7]);
+  assert.strictEqual(l7.get("mm"), undefined, "mm~ 不是单位：" + ps[7].innerHTML);
+  assert.strictEqual(l7.get("kg"), "キロ");
+  assert.strictEqual(l7.get("Hz"), "ヘルツ");
+  assert.strictEqual(l7.get("km"), "キロ");
+  // 反面：`Music と light` 这种正常歌词行不能被制作信息误杀
+  assert.strictEqual(pairsOf(ps[8]).get("Music"), "ミュージック", "正常歌词行不能被误杀");
+});
+
 test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 ア", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">
@@ -723,10 +776,16 @@ test("用户报的缩写：Mr. / Dr. 念整个词，LDK 这类缩写逐字母读
   await sleep(600);
 
   const p = env.document.querySelector("ul.lyric li p");
+  /*
+   * `Dr. K` 的 `K` 现在也读 **ケー**：单个大写字母只要"同一行还有别的西文词"就按字母名读
+   * （用户后来的截图：`T Is My Everything` 的 T 要 ティー）—— `Dr. K` = ドクター・ケー，
+   * 日语也是这么念的。
+   */
   assert.deepStrictEqual(PAIRS(p), [
     ["Mr", "ミスター"],
     ["Brown", "ブラウン"],
     ["Dr", "ドクター"],
+    ["K", "ケー"],
     ["LDK", "エルディーケー"],
   ]);
   assert.strictEqual(baseText(p), "Mr. Brown と Dr. K、それから LDK の部屋", "原文（含句点）一字不改");
@@ -2085,8 +2144,12 @@ test("`YY` 标字母名、打码的 `XX` 留白；成串的大写单字母读字
   // 反向：英文行里的冠词 A 还是 ア、代词 I 还是 アイ（这行只有两个单字母，不算成串）
   assert.strictEqual(pairsOf(ps[4]).get("A"), "ア", "冠词 A 不能读成 エー：" + ps[4].innerHTML);
   assert.strictEqual(pairsOf(ps[4]).get("I"), "アイ");
-  // 孤零零一个大写字母（B面）照旧留白
-  assert.strictEqual(rubyCount(ps[5]), 0, "孤立的 B 还是留白：" + ps[5].innerHTML);
+  /*
+   * 孤零零一个大写字母：**紧贴日文**的读字母名（用户后来的截图：
+   * `T氏` ティー / `B面` ビー / `X線` エックス —— 日语就是这么念的）。
+   * 只有 `A` / `I` 例外（冠词 / 代词），而且夹在英文句子里的 A 也仍是 ア。
+   */
+  assert.strictEqual(pairsOf(ps[5]).get("B"), "ビー", "B面 的 B 该读 ビー：" + ps[5].innerHTML);
 });
 
 test("署名行：中文制作信息的各种写法都不注音（演唱/美工/策划/导唱/封面/曲绘…）", async () => {

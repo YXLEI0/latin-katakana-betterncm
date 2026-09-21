@@ -4,6 +4,32 @@
 
 首个版本：给日语歌歌词里的**西文字母**（拉丁 / 西里尔 / 希腊）标注**片假名读音**。
 
+### 单个大写字母（`T氏` / `T Is My Everything`）+ 数字后面的单位词（`300mm` ミリ）+ `PV:` 制作信息行（本次）
+
+用户三张截图（问过，三条都要）：
+
+**一、单个大写字母该标的时候要标**（`main.js` 的 `gluedToJapanese` / `lineHasOtherWord`）
+
+- `T氏にすべてを捧げましょう` 和 `T Is My Everything` 里的 `T` 原来一个注音都没有
+- 现在除了"成串的"（`(A, B)` / `A B C` / `M・I・D・I`）之外，还有两种读**字母名**：
+  ① **紧贴日文**的：`T氏` ティー / `B面` ビー / `X線` エックス（日语就是这么念的）；
+  ② **同一行还有别的西文词**的：`T Is My Everything` の T、`Dr. K` の K
+- `A` / `I` 在 ② 里仍旧按冠词 / 代词读（`A story of love and I` 里 A=ア、I=アイ 没变）
+- 顺带：`Dr. K` 的 `K` 现在读 ケー（旧测试里断言"孤立的大写字母一律留白"，按用户这次的要求改掉了）
+
+**二、数字后面的单位词**（`UNIT_WORD`）
+
+- `半径300mmの体で必死に鳴いてる` 的 `mm` 没注音 —— 那首歌的罗马音行唱的就是 `sa n bya ku mi ri`（**ミリ**）
+- 表：mm ミリ / cm センチ / km キロ / kg キロ / ml ミリリットル / Hz ヘルツ / kHz / MHz / dB デシベル / kW / kV，只在**紧跟在数字后面**时生效（`mm~` 这种语气词不标）
+- 踩了一个坑：`mm` 长得就像打码用的重复字母串，`letters.looksReadable` 先把它当打码留白了 —— 现在 token 带上 `afterDigit` 标记，紧跟数字的重复辅音按单位词放行，而且单位判断排到打码那几判**前面**
+
+**三、`PV:` 也算制作信息行**（`core/annotate.js` 的 `CREDIT_EN`）
+
+- 用户截图：`曲絵: 瀬川あをじ`（已认）下面一行 `PV: 羽生まゐご` —— 两行都是制作信息，但 `PV` 不在关键词表里，所以 `PV` 被注成了 ビーピー
+- 补进关键词表：PV / MV / Promotion / Movie / Animation / Illustration / Artwork / Photo / Camera / Logo / Narration / Cast / Staff / Special
+
+测试：`integration.test.js` +1（三条一起验 + 反面：`A story of love and I` 的 A 仍是 ア、`mm~` 不标、`Music と light` 不能被制作信息误杀），另外两条老用例按新要求改了期望（`Dr. K` 的 K=ケー、`B面` 的 B=ビー）。全套 **352 → 353 全绿**，`npm run check` 0 警告。
+
 ### 颜文字/图案行不标 + 数字后面的单位字母 + 打码旁边的 XXX（本次）
 
 用户四张截图 + 两个选择（问过）：

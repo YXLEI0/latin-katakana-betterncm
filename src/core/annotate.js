@@ -97,6 +97,13 @@
     "Orchestr", "Conduct", "Edit", "Score", "Studio", "Label", "Distribut", "Publish", "Management",
     "Shakuhachi", "Flute", "Violin", "Cello", "Viola", "Harp", "Erhu", "Pipa", "Guzheng", "Koto", "Shamisen",
     "Percussion", "Choir", "Harmony", "Cover", "Director", "Coordinator", "Supervis", "Thanks", "Support",
+    /*
+     * 用户截图：`PV: 羽生まゐご`（上一行是 `曲絵: 瀬川あをじ`）—— 两行都是制作信息，
+     * 但 `PV` 不在表里，所以那一行的 `PV` 被注成了 ビーピー。
+     * 这几个是**纯拉丁的工种标签**（PV / MV 这类缩写 + 几个常见工种）。
+     */
+    "PV", "MV", "Promotion", "Movie", "Animation", "Illustration", "Artwork", "Photo", "Camera",
+    "Logo", "Narration", "Cast", "Staff", "Special",
   ];
   /*
    * 署名行的形状。三种写法都要认（用户的署名表里三种混着）：

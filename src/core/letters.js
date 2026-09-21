@@ -278,6 +278,8 @@
         // （例如句尾那个孤零零的 `A.`），那种不标
         glued: raw.length === 1 ? isGluedLetter(text, start, end) : false,
         notation: false,
+        // 紧跟在数字后面（`300mm` 的 mm）：那多半是**单位词**，见 looksReadable
+        afterDigit: start > 0 && /[0-9\uFF10-\uFF19]/.test(text.charAt(start - 1)),
         // 属于哪种字母（latin / cyrillic / greek）：读音层按它选拼读规则
         script: scriptOf(raw),
         // 带变音符号（Ō / é / ü …）：读音层要先折成 ASCII 再查，见 reading.js
@@ -364,6 +366,13 @@
      * 注意必须放在记号判断**之后**：`A-A`、`X-X` 那种是记号（エーエー / エックスワイ）。
      */
     if (/^([bcdfghjklmnpqrstvwxyz])\1+$/i.test(token.norm)) {
+      /*
+       * 紧跟数字的重复辅音是**单位词**（`300mm` 的 `mm` = ミリ、`5kg` 倒不是重复字母）——
+       * 用户截图 `半径300mmの体で`：那首歌罗马音行唱的就是 mi ri（ミリ），
+       * 而 `mm` 原来被当成打码的 `XX` 留白了。
+       * `mm~` 这种语气词前面没有数字，照旧留白。
+       */
+      if (token.afterDigit === true) return token.norm.length <= 3;
       return /^[BCDFGHJKLMNPQRSTVWXYZ]{2,3}$/.test(token.text);
     }
     if (token.norm.length === 1) {

@@ -573,6 +573,28 @@
     A: "\u30A2\u30F3\u30DA\u30A2", // アンペア
   };
 
+  /*
+   * **单位词**（两个以上字母的）：同样只在**紧跟在数字后面**时按单位读。
+   *
+   * 用户截图：`半径300mmの体で必死に鳴いてる` 的 `mm` 没注音 —— 那首歌的罗马音行
+   * 唱的就是 `sa n bya ku mi ri`（ミリ），所以这里要给 ミリ。
+   * 判据只看"紧跟数字"：`mm~`（语气词）、`PV:` 这种不会被误伤。
+   * 表是人工维护的（读法唯一、日语里就这么写），想加就往里补一行。
+   */
+  var UNIT_WORD = {
+    MM: "\u30DF\u30EA", // ミリ
+    CM: "\u30BB\u30F3\u30C1", // センチ
+    KM: "\u30AD\u30ED", // キロ
+    KG: "\u30AD\u30ED", // キロ
+    ML: "\u30DF\u30EA\u30EA\u30C3\u30C8\u30EB", // ミリリットル
+    HZ: "\u30D8\u30EB\u30C4", // ヘルツ
+    KHZ: "\u30AD\u30ED\u30D8\u30EB\u30C4", // キロヘルツ
+    MHZ: "\u30E1\u30AC\u30D8\u30EB\u30C4", // メガヘルツ
+    DB: "\u30C7\u30B7\u30D9\u30EB", // デシベル
+    KW: "\u30AD\u30ED\u30EF\u30C3\u30C8", // キロワット
+    KV: "\u30AD\u30ED\u30DC\u30EB\u30C8", // キロボルト
+  };
+
   /** 这一行里的单字母**全是单位符号**（`（V, W, A）` ✓、`(A, B)` ✗ —— B 不是单位） */
   var unitLineCache = new Map();
   function lineAllUnitSymbols(line) {
@@ -609,6 +631,35 @@
     if (!s || !w) return false;
     var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return new RegExp("[0-9\uFF10-\uFF19]\\s*" + esc + "(?![0-9\uFF10-\uFF19])").test(s);
+  }
+
+  /** 字母**紧贴着日文**（`T氏` / `B面` / `X線`：字母前后直接是汉字 / 假名，中间没空格） */
+  function gluedToJapanese(word, line) {
+    var s = String(line == null ? "" : line);
+    var w = String(word == null ? "" : word);
+    if (!s || !w) return false;
+    var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    var CJK = "[\\u3041-\\u3096\\u30A1-\\u30FA\\u4E00-\\u9FFF]";
+    return new RegExp("(?:" + CJK + esc + "|" + esc + CJK + ")").test(s);
+  }
+
+  /** 同一行里还有没有**别的西文词**（长度 ≥2）—— `T Is My Everything` 里的 T 是句子里的字母 */
+  function lineHasOtherWord(word, line) {
+    var s = String(line == null ? "" : line);
+    if (!s || typeof WKMatcher === "undefined") return false;
+    var w = String(word == null ? "" : word);
+    var toks;
+    try {
+      toks = WKMatcher.scan(s);
+    } catch (e) {
+      return false;
+    }
+    for (var i = 0; i < toks.length; i++) {
+      var t = String(toks[i].text);
+      if (t === w) continue;
+      if (t.length >= 2 && /[A-Za-z]/.test(t)) return true;
+    }
+    return false;
   }
 
   /**
@@ -845,6 +896,18 @@
     word = foldFullwidthLetters(word);
     if (line != null) line = foldFullwidthLetters(line);
     /*
+     * 数字后面的**单位词**（`300mm` ミリ、`5kg` キロ、`60Hz` ヘルツ）。
+     *
+     * **必须排在打码那几判前面**：`mm` 长得就像打码用的重复字母串（`XX`），
+     * 而它后面又紧跟着假名（`300mmの体で`）—— 放到后面就会被当成打码留白
+     * （第一版就是这么错的）。用户截图：`半径300mmの体で` 的 `mm` 原来没注音，
+     * 那首歌的罗马音行唱的就是 `sa n bya ku mi ri`（ミリ）。
+     */
+    var unitWord = UNIT_WORD[String(word).toUpperCase()];
+    if (unitWord && digitBefore(word, line)) {
+      return { kana: unitWord, source: "letters", confident: true };
+    }
+    /*
      * 段标（`(A:` / `B:`）**排在所有层前面**：它压根不该有读音，
      * 缓存里有没有都不该有 —— 用户机器上就攒过 `a → アー`（模型在 `(A:` 那种行里
      * 答的），那条「学会的词」会把这条规则整个绕过去。所以这一判最先做。
@@ -896,6 +959,19 @@
         var letterKana =
           typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[String(word).toLowerCase()] : null;
         if (letterKana) return { kana: letterKana, source: "letters", confident: true };
+      }
+      /*
+       * 孤零零一个单字母（不成串）时，还有两种看得出"这里要读字母名"的情况：
+       *   ① **紧贴日文**：`T氏` / `B面` / `X線` —— 日语就是读字母名（ティーし）；
+       *   ② **同一行还有别的英文词**：`T Is My Everything` / `I love U` ——
+       *      那是句子里的字母，不是冠词。
+       * 用户截图：`T氏にすべてを捧げましょう` 和 `T Is My Everything` 里的 T
+       * 一个注音都没有。`A` / `I` 在 ② 里仍旧按冠词 / 代词读（`A story` 的 A 是 ア）。
+       */
+      if (line && (gluedToJapanese(word, line) || (String(word) !== "A" && String(word) !== "I" && lineHasOtherWord(word, line)))) {
+        var loneKana =
+          typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[String(word).toLowerCase()] : null;
+        if (loneKana) return { kana: loneKana, source: "letters", confident: true };
       }
       if (String(word) !== "A" && String(word) !== "I") return null;
     }
