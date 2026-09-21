@@ -516,6 +516,56 @@ test("全角西文字母也注音（`こんなんじゃ（ＮＯ!）` → ＮＯ
   assert.strictEqual(env.api.display("\uFF2E\uFF2F"), "ノー", "控制台 WK.display 也认全角");
 });
 
+test("ASCII art / 颜文字行不标；数字后面的单位字母要标；打码旁边的重复字母串留白", async () => {
+  // 用户四张截图：
+  //   ① `~i.!.|| i !!i !!~` —— 图案里的 i 被标成 アイ（该留白）
+  //   ② `( ﾟ∀ﾟ)o彡ﾟ えーりん！` —— 颜文字里的 o 被标成 オ（该留白）
+  //   ③ `VOX AC30W` —— 数字后面的 W 一个注音都没有（该 ワット）
+  //   ④ `とめらんない本能 俺の XXX ****!` —— XXX 旁边就是打码符号（该留白，不读 エックス）
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>~i.!.|| i !!i !!~</p></li>
+  <li class="line"><p>( ﾟ∀ﾟ)o彡ﾟ えーりん！えーりん！</p></li>
+  <li class="line"><p>VOX AC30W</p></li>
+  <li class="line"><p>とめらんない本能 俺の XXX ****! ****! Say Good Bye</p></li>
+  <li class="line"><p>100V と 5A と 30W の電源</p></li>
+  <li class="line"><p>Wow!!! すごいね!!!</p></li>
+  <li class="line"><p>(A, B) 退屈に打つ QTE</p></li>
+</ul></div></div></body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+  // ①② 图案/颜文字行：整行零注音，底字不动
+  assert.strictEqual(rubyCount(ps[0]), 0, "图案行不该注音：" + ps[0].innerHTML);
+  assert.strictEqual(baseText(ps[0]), "~i.!.|| i !!i !!~");
+  assert.strictEqual(rubyCount(ps[1]), 0, "颜文字行不该注音：" + ps[1].innerHTML);
+  assert.strictEqual(baseText(ps[1]), "( ﾟ∀ﾟ)o彡ﾟ えーりん！えーりん！");
+  // ③ 数字后面的单位字母
+  const l2 = pairsOf(ps[2]);
+  assert.strictEqual(l2.get("W"), "ワット", "30W 的 W 该读 ワット：" + ps[2].innerHTML);
+  // ④ 打码旁边的重复字母串留白（同行的普通词照标）
+  const l3 = pairsOf(ps[3]);
+  assert.strictEqual(l3.get("XXX"), undefined, "XXX 旁边就是 ****，该留白：" + ps[3].innerHTML);
+  assert.strictEqual(l3.get("Say"), "セイ");
+  assert.strictEqual(l3.get("Good"), "グッド");
+  assert.strictEqual(l3.get("Bye"), "バイ");
+  // 反面：数字本身不是"图案"，单位照标；`Wow!!!` 这种正常行照标
+  const l4 = pairsOf(ps[4]);
+  assert.strictEqual(l4.get("V"), "ボルト", JSON.stringify([...l4]));
+  assert.strictEqual(l4.get("A"), "アンペア");
+  assert.strictEqual(l4.get("W"), "ワット");
+  assert.strictEqual(pairsOf(ps[5]).get("Wow"), "ワウ", "正常歌词行不能被当成图案");
+  // 反面：`(A, B)` 仍读字母名（符号只有 3 个，不够"图案"）
+  const l6 = pairsOf(ps[6]);
+  assert.strictEqual(l6.get("A"), "エー", JSON.stringify([...l6]));
+  assert.strictEqual(l6.get("B"), "ビー");
+});
+
 test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 ア", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">

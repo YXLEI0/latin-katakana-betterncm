@@ -869,6 +869,8 @@ module.exports = [
   { en: "thaw", kana: "ソー" },
   { en: "anew", kana: "アニュー" },
   { en: "woven", kana: "ウォーヴン" },
+  // bye：用户截图 `Say Good Bye` 里规则层读成 バイェ（该 バイ）
+  { en: "bye", kana: "バイ" },
   /*
    * 用户问「notes 的读音」时核出来的：**复数/变形形的读音**是大模型词表最容易错的地方。
    *   notes  ノート  ✗（那是单数；复数该 ノーツ，同族的 dates デイツ / rates レーツ 都对）

@@ -602,6 +602,53 @@
     return out;
   }
 
+  /** 这个词在行里是不是**紧跟在数字后面**（`30W` の W、`100V` の V、`5A` の A） */
+  function digitBefore(word, line) {
+    var s = String(line == null ? "" : line);
+    var w = String(word == null ? "" : word);
+    if (!s || !w) return false;
+    var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp("[0-9\uFF10-\uFF19]\\s*" + esc + "(?![0-9\uFF10-\uFF19])").test(s);
+  }
+
+  /**
+   * 这一行是不是 **ASCII art / 颜文字**（`~i.!.|| i !!i !!~`、`( ﾟ∀ﾟ)o彡ﾟ …`）。
+   *
+   * 用户两张截图：图案里的 `i` 被标成 アイ、颜文字 `)o彡ﾟ` 里的 `o` 被标成 オ ——
+   * 那些字母是**画**用的，不是词。
+   * 判据（故意收得很紧，宁可漏判也不能把正常歌词整行跳过）：
+   *   ① 这一行的西文词**全是单个字母**（正常歌词里几乎不会这样），而且
+   *   ② 符号字符（非字母、非假名、非汉字、非空白）有 6 个以上
+   * `(A, B)`（符号 3 个）和 `（V, W, A）`（符号 4 个）都不够 —— 那两种照旧注音。
+   */
+  function looksLikeAsciiArt(line) {
+    var s = String(line == null ? "" : line);
+    if (!s || typeof WKMatcher === "undefined") return false;
+    var toks;
+    try {
+      toks = WKMatcher.scan(s);
+    } catch (e) {
+      return false;
+    }
+    if (!toks.length) return false;
+    for (var i = 0; i < toks.length; i++) {
+      // 记号零件（`D/N/A` 的 D）不算"单个字母的词"：那是正经的字母串
+      if (toks[i].notation === true) return false;
+      if (String(toks[i].text).length !== 1) return false;
+    }
+    var sym = 0;
+    for (var j = 0; j < s.length; j++) {
+      var ch = s.charAt(j);
+      if (ch === " " || ch === "\t") continue;
+      if (/[A-Za-z\u00C0-\u024F\u1E00-\u1EFF\uFF21-\uFF3A\uFF41-\uFF5A]/.test(ch)) continue;
+      // 数字也算"正文"（`100V と 5A と 30W の電源` 不能被当成图案）
+      if (/[0-9\uFF10-\uFF19]/.test(ch)) continue;
+      if (/[\u3041-\u3096\u30A1-\u30FA\u4E00-\u9FFF\u3005\u3006\u30FC]/.test(ch)) continue;
+      sym++;
+    }
+    return sym >= 6;
+  }
+
   function gluedUpperCase(word, line) {
     var w = String(word == null ? "" : word);
     if (!/^[A-Z]{2,3}$/.test(w)) return false;
@@ -716,7 +763,18 @@
     var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     // 中间允许夹一个收尾的引号/括号（`“XX”してる`、`（XX）する`）
     var tail = "[\u2019\u201D\u300D\u300F\uFF09\u3011\"']*[\u3041-\u3096]";
-    return new RegExp(esc + tail).test(s);
+    if (new RegExp(esc + tail).test(s)) return true;
+    /*
+     * 旁边就是打码符号的也算打码（用户截图 `俺の XXX ****! ****!`）：
+     * `XXX` 后面隔一个空格就是 `****`，那一串和 `****` 是同一个用法（把脏话抹掉），
+     * 读成 エックスエックスエックス 反而错 —— 用户指名要留白。
+     * 判据：这个词后面（可夹空白/引号括号）紧跟两个以上的 `*` / `＊` / `×` / `※`，
+     * 或者前面紧挨着这种符号串（`****XXX`）。
+     */
+    var marks = "[*\uFF0A\u00D7\u203B]{2,}";
+    var between = "[\\s\u2019\u201D\u300D\u300F\uFF09\u3011\"']*";
+    if (new RegExp(esc + between + marks).test(s)) return true;
+    return new RegExp(marks + between + esc).test(s);
   }
 
   /**
@@ -802,6 +860,11 @@
      */
     if (censorLikeRun(word, line)) return null;
     /*
+     * ASCII art / 颜文字 行（`~i.!.|| i !!i !!~`、`( ﾟ∀ﾟ)o彡ﾟ …`）：整行不标 ——
+     * 那些字母是画图案用的（见 looksLikeAsciiArt 的说明）。
+     */
+    if (line && looksLikeAsciiArt(line)) return null;
+    /*
      * 大写单字母：成串的读字母名（`(A, B)` -> エー / ビー），**段标**（`A:` / `B:`）留白，
      * 孤零零一个的照旧 —— `A` 是冠词（ア）、`I` 是代词（アイ），
      * 别的（`B`、`C`…）没法判，还是留白（返回 null 表示"这词不标"）。
@@ -814,6 +877,14 @@
        * 意大利语都这么写），不是排版噪声；字母名本来也就是 オー，两回事一样的结果。
        */
       if (String(word) === "O") return { kana: "オー", source: "letters", confident: true };
+      /*
+       * 字母**紧跟数字**就是单位：`30W` ワット、`100V` ボルト、`5A` アンペア。
+       * 用户截图 `VOX AC30W` 里的 `W` 原来一个注音都没有（孤零零一个单字母，
+       * 整行又不算"字母串"，就留白了）。
+       */
+      if (UNIT_SYMBOL[String(word)] && digitBefore(word, line)) {
+        return { kana: UNIT_SYMBOL[String(word)], source: "letters", confident: true };
+      }
       if (line && lineLetterRun(line)) {
         /*
          * 整串字母都是单位符号（`（V, W, A）`）→ 读单位名（ボルト・ワット・アンペア）。

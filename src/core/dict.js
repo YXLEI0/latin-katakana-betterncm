@@ -845,6 +845,7 @@
     "buyers": "バイヤーズ",
     "buying": "バイイング",
     "by": "バイ",
+    "bye": "バイ",
     "bygones": "バイゴーンズ",
     "byte": "バイト",
     "bytes": "バイツ",
@@ -6796,6 +6797,6 @@
 
   return {
     words: words,
-    count: 6774,
+    count: 6775,
   };
 });
