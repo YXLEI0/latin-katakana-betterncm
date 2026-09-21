@@ -771,6 +771,56 @@
   };
 
   /**
+   * 俄语（西里尔）**字母名**：全大写缩写的逐字母读法（`СССР` -> エスエスエスエル）。
+   *
+   * 用户截图：苏联国歌那几行里的 `СССР` 被读成 **スル** —— 引擎把它当词，
+   * 又按俄语正字法把重复的 С 并成一个，于是就剩 С+Р。缩写不是词：西里尔全大写、
+   * 又没有元音的（СССР / РФ / КГБ / МВД / ЛГБТ…）一律逐字母读，
+   * 和拉丁那边的 `spellOutAcronym`（SOS -> エスオーエス）同一个口径。
+   * 带元音的（`ГИМН` ギムン、`ЛЮБОВЬ`）不是缩写，照旧走俄语引擎。
+   */
+  var CYRILLIC_LETTER_KANA = {
+    "\u0430": "\u30A2\u30FC", // а アー
+    "\u0431": "\u30D9\u30FC", // б ベー
+    "\u0432": "\u30F4\u30A7\u30FC", // в ヴェー
+    "\u0433": "\u30B2\u30FC", // г ゲー
+    "\u0434": "\u30C7\u30FC", // д デー
+    "\u0435": "\u30A4\u30A7\u30FC", // е イェー
+    "\u0451": "\u30E8\u30FC", // ё ヨー
+    "\u0436": "\u30B8\u30A7\u30FC", // ж ジェー
+    "\u0437": "\u30BC\u30FC", // з ゼー
+    "\u0438": "\u30A4\u30FC", // и イー
+    "\u0439": "\u30A4\u30FC", // й イー
+    "\u043A": "\u30AB\u30FC", // к カー
+    "\u043B": "\u30A8\u30EA", // л エリ
+    "\u043C": "\u30A8\u30E0", // м エム
+    "\u043D": "\u30A8\u30CC", // н エヌ
+    "\u043E": "\u30AA\u30FC", // о オー
+    "\u043F": "\u30DA\u30FC", // п ペー
+    "\u0440": "\u30A8\u30EB", // р エル
+    "\u0441": "\u30A8\u30B9", // с エス
+    "\u0442": "\u30C6\u30FC", // т テー
+    "\u0443": "\u30A6\u30FC", // у ウー
+    "\u0444": "\u30A8\u30D5", // ф エフ
+    "\u0445": "\u30CF\u30FC", // х ハー
+    "\u0446": "\u30C4\u30A7\u30FC", // ц ツェー
+    "\u0447": "\u30C1\u30A7\u30FC", // ч チェー
+    "\u0448": "\u30B7\u30E3\u30FC", // ш シャー
+    "\u0449": "\u30B7\u30C1\u30E3\u30FC", // щ シチャー
+    "\u044B": "\u30A6\u30A3", // ы ウィ
+    "\u044D": "\u30A8\u30FC", // э エー
+    "\u044E": "\u30E6\u30FC", // ю ユー
+    "\u044F": "\u30E4\u30FC", // я ヤー
+  };
+
+  /** 西里尔全大写、且一个元音都没有的缩写（СССР / РФ / КГБ…） */
+  function cyrillicAcronym(word) {
+    var w = String(word == null ? "" : word);
+    if (!/^[\u0410-\u042F\u0401]{2,6}$/.test(w)) return false;
+    return !/[\u0410\u0415\u0401\u0418\u041E\u0423\u042B\u042D\u042E\u042F]/.test(w);
+  }
+
+  /**
    * 这一行里有没有"成串的大写单字母"（`(A, B)`、`A・B`、`A B C`）。
    *
    * 用户要的：`(A, B) 退屈に打つ QTE (Why?)` 里的 A / B 该读字母名（エー / ビー），
@@ -1024,6 +1074,26 @@
         if (letterKana) return { kana: letterKana, source: "letters", confident: true };
       }
       /*
+       * 孤零零一个 `X`：歌词里指的是 **Twitter**（用户点名：`X だけの"人マニア"` 里
+       * X 读 ツイッター —— 那首歌的官方翻译那行就写着 `X(Twitter)`）。
+       *
+       * 位置要卡在中间：成串的（`(X, Y)`）上面那条已经接走了；
+       * **X 后面紧跟汉字**的是字母 X 的老词（`X線` / `X軸` / `X染色体`），留给下面那条读 エックス；
+       * 英文句子里的（`X marks the spot`）也归下面那条。
+       */
+      if (String(word) === "X" && line && RE_KANA_ANY.test(line)) {
+        var xAt = -1;
+        if (token && typeof token.end === "number" && line.slice(token.start, token.end) === "X") {
+          xAt = token.end;
+        } else {
+          var xm = /(^|[^A-Za-z])X/.exec(line);
+          if (xm) xAt = xm.index + xm[0].length;
+        }
+        if (!(xAt >= 0 && /[\u3400-\u9FFF]/.test(line.charAt(xAt)))) {
+          return { kana: "ツイッター", source: "dict", confident: true };
+        }
+      }
+      /*
        * 孤零零一个单字母（不成串）时，还有两种看得出"这里要读字母名"的情况：
        *   ① **紧贴日文**：`T氏` / `B面` / `X線` —— 日语就是读字母名（ティーし）；
        *   ② **同一行还有别的英文词**：`T Is My Everything` / `I love U` ——
@@ -1085,6 +1155,23 @@
     if (capsBeforeDigit(word, line, token)) {
       var capsKana = letterNames(word);
       if (capsKana) return { kana: capsKana, source: "letters", confident: true };
+    }
+    /*
+     * 西里尔全大写缩写逐字母读（`СССР` エスエスエスエル）—— 见 CYRILLIC_LETTER_KANA。
+     * 排在俄语引擎前面：引擎会按正字法把 `СССР` 的三个 С 并成一个，读成 スル。
+     */
+    if (cyrillicAcronym(word)) {
+      var cyr = "";
+      var cw = String(word).toLowerCase();
+      for (var ci = 0; ci < cw.length; ci++) {
+        var ck = CYRILLIC_LETTER_KANA[cw.charAt(ci)];
+        if (!ck) {
+          cyr = null;
+          break;
+        }
+        cyr += ck;
+      }
+      if (cyr) return { kana: cyr, source: "letters", confident: true };
     }
     var r = state.reader ? state.reader.read(word) : null;
     /*

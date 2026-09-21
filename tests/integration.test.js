@@ -602,6 +602,65 @@ test("全大写缩写贴着数字是字母名：AM6:00 -> エーエム（英语�
   assert.strictEqual(l4.get("HEY"), "ヘイ", "HEY3 是词，不是缩写：" + ps[4].innerHTML);
 });
 
+test("西里尔全大写缩写逐字母读：СССР -> エスエスエスエル（不是 スル）", async () => {
+  // 用户截图：苏联国歌那几行的 `СССР` 被读成 **スル** —— 俄语引擎把它当词，
+  // 又按正字法把三个 С 并成一个，于是只剩 С+Р。缩写不是词：西里尔全大写、
+  // 又没有元音的（СССР / РФ / КГБ）逐字母读，和拉丁的 SOS エスオーエス 同一个口径；
+  // 带元音的（`ГИМН` ギムン）照旧走引擎。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>ГИМН СССР</p></li>
+  <li class="line"><p>РФ と КГБ の話</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+
+  const l0 = pairsOf(ps[0]);
+  assert.strictEqual(l0.get("СССР"), "エスエスエスエル", "ССР 该逐字母读：" + ps[0].innerHTML);
+  assert.strictEqual(l0.get("ГИМН"), "ギムン", "带元音的不是缩写，照旧当词：" + ps[0].innerHTML);
+  const l1 = pairsOf(ps[1]);
+  assert.strictEqual(l1.get("РФ"), "エルエフ", "РФ 该逐字母读：" + ps[1].innerHTML);
+  assert.strictEqual(l1.get("КГБ"), "カーゲーベー", "КГБ 该逐字母读：" + ps[1].innerHTML);
+});
+
+test("日语行里孤零零的 X 指 Twitter（ツイッター）；X線/X軸 仍是字母名 エックス", async () => {
+  // 用户点名：`Xだけの"人マニア"` 的 X 要读 ツイッター（那首歌官方翻译那行写着 X(Twitter)）。
+  // 但 X 后面紧跟汉字的那些老词（X線 / X軸 / X染色体）是字母 X，仍然是 エックス；
+  // 成串的（(X, Y)）和英文句子里的（X marks the spot）也照旧。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Xだけの"人マニア"</p></li>
+  <li class="line"><p>X だけの"人マニア"</p></li>
+  <li class="line"><p>X線の写真とX軸</p></li>
+  <li class="line"><p>(X, Y) の座標</p></li>
+  <li class="line"><p>X marks the spot</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+
+  assert.strictEqual(pairsOf(ps[0]).get("X"), "ツイッター", "贴假名的 X 要读 ツイッター：" + ps[0].innerHTML);
+  assert.strictEqual(pairsOf(ps[1]).get("X"), "ツイッター", "带空格的 X 也是 Twitter：" + ps[1].innerHTML);
+  const l2 = [...ps[2].querySelectorAll("ruby.wk-ruby")].map((r) => r.querySelector(".wk-rt").textContent);
+  assert.deepStrictEqual(l2, ["エックス", "エックス"], "X線 / X軸 是字母 X：" + ps[2].innerHTML);
+  const l3 = pairsOf(ps[3]);
+  assert.strictEqual(l3.get("X"), "エックス", "成串的 X 读字母名：" + ps[3].innerHTML);
+  assert.strictEqual(pairsOf(ps[4]).get("X"), "エックス", "英文句子里的 X 读字母名：" + ps[4].innerHTML);
+});
+
 test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {
   // 用户三张截图：
   //   ① `T氏にすべてを捧げましょう` / `T Is My Everything` —— 单字母 T 一个注音都没有（该 ティー）

@@ -5,9 +5,10 @@
  *      经 tools/promote-learned.js 筛选 —— 已学会的词 + 大模型/免费接口缓存的命中。
  * 生成命令：npm run promote:learned && npm run build:dict
  *
- * 本文件条数：338
+ * 本文件条数：340
  */
 module.exports = [
+  { en: "ahhh", kana: "アー" },
   { en: "aimless", kana: "エイムレス" },
   { en: "align", kana: "アライン" },
   { en: "aloud", kana: "アラウド" },
@@ -247,6 +248,7 @@ module.exports = [
   { en: "ruinenstadt", kana: "ルイーネンシュタット" },
   { en: "saeva", kana: "サエワ" },
   { en: "savior", kana: "セイヴィア" },
+  { en: "sax", kana: "サックス" },
   { en: "schauts", kana: "シャウツ" },
   { en: "scoring", kana: "スコーリング" },
   { en: "scream", kana: "スクリーム" },
