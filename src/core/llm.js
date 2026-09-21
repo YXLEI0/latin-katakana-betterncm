@@ -22,7 +22,7 @@
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
-  else root.LKLLM = factory();
+  else root.WKLLM = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
@@ -269,7 +269,7 @@
     var mem = new Map(); // key(词+语境) -> { k: kana } 命中，{ miss: true } 问过但没有
     /*
      * 词 -> 最近一次拿到的读音（不区分语境）。
-     * 只给控制台/排障用（`LK.display('词')` 不带句子时要有东西可看），
+     * 只给控制台/排障用（`WK.display('词')` 不带句子时要有东西可看），
      * **不参与**页面注音的判定 —— 页面必须严格按当前这句的语境取读音。
      */
     var byWord = {};
@@ -330,7 +330,7 @@
       if (persisted[k] && typeof persisted[k].k === "string") {
         byWord[k.split("\u0000")[0]] = persisted[k].k;
       }
-      // 上次运行时被拒的答案也从缓存里恢复，重启后 LK.llm.rejects() 照样有东西看
+      // 上次运行时被拒的答案也从缓存里恢复，重启后 WK.llm.rejects() 照样有东西看
       if (persisted[k] && persisted[k].miss === true && persisted[k].why) {
         recordReject(k.split("\u0000")[0], persisted[k].said || "", persisted[k].why);
       }
@@ -390,7 +390,7 @@
         var now = Date.now();
         var entries = [];
         mem.forEach(function (rec, word) {
-          // miss 连"模型原话 / 拒绝原因"一起存：重启之后 LK.llm.rejects() 还能看出原因
+          // miss 连"模型原话 / 拒绝原因"一起存：重启之后 WK.llm.rejects() 还能看出原因
           entries.push([
             word,
             rec.miss === true
@@ -646,7 +646,7 @@
          *
          * 为什么必须记：以前这里只写 `{miss:true}`，于是用户反馈
          * 「有些词大模型一直不矫正」时，我这边一点线索都没有 —— 不知道模型说了什么、
-         * 也不知道是被哪个判据丢的，只能猜。现在 LK.llm.rejects() 直接列出
+         * 也不知道是被哪个判据丢的，只能猜。现在 WK.llm.rejects() 直接列出
          * 「哪个词 / 模型原话 / 为什么被拒」。
          */
         var why = null;
@@ -759,7 +759,7 @@
        * **失败也必须叫一次 onUpdate**（和 correct.js 那边同一个道理，那边一直有）。
        *
        * 不叫会怎样（用户报的「这句不透明度怎么这么低」）：请求还在飞的时候那一轮
-       * 是**暂定**（`lt-pending`，淡到 45%），失败后进入退避、isWaiting 变成 false，
+       * 是**暂定**（`wk-pending`，淡到 45%），失败后进入退避、isWaiting 变成 false，
        * 但没人通知注音层重新判定 —— 那行就一直淡着，直到页面因为别的原因重扫
        * （实测能淡整整一个退避周期，60 秒起）。真机歌词一行行滚动时不容易看出来，
        * 停在某一句上就很显眼。
@@ -817,7 +817,7 @@
     /**
      * 只按词取"最近一次拿到的读音"，**不看语境**。
      *
-     * 给控制台排障用（`LK.display('kaleidoscope')` 不带句子时总得有东西看），
+     * 给控制台排障用（`WK.display('kaleidoscope')` 不带句子时总得有东西看），
      * 也用于"这个词我到底问过没有"的判断。页面注音不要用它 ——
      * 页面必须走 lookup(word, line)，否则会把上一句的读音套到这一句上。
      */

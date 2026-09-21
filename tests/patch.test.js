@@ -14,7 +14,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const vm = require("node:vm");
-const { applyPatch, revertPatch, isPatched, MARK } = require("../tools/patch-jp-furigana.js");
+const { applyPatch, revertPatch, isPatched, isPatchedV1, MARK, MARK_V1 } = require("../tools/patch-jp-furigana.js");
 
 /*
  * 样本：五处锚点原文必须逐字节一致。
@@ -73,6 +73,22 @@ const ANCHORS = [
   "line.__fgMirrors = mirrors;",
 ];
 
+/**
+ * 「装上的是旧版 v1 补丁」的样本：由 v2 打过补丁的样本反推出来
+ * （类名枚举退回两家、标记位退回两家、标记换成 v1）。
+ * 真机上 v1 的注释文案和 v2 不同，但升级路径只认类名枚举和标记，这两样一致。
+ */
+const FIXTURE_PATCHED_V1 = (() => {
+  let s = applyPatch(FIXTURE).src;
+  s = s
+    .split("(kt-ruby|kt-rt|kt-ov-label|lt-ruby|lt-rt|lt-ov-label|wk-ruby|wk-rt|wk-ov-label)")
+    .join("(kt-ruby|kt-rt|kt-ov-label|lt-ruby|lt-rt|lt-ov-label)");
+  s = s.split("(kt-ruby|lt-ruby|wk-ruby)").join("(kt-ruby|lt-ruby)");
+  s = s.split("(n.__ktOwned || n.__ltOwned || n.__wkOwned)").join("(n.__ktOwned || n.__ltOwned)");
+  s = s.split(MARK).join(MARK_V1);
+  return s;
+})();
+
 test("五处锚点在样本里都能找到", () => {
   for (const a of ANCHORS) {
     assert.ok(FIXTURE.indexOf(a) >= 0, "样本缺少锚点（补丁会打不上）：" + a);
@@ -106,30 +122,30 @@ test("五处补丁全部应用，且结果语法正确、锚点不再残留", ()
 });
 
 /*
- * 下面这一组是本项目**独有的**回归点：补丁的识别范围必须覆盖「两家」。
+ * 下面这一组是本项目**独有的**回归点：补丁的识别范围必须覆盖「三家」。
  *
- * 同一行上可能同时开着片假名终结者（kt-*）和本插件（lt-*）。
+ * 同一行上可能同时开着片假名终结者（kt-*）和本插件（改名前 lt-*、现在 wk-*）。
  * 补丁只认其中一家时，另一家的注音会让 jp-furigana 把行判脏并重建，
  * 于是那一家无限闪 —— 而且"只有它一家闪"，从现象几乎查不到原因。
- * 所以这里不只断言"helper 存在"，而是把两家的类名和两个标记位逐个钉死。
+ * 所以这里不只断言"helper 存在"，而是把三家的类名和标记位逐个钉死。
  */
-test("外来节点判定同时认出两家插件（kt-* 与 lt-*，含 ov-label 变体）", () => {
+test("外来节点判定同时认出三家插件（kt-* / lt-* / wk-*，含 ov-label 变体）", () => {
   const src = applyPatch(FIXTURE).src;
   // 抠出 helper 里的类名判定源码，避免"别处碰巧出现过 kt-ruby"这种假通过
   const m = /const cls = typeof node\.className[^\n]*\n[^\n]*/.exec(src);
   assert.ok(m, "helper 里应该有外来节点类名判定");
   const clsTest = m[0];
 
-  const families = ["kt-ruby", "kt-rt", "lt-ruby", "lt-rt"];
-  const labelVariants = ["kt-ov-label", "lt-ov-label"];
+  const families = ["kt-ruby", "kt-rt", "lt-ruby", "lt-rt", "wk-ruby", "wk-rt"];
+  const labelVariants = ["kt-ov-label", "lt-ov-label", "wk-ov-label"];
   for (const name of families.concat(labelVariants)) {
     assert.ok(clsTest.indexOf(name) >= 0, `外来类名判定缺少 ${name}（那一家会开始闪）`);
   }
-  // <rt> 的父节点判定也要认两家：降级渲染时 rt 的父级不是 ruby 而是这两家的包裹元素
-  const rtParent = /node\.tagName === 'RT'[\s\S]{0,240}?kt-ruby\|lt-ruby/.exec(src);
-  assert.ok(rtParent, "rt 父节点判定应该同时认 kt-ruby 和 lt-ruby");
+  // <rt> 的父节点判定也要认三家：降级渲染时 rt 的父级不是 ruby 而是这三家的包裹元素
+  const rtParent = /node\.tagName === 'RT'[\s\S]{0,240}?kt-ruby\|lt-ruby\|wk-ruby/.exec(src);
+  assert.ok(rtParent, "rt 父节点判定应该同时认 kt-ruby / lt-ruby / wk-ruby");
 
-  // 真正跑一遍逻辑：两家各造一个节点，都必须被判成"外来"
+  // 真正跑一遍逻辑：三家各造一个节点，都必须被判成"外来"
   const isForeign = loadHelper(src, "__ktIsForeign");
   const nodes = [
     { nodeType: 1, className: "kt-ruby", tagName: "RUBY" },
@@ -138,25 +154,29 @@ test("外来节点判定同时认出两家插件（kt-* 与 lt-*，含 ov-label 
     { nodeType: 1, className: "lt-ruby", tagName: "RUBY" },
     { nodeType: 1, className: "lt-rt", tagName: "RT" },
     { nodeType: 1, className: "lt-ov-label", tagName: "SPAN" },
+    { nodeType: 1, className: "wk-ruby", tagName: "RUBY" },
+    { nodeType: 1, className: "wk-rt", tagName: "RT" },
+    { nodeType: 1, className: "wk-ov-label", tagName: "SPAN" },
   ];
   for (const n of nodes) {
     assert.strictEqual(isForeign(n), true, `应该认出外来节点：${n.className}`);
   }
   // 我们自己的 ruby 前后带别的类名时也要认（class 列表是空白分隔的）
-  assert.strictEqual(isForeign({ nodeType: 1, className: "foo lt-ruby bar", tagName: "RUBY" }), true);
+  assert.strictEqual(isForeign({ nodeType: 1, className: "foo wk-ruby bar", tagName: "RUBY" }), true);
   // 反向：jp-furigana 自己的节点不能被误判成外来，否则它会把自己的 wrap 数漏
   assert.strictEqual(isForeign({ nodeType: 1, className: "__fgWrap", tagName: "SPAN" }), false);
   assert.strictEqual(isForeign({ nodeType: 1, className: "", tagName: "DIV" }), false);
   assert.strictEqual(isForeign({ nodeType: 3, className: "", tagName: undefined }), false);
 });
 
-test("__ktTextIsOurs 同时接受两家的标记位（__ktOwned / __ltOwned）", () => {
+test("__ktTextIsOurs 同时接受三家的标记位（__ktOwned / __ltOwned / __wkOwned）", () => {
   const src = applyPatch(FIXTURE).src;
   const m = /function __ktTextIsOurs\(n\) \{[\s\S]*?\n\t\}/.exec(src);
   assert.ok(m, "helper 里应该有 __ktTextIsOurs");
   const body = m[0];
   assert.ok(/n\.__ktOwned/.test(body), "__ktTextIsOurs 必须接受片假名终结者的 __ktOwned 标记");
-  assert.ok(/n\.__ltOwned/.test(body), "__ktTextIsOurs 必须接受本插件的 __ltOwned 标记");
+  assert.ok(/n\.__ltOwned/.test(body), "__ktTextIsOurs 必须接受本插件改名前的 __ltOwned 标记");
+  assert.ok(/n\.__wkOwned/.test(body), "__ktTextIsOurs 必须接受本插件现在的 __wkOwned 标记");
   assert.ok(/nodeType === 3/.test(body), "__ktTextIsOurs 只该认同文本节点");
 
   const isOurs = loadHelper(src, "__ktTextIsOurs");
@@ -166,11 +186,33 @@ test("__ktTextIsOurs 同时接受两家的标记位（__ktOwned / __ltOwned）",
     return n;
   };
   assert.strictEqual(isOurs(text("__ktOwned")), true, "片假名终结者改写的文本节点该算我们的");
-  assert.strictEqual(isOurs(text("__ltOwned")), true, "本插件改写的文本节点该算我们的");
+  assert.strictEqual(isOurs(text("__ltOwned")), true, "本插件改名前的标记位该算我们的");
+  assert.strictEqual(isOurs(text("__wkOwned")), true, "本插件现在的标记位该算我们的");
   assert.strictEqual(isOurs(text(null)), false, "没被标记的文本节点不是我们的");
   assert.strictEqual(isOurs(null), false, "空值不能抛异常");
   // 元素节点即使有标记位也不算（它走 __ktIsForeign 那条路）
-  assert.strictEqual(isOurs({ nodeType: 1, __ltOwned: true }), false);
+  assert.strictEqual(isOurs({ nodeType: 1, __wkOwned: true }), false);
+});
+
+test("装上的是旧版 v1 补丁时：applyPatch 就地升级成 v2（加上 wk- 前缀）", () => {
+  // 真实场景：用户的 jp-furigana 早先被 v1 补丁打过（只认 kt- / lt-），
+  // 现在插件把 DOM 前缀换成了 wk-，那份 v1 补丁会让我们的注音被判脏 → 一直闪。
+  // 所以不能只报"已打补丁"，必须在原地上把类名枚举升级掉。
+  const v1 = FIXTURE_PATCHED_V1;
+  assert.strictEqual(isPatched(v1), false, "v1 不算当前版本");
+  assert.strictEqual(isPatchedV1(v1), true, "要能认出 v1");
+
+  const r = applyPatch(v1);
+  assert.ok(r.upgraded, "应该走升级路径：" + JSON.stringify(r));
+  assert.strictEqual(isPatched(r.src), true, "升级后要带上 v2 标记");
+  assert.strictEqual(isPatchedV1(r.src), false, "v1 标记不能再留着");
+  assert.ok(r.src.indexOf("wk-ruby") >= 0, "升级后要认 wk-ruby");
+  assert.ok(r.src.indexOf("__wkOwned") >= 0, "升级后要认 __wkOwned");
+  assert.ok(r.src.indexOf("lt-ruby") >= 0 && r.src.indexOf("kt-ruby") >= 0, "老两家不能丢");
+  // 升级是幂等的：再来一次就是 v2 了
+  const again = applyPatch(r.src);
+  assert.strictEqual(again.already, true);
+  assert.strictEqual(again.src, r.src);
 });
 
 test("重复打补丁是幂等的（不会打两遍）", () => {

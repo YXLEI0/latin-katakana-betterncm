@@ -10,14 +10,14 @@
  *                        发音不规则，但歌词注音必须有东西可显示，所以约定
  *                        「永远返回非空片假名」，把握不足时用 confident:false 报出来。
  *
- * 挂到 globalThis.LKReading。既能在老 CEF 里按 <script> 加载，也能在 Node 里
+ * 挂到 globalThis.WKReading。既能在老 CEF 里按 <script> 加载，也能在 Node 里
  * require（UMD 那套壳，见文件末尾）。目标宿主是网易云内置的老 CEF，
  * 所以这里只用 ES5：var、function、字符串拼接，不用箭头函数/let/const/
  * 模板字符串/解构/可选链。
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
-  else root.LKReading = factory();
+  else root.WKReading = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 

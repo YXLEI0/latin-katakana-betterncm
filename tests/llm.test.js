@@ -60,7 +60,7 @@ function makeClient(ctx, opts) {
 
   const updates = [];
   const statuses = [];
-  const client = ctx.LKLLM.createClient({
+  const client = ctx.WKLLM.createClient({
     enabled: opts.enabled !== false,
     endpoint: opts.endpoint || "https://api.example.com/chat/completions",
     model: "test-model",
@@ -85,7 +85,7 @@ function makeClient(ctx, opts) {
 /** 和 main.js 一样把首音校验注入进去（不注入的话什么答案都会被收下） */
 function withValidate(ctx, opts) {
   const merged = Object.assign({}, opts);
-  merged.validate = (w, k) => ctx.LKReading.looksLikeTransliteration(w, k);
+  merged.validate = (w, k) => ctx.WKReading.looksLikeTransliteration(w, k);
   return makeClient(ctx, merged);
 }
 
@@ -284,11 +284,11 @@ test("stalled：连着失败而且队列还有词 = 这层现在彻底不工作�
 test("key 清洗：带引号 / 前后空格 / 整个 Bearer 都能收拾干净（这是「请求全失败」的常见元凶）", () => {
   const ctx = loadCore();
   for (const raw of ['"sk-abc123456789012345"', "  sk-abc123456789012345  ", "Bearer sk-abc123456789012345", "Bearer  'sk-abc123456789012345'"]) {
-    assert.strictEqual(ctx.LKLLM.normalizeKey(raw), "sk-abc123456789012345", "洗不干净：" + JSON.stringify(raw));
+    assert.strictEqual(ctx.WKLLM.normalizeKey(raw), "sk-abc123456789012345", "洗不干净：" + JSON.stringify(raw));
   }
-  assert.strictEqual(ctx.LKLLM.normalizeKey(""), "");
-  assert.strictEqual(ctx.LKLLM.normalizeKey(null), "");
-  assert.strictEqual(ctx.LKLLM.normalizeKey("sk-abc"), "sk-abc", "本来就是干净的别乱动");
+  assert.strictEqual(ctx.WKLLM.normalizeKey(""), "");
+  assert.strictEqual(ctx.WKLLM.normalizeKey(null), "");
+  assert.strictEqual(ctx.WKLLM.normalizeKey("sk-abc"), "sk-abc", "本来就是干净的别乱动");
 });
 
 test("key 清洗：真的发出去的 Authorization 里不能有多余字符", async () => {
@@ -554,7 +554,7 @@ test("HTTP 非 200 也算失败（比如 key 写错）", async () => {
     calls.push(1);
     return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) });
   };
-  const client = ctx.LKLLM.createClient({ enabled: true, key: "sk-bad", endpoint: "https://x/y" });
+  const client = ctx.WKLLM.createClient({ enabled: true, key: "sk-bad", endpoint: "https://x/y" });
   client.lookup("hello");
   const ok = await client.flush();
   assert.strictEqual(ok, false);
@@ -633,7 +633,7 @@ test("自检不会抛：fetch 直接抛同步异常也算失败", async () => {
   ctx.window.fetch = function () {
     throw new Error("no fetch");
   };
-  const client = ctx.LKLLM.createClient({ enabled: true, key: "sk-test", endpoint: "https://x/y" });
+  const client = ctx.WKLLM.createClient({ enabled: true, key: "sk-test", endpoint: "https://x/y" });
   const r = await client.test();
   assert.strictEqual(r.ok, false);
   assert.ok(r.message.indexOf("no fetch") >= 0);
@@ -782,7 +782,7 @@ test("isWaiting：等待期间 true；有结论/退避/没配 key 时 false", as
 test("拦住意译/拟声词：tick 被回成 カチカチ 时按 miss 处理，不再重问", async () => {
   // 用户报的：tick 注成 カチカチ。光看"纯片假名"拦不住，所以由上层注入校验函数。
   const ctx = loadCore();
-  const V = ctx.LKReading.looksLikeTransliteration;
+  const V = ctx.WKReading.looksLikeTransliteration;
   const bad = makeClient(ctx, {
     validate: V,
     reply: () => ({ "1": "カチカチ" }), // 拟声词
@@ -814,7 +814,7 @@ test("拦住意译/拟声词：tick 被回成 カチカチ 时按 miss 处理，
 
 test("接口地址会自动补全：粘 base_url 也能用（这就是 404 的常见原因）", () => {
   const ctx = loadCore();
-  const N = ctx.LKLLM.normalizeEndpoint;
+  const N = ctx.WKLLM.normalizeEndpoint;
   // 文档里给的是 base_url，直接粘进来 POST 过去就是 404（实测 2026-09）
   assert.strictEqual(N("https://api.deepseek.com"), "https://api.deepseek.com/v1/chat/completions");
   assert.strictEqual(N("https://api.deepseek.com/v1"), "https://api.deepseek.com/v1/chat/completions");
@@ -830,8 +830,8 @@ test("接口地址会自动补全：粘 base_url 也能用（这就是 404 的�
   assert.strictEqual(N("https://api.deepseek.com/beta/chat/completions"), "https://api.deepseek.com/beta/chat/completions");
   assert.strictEqual(N("http://127.0.0.1:1234/v1"), "http://127.0.0.1:1234/v1/chat/completions");
   // 空的就用默认
-  assert.strictEqual(N(""), ctx.LKLLM.DEFAULT_ENDPOINT);
-  assert.strictEqual(N(undefined), ctx.LKLLM.DEFAULT_ENDPOINT);
+  assert.strictEqual(N(""), ctx.WKLLM.DEFAULT_ENDPOINT);
+  assert.strictEqual(N(undefined), ctx.WKLLM.DEFAULT_ENDPOINT);
 });
 
 test("客户端内部用的就是纠正后的地址（配置里存 base_url 也不影响）", async () => {
@@ -845,7 +845,7 @@ test("客户端内部用的就是纠正后的地址（配置里存 base_url 也�
       json: () => Promise.resolve({ choices: [{ message: { content: '{"hello":"ハロー"}' } }] }),
     });
   };
-  const client = ctx.LKLLM.createClient({ enabled: true, key: "sk-test", endpoint: "https://api.deepseek.com/v1" });
+  const client = ctx.WKLLM.createClient({ enabled: true, key: "sk-test", endpoint: "https://api.deepseek.com/v1" });
   client.lookup("hello");
   await client.flush();
   assert.deepStrictEqual(calls, ["https://api.deepseek.com/v1/chat/completions"]);
@@ -862,7 +862,7 @@ test("404 的报错要指出地址问题，并把服务端原话带上（不然�
       text: () => Promise.resolve(""),
     });
   };
-  const client = ctx.LKLLM.createClient({ enabled: true, key: "sk-test", endpoint: "https://api.deepseek.com/v1" });
+  const client = ctx.WKLLM.createClient({ enabled: true, key: "sk-test", endpoint: "https://api.deepseek.com/v1" });
   const r = await client.test();
   assert.strictEqual(r.ok, false);
   assert.ok(r.message.indexOf("404") >= 0, r.message);
@@ -873,7 +873,7 @@ test("404 的报错要指出地址问题，并把服务端原话带上（不然�
   ctx.window.fetch = function () {
     return Promise.resolve({ ok: false, status: 401, text: () => Promise.resolve('{"error":"bad key"}') });
   };
-  const c2 = ctx.LKLLM.createClient({ enabled: true, key: "sk-bad", endpoint: "https://api.deepseek.com" });
+  const c2 = ctx.WKLLM.createClient({ enabled: true, key: "sk-bad", endpoint: "https://api.deepseek.com" });
   const r2 = await c2.test();
   assert.ok(r2.message.indexOf("bad key") >= 0, r2.message);
   assert.ok(r2.message.indexOf("Key") >= 0, r2.message);

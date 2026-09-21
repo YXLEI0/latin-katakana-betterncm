@@ -1,5 +1,5 @@
 /*
- * 西文字母识别：在一片文本里找出"值得标片假名读音"的西文词。
+ * 西文字母识别：在一片文本里找出"值得标片假名读音"的西文词（core/letters.js）。
  *
  * 和 katakana-terminator 的 matcher.js 正好相反 —— 那个找片假名，这个找字母。
  * 但要处理的问题一样：不能把整段文字当成一个词，也不能把标点、缩写、单字母
@@ -7,12 +7,11 @@
  *
  * 俄语（西里尔）和希腊语也要注音，所以这里认三种字母：
  *   latin / cyrillic / greek。词条上带 script 字段，读音层按它选拼读规则。
- * （文件名仍叫 latin.js —— 它最早只管拉丁字母，改名会牵动 manifest 的注入顺序、
- *   测试和文档；`LKMatcher` 这个名字同理，都当内部名字看待。）
+ * 挂到 globalThis.WKMatcher（改名前的名字是 LKMatcher）。
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
-  else root.LKMatcher = factory();
+  else root.WKMatcher = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 

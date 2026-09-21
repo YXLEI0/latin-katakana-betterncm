@@ -260,9 +260,9 @@
   function shortRomajiOf(word) {
     var w = String(word || "").toLowerCase();
     if (!/^[a-z]{1,3}$/.test(w)) return null;
-    if (typeof LKReading === "undefined" || !LKReading.romajiToKatakana) return null;
+    if (typeof WKReading === "undefined" || !WKReading.romajiToKatakana) return null;
     try {
-      return LKReading.romajiToKatakana(w) || null;
+      return WKReading.romajiToKatakana(w) || null;
     } catch (e) {
       return null;
     }
@@ -274,8 +274,8 @@
     if (romajiLineCache.has(key)) return romajiLineCache.get(key);
     var looks = false;
     try {
-      var tokens = LKMatcher.scan(key);
-      var dict = typeof LKDict !== "undefined" ? LKDict.words : {};
+      var tokens = WKMatcher.scan(key);
+      var dict = typeof WKDict !== "undefined" ? WKDict.words : {};
       var seen = {};
       var distinct = 0;
       var latin = 0;
@@ -457,11 +457,11 @@
    *                                        （词典偶有错条目，这是逃生门）。
    *
    * 底线不变：**绝不返回 null 让这行空着**。高优先的在线层还在问的时候，用现成的
-   * 答案顶上并标成"暂定"（`lt-pending`，样式淡一点），结果回来由 annotate.relabel()
+   * 答案顶上并标成"暂定"（`wk-pending`，样式淡一点），结果回来由 annotate.relabel()
    * 就地改写 —— 用户报过的"全英文行标注后有概率消失"就是这么修的。
    *
    * source 是给排障用的（「按来源着色」把每一层染成不同颜色），
-   * 单独一个 readForDisplay() 只返回 kana，控制台 LK.display() 用它。
+   * 单独一个 readForDisplay() 只返回 kana，控制台 WK.display() 用它。
    */
   /**
    * 本地几层给的答案（含"罗马字行里的短音节改读罗马音"这条修正）。
@@ -483,7 +483,7 @@
    *
    * 支持的语言在 core/langs.js 里：法语 / 德语 / 拉丁语 / 葡萄牙语 / 荷兰语 /
    * 斯瓦希里语 / 汉语拼音 / 俄语（西里尔）/ 希腊语。判定分两层：
-   *   ① 这一行自己的特征（LKLangs.detect）；
+   *   ① 这一行自己的特征（WKLangs.detect）；
    *   ② 整首歌词的多数语种兜底（songLanguage）—— `Dominatus`、`Ukuu ukuu`
    *      这种两三个词的短行自己分数不够，但整首都是拉丁语/斯瓦希里语时
    *      应该照那种语言读，不然一行一个读法。
@@ -494,11 +494,11 @@
     if (langLineCache.has(key)) return langLineCache.get(key);
     var id = null;
     try {
-      if (typeof LKLangs !== "undefined" && LKLangs.detect) {
-        id = LKLangs.detect(key);
+      if (typeof WKLangs !== "undefined" && WKLangs.detect) {
+        id = WKLangs.detect(key);
         if (!id) {
           var song = songLanguage();
-          if (song && LKLangs.fits(song, key)) id = song;
+          if (song && WKLangs.fits(song, key)) id = song;
         }
       }
     } catch (e) {
@@ -515,7 +515,7 @@
    */
   var songLangCache = { key: "", value: null };
   function songLanguage() {
-    if (typeof LKLangs === "undefined" || !LKLangs.detect) return null;
+    if (typeof WKLangs === "undefined" || !WKLangs.detect) return null;
     if (!state.annotator || !state.annotator.findRegions) return null;
     var regions;
     try {
@@ -540,7 +540,7 @@
     for (var j = 0; j < texts.length; j++) {
       var id = null;
       try {
-        id = LKLangs.detect(texts[j]);
+        id = WKLangs.detect(texts[j]);
       } catch (e3) {
         id = null;
       }
@@ -579,10 +579,10 @@
     var s = String(line == null ? "" : line);
     if (!s) return false;
     if (/[A-Z]\s*[,.\u3001\u30FB\/&|]\s*[A-Z]/.test(s)) return true;
-    if (typeof LKMatcher === "undefined") return false;
+    if (typeof WKMatcher === "undefined") return false;
     var toks;
     try {
-      toks = LKMatcher.scan(s);
+      toks = WKMatcher.scan(s);
     } catch (e) {
       return false;
     }
@@ -667,7 +667,7 @@
     if (/^[A-Z]$/.test(String(word == null ? "" : word))) {
       if (line && lineLetterRun(line)) {
         var letterKana =
-          typeof LKReading !== "undefined" && LKReading.LETTER_KANA ? LKReading.LETTER_KANA[String(word).toLowerCase()] : null;
+          typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[String(word).toLowerCase()] : null;
         if (letterKana) return { kana: letterKana, source: "letters", confident: true };
       }
       if (String(word) !== "A" && String(word) !== "I") return null;
@@ -688,13 +688,13 @@
      * 规则层的结果一律 confident:false —— 拼写近似，配了 key 交给大模型按整句定。
      */
     var lang = line ? lineLang(line) : null;
-    if (lang && typeof LKLangs !== "undefined" && LKLangs.toKatakana) {
-      var loan = LKLangs.word(lang, word);
+    if (lang && typeof WKLangs !== "undefined" && WKLangs.toKatakana) {
+      var loan = WKLangs.word(lang, word);
       if (loan) return { kana: loan, source: "dict", confident: true };
-      var langKey = typeof LKMatcher !== "undefined" ? LKMatcher.normalize(word) : String(word == null ? "" : word).toLowerCase();
-      var needEngine = !r || !r.kana || r.source === "romaji" || r.source === "rule" || LKLangs.homograph(lang, langKey);
+      var langKey = typeof WKMatcher !== "undefined" ? WKMatcher.normalize(word) : String(word == null ? "" : word).toLowerCase();
+      var needEngine = !r || !r.kana || r.source === "romaji" || r.source === "rule" || WKLangs.homograph(lang, langKey);
       if (needEngine) {
-        var foreign = LKLangs.toKatakana(lang, word);
+        var foreign = WKLangs.toKatakana(lang, word);
         if (foreign && foreign.kana) return { kana: foreign.kana, source: "rule", confident: foreign.confident === true };
       }
     }
@@ -744,8 +744,8 @@
     if (!rom) return false;
     var kana = dictKana;
     if (kana === undefined) {
-      var d = typeof LKDict !== "undefined" ? LKDict.words : {};
-      var key = typeof LKMatcher !== "undefined" ? LKMatcher.normalize(word) : String(word || "").toLowerCase();
+      var d = typeof WKDict !== "undefined" ? WKDict.words : {};
+      var key = typeof WKMatcher !== "undefined" ? WKMatcher.normalize(word) : String(word || "").toLowerCase();
       kana = d[key];
     }
     return !!kana && kana !== rom;
@@ -784,7 +784,7 @@
     return { kana: r.kana, source: r.source };
   }
 
-  /** 只要读音字符串的调用方（控制台 LK.display / 老代码）走这个 */
+  /** 只要读音字符串的调用方（控制台 WK.display / 老代码）走这个 */
   function readForDisplay(word, line) {
     var got = resolveReading(word, line);
     return got ? got.kana : null;
@@ -792,7 +792,7 @@
 
   /**
    * 这个词的读音现在是不是"暂定"的（有比它更优先的在线层还在问）。
-   * 注音层靠它在 ruby 上加 `lt-pending` 类 —— 样式淡一点，提示"还不一定"。
+   * 注音层靠它在 ruby 上加 `wk-pending` 类 —— 样式淡一点，提示"还不一定"。
    */
   function isProvisional(word, line) {
     if (!word || !state.reader) return false;
@@ -995,8 +995,8 @@
       state.timerIsRaf = false;
     }
     if (state.annotator) state.annotator.restoreAll();
-    if (typeof LKAnnotate !== "undefined" && LKAnnotate.removeStyles) {
-      LKAnnotate.removeStyles(document);
+    if (typeof WKAnnotate !== "undefined" && WKAnnotate.removeStyles) {
+      WKAnnotate.removeStyles(document);
     }
   }
 
@@ -1007,8 +1007,8 @@
   }
 
   function updateStyles() {
-    if (typeof LKAnnotate !== "undefined" && LKAnnotate.applyStyles) {
-      LKAnnotate.applyStyles(document, {
+    if (typeof WKAnnotate !== "undefined" && WKAnnotate.applyStyles) {
+      WKAnnotate.applyStyles(document, {
         rtSize: config.rtSize,
         rtOpacity: config.rtOpacity,
         colorBySource: !!config.colorBySource,
@@ -1027,55 +1027,55 @@
       "<style>" +
       "#western-katakana-config { font-size: 14px; line-height: 1.9; }" +
       "#western-katakana-config h3 { margin: 12px 0 4px; font-size: 15px; }" +
-      "#western-katakana-config .lk-row { margin: 3px 0; }" +
-      "#western-katakana-config .lk-hint { opacity: .65; font-size: 12px; line-height: 1.5; }" +
+      "#western-katakana-config .wk-row { margin: 3px 0; }" +
+      "#western-katakana-config .wk-hint { opacity: .65; font-size: 12px; line-height: 1.5; }" +
       "#western-katakana-config input[type=text], #western-katakana-config input[type=password] { width: 300px; padding: 2px 6px; }" +
-      "#western-katakana-config .lk-preview { padding: 8px 10px; border: 1px solid rgba(128,128,128,.35); border-radius: 6px; font-size: 18px; }" +
-      "#western-katakana-config .lk-preview-trans { margin-top: 2px; font-size: 14px; opacity: .6; }" +
-      "#western-katakana-config .lk-llm-state { margin: 2px 0; }" +
-      "#western-katakana-config .lk-layer { display: flex; align-items: center; gap: 6px; line-height: 1.8; }" +
-      "#western-katakana-config .lk-layer-name { min-width: 110px; }" +
-      "#western-katakana-config .lk-layer-note { opacity: .6; font-size: 12px; flex: 1; }" +
-      "#western-katakana-config .lk-layer-btn { min-width: 26px; }" +
-      "#western-katakana-config .lk-layer-btn[disabled] { opacity: .35; }" +
-      "#western-katakana-config .lk-layer-warn { color: #e8a33d; margin-top: 4px; }" +
-      "#western-katakana-config .lk-warn { color: #e8a33d; }" +
-      "#western-katakana-config .lk-links { margin-bottom: 4px; }" +
-      "#western-katakana-config .lk-links a { margin-right: 14px; }" +
+      "#western-katakana-config .wk-preview { padding: 8px 10px; border: 1px solid rgba(128,128,128,.35); border-radius: 6px; font-size: 18px; }" +
+      "#western-katakana-config .wk-preview-trans { margin-top: 2px; font-size: 14px; opacity: .6; }" +
+      "#western-katakana-config .wk-llm-state { margin: 2px 0; }" +
+      "#western-katakana-config .wk-layer { display: flex; align-items: center; gap: 6px; line-height: 1.8; }" +
+      "#western-katakana-config .wk-layer-name { min-width: 110px; }" +
+      "#western-katakana-config .wk-layer-note { opacity: .6; font-size: 12px; flex: 1; }" +
+      "#western-katakana-config .wk-layer-btn { min-width: 26px; }" +
+      "#western-katakana-config .wk-layer-btn[disabled] { opacity: .35; }" +
+      "#western-katakana-config .wk-layer-warn { color: #e8a33d; margin-top: 4px; }" +
+      "#western-katakana-config .wk-warn { color: #e8a33d; }" +
+      "#western-katakana-config .wk-links { margin-bottom: 4px; }" +
+      "#western-katakana-config .wk-links a { margin-right: 14px; }" +
       // 高级设置整块折叠：面板默认只有"开关 / 大模型 / 预览"三块，其余收起来
-      "#western-katakana-config details.lk-adv { margin-top: 12px; border-top: 1px solid rgba(128,128,128,.25); padding-top: 6px; }" +
-      "#western-katakana-config details.lk-adv > summary { cursor: pointer; opacity: .8; }" +
-      "#western-katakana-config details.lk-adv > summary:hover { opacity: 1; }" +
+      "#western-katakana-config details.wk-adv { margin-top: 12px; border-top: 1px solid rgba(128,128,128,.25); padding-top: 6px; }" +
+      "#western-katakana-config details.wk-adv > summary { cursor: pointer; opacity: .8; }" +
+      "#western-katakana-config details.wk-adv > summary:hover { opacity: 1; }" +
       "</style>" +
-      '<div class="lk-links">' +
+      '<div class="wk-links">' +
       '<a href="#" data-open="' + REPO + '">源码仓库</a>' +
       '<a href="#" data-open="' + REPO + '/issues">反馈问题</a>' +
       "</div>" +
       "<h3>开关</h3>" +
-      '<div class="lk-row"><label><input type="checkbox" data-k="enabled"> 启用注音</label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="online"> 规则没把握时联网校正 (免费接口)</label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="annotateAll"> 也标播放栏的歌名 / 歌手</label></div>' +
+      '<div class="wk-row"><label><input type="checkbox" data-k="enabled"> 启用注音</label></div>' +
+      '<div class="wk-row"><label><input type="checkbox" data-k="online"> 规则没把握时联网校正 (免费接口)</label></div>' +
+      '<div class="wk-row"><label><input type="checkbox" data-k="annotateAll"> 也标播放栏的歌名 / 歌手</label></div>' +
       "<h3>大模型校正</h3>" +
-      '<div class="lk-row"><label><input type="checkbox" data-k="llmEnabled"> 用大模型校正读音</label></div>' +
-      '<div class="lk-row"><label>API Key <input type="password" data-k="llmKey" placeholder="sk-..."></label> ' +
+      '<div class="wk-row"><label><input type="checkbox" data-k="llmEnabled"> 用大模型校正读音</label></div>' +
+      '<div class="wk-row"><label>API Key <input type="password" data-k="llmKey" placeholder="sk-..."></label> ' +
       '<button data-a="llmTest">测试连接</button> <span data-v="llmTest"></span></div>' +
-      '<div class="lk-llm-state"></div>' +
-      '<div class="lk-row"><span data-v="learned"></span> ' +
+      '<div class="wk-llm-state"></div>' +
+      '<div class="wk-row"><span data-v="learned"></span> ' +
       '<button data-a="learnClear">清空已学会的词</button></div>' +
-      '<div class="lk-hint">Key 只存本机 localStorage, 不会进仓库; 留空则这一层不工作, 自动退回免费接口<br>' +
+      '<div class="wk-hint">Key 只存本机 localStorage, 不会进仓库; 留空则这一层不工作, 自动退回免费接口<br>' +
       "词典外的词和两可短音节 (Do / Re / PI / ME…) 由它按整句语境判; 答稳的词自动沉淀成离线词条, 以后不再问</div>" +
       "<h3>预览</h3>" +
-      '<div class="lk-preview"></div>' +
-      '<details class="lk-adv"><summary>高级设置（接口 / 外观 / 范围 / 读音来源顺序 / 用量 / 操作）</summary>' +
+      '<div class="wk-preview"></div>' +
+      '<details class="wk-adv"><summary>高级设置（接口 / 外观 / 范围 / 读音来源顺序 / 用量 / 操作）</summary>' +
       "<h3>接口</h3>" +
-      '<div class="lk-row"><label>接口地址 <input type="text" data-k="llmEndpoint"></label></div>' +
-      '<div class="lk-row"><label>模型 <input type="text" data-k="llmModel"></label></div>' +
-      '<div class="lk-hint">粘文档里的 <code>base_url</code> 也行, 会自动补成 <code>/chat/completions</code></div>' +
+      '<div class="wk-row"><label>接口地址 <input type="text" data-k="llmEndpoint"></label></div>' +
+      '<div class="wk-row"><label>模型 <input type="text" data-k="llmModel"></label></div>' +
+      '<div class="wk-hint">粘文档里的 <code>base_url</code> 也行, 会自动补成 <code>/chat/completions</code></div>' +
       "<h3>外观</h3>" +
-      '<div class="lk-row"><label>注音字号 <input type="range" data-k="rtSize" min="30" max="120" step="1"> <span data-v="rtSize"></span></label></div>' +
-      '<div class="lk-row"><label>注音不透明度 <input type="range" data-k="rtOpacity" min="10" max="100" step="1"> <span data-v="rtOpacity"></span></label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="colorBySource"> 按读音来源给注音上色 (排障)</label></div>' +
-      '<div class="lk-hint">' +
+      '<div class="wk-row"><label>注音字号 <input type="range" data-k="rtSize" min="30" max="120" step="1"> <span data-v="rtSize"></span></label></div>' +
+      '<div class="wk-row"><label>注音不透明度 <input type="range" data-k="rtOpacity" min="10" max="100" step="1"> <span data-v="rtOpacity"></span></label></div>' +
+      '<div class="wk-row"><label><input type="checkbox" data-k="colorBySource"> 按读音来源给注音上色 (排障)</label></div>' +
+      '<div class="wk-hint">' +
       '<span style="color:#46d17e">■ 词典</span>　' +
       '<span style="color:#2fae7a">■ 学会的词</span>　' +
       '<span style="color:#3fb6d8">■ 记号/字母名</span>　' +
@@ -1084,32 +1084,32 @@
       '<span style="color:#c07ce8">■ 大模型</span>　' +
       '<span style="color:#e0629a">■ 免费接口</span>　淡显 = 暂定值</div>' +
       "<h3>范围</h3>" +
-      '<div class="lk-row"><label>标注范围 <select data-k="scope">' +
+      '<div class="wk-row"><label>标注范围 <select data-k="scope">' +
       '<option value="all">歌词 + 播放栏 (默认)</option>' +
       '<option value="lyrics">只标歌词</option>' +
       '<option value="titles">只标播放栏</option>' +
       '<option value="custom">自定义选择器</option>' +
       "</select></label></div>" +
-      '<div class="lk-row"><label>自定义选择器 <input type="text" data-k="customSelector" placeholder="例如 ul.lyric > li"></label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="annotateNonJapanese"> 非日语歌也注音 (纯英文 / 西文各语种 / 中文歌)</label></div>' +
-      '<div class="lk-hint">关掉 = 只标日语歌: 整首歌词一个假名都没有的整首跳过; ' +
+      '<div class="wk-row"><label>自定义选择器 <input type="text" data-k="customSelector" placeholder="例如 ul.lyric > li"></label></div>' +
+      '<div class="wk-row"><label><input type="checkbox" data-k="annotateNonJapanese"> 非日语歌也注音 (纯英文 / 西文各语种 / 中文歌)</label></div>' +
+      '<div class="wk-hint">关掉 = 只标日语歌: 整首歌词一个假名都没有的整首跳过; ' +
       "判据看整首, 所以日语歌里的纯英文行照旧注音</div>" +
       "<h3>读音来源顺序</h3>" +
-      '<div class="lk-hint">越靠上越优先; 把<b>英文音译规则</b>提到在线层前面 = 一个请求都不发 (纯离线)<br>' +
+      '<div class="wk-hint">越靠上越优先; 把<b>英文音译规则</b>提到在线层前面 = 一个请求都不发 (纯离线)<br>' +
       "记号 / 缩写 / 字母名 (<code>D/N/A</code>、<code>I'll</code>、<code>LDK</code>) 不参与排序, 永远最先判</div>" +
-      '<div class="lk-layers"></div>' +
-      '<div class="lk-row"><button data-a="layersReset">恢复默认顺序</button> <span data-v="layersReset"></span></div>' +
+      '<div class="wk-layers"></div>' +
+      '<div class="wk-row"><button data-a="layersReset">恢复默认顺序</button> <span data-v="layersReset"></span></div>' +
       "<h3>API 用量</h3>" +
-      '<div class="lk-usage"></div>' +
-      '<div class="lk-row"><label>输入单价 <input type="number" data-k="usagePriceIn" min="0" step="0.01" style="width:80px"> 元/百万 token　' +
+      '<div class="wk-usage"></div>' +
+      '<div class="wk-row"><label>输入单价 <input type="number" data-k="usagePriceIn" min="0" step="0.01" style="width:80px"> 元/百万 token　' +
       '输出单价 <input type="number" data-k="usagePriceOut" min="0" step="0.01" style="width:80px"> 元/百万 token</label></div>' +
-      '<div class="lk-row">' +
+      '<div class="wk-row">' +
       '<button data-a="usageReset" data-scope="session">清零本次</button> ' +
       '<button data-a="usageReset" data-scope="today">清零今天</button> ' +
       '<button data-a="usageReset" data-scope="all">清零累计</button>' +
       "</div>" +
       "<h3>操作</h3>" +
-      '<div class="lk-row">' +
+      '<div class="wk-row">' +
       '<button data-a="rescan">重新扫描</button> ' +
       '<button data-a="retry">重试没结果的词</button> ' +
       '<button data-a="exportWords">导出词库素材</button> ' +
@@ -1121,14 +1121,14 @@
       return config[key] + "%";
     }
 
-    var preview = root.querySelector(".lk-preview");
-    var layersBox = root.querySelector(".lk-layers");
-    var usageBox = root.querySelector(".lk-usage");
-    var llmStateBox = root.querySelector(".lk-llm-state");
+    var preview = root.querySelector(".wk-preview");
+    var layersBox = root.querySelector(".wk-layers");
+    var usageBox = root.querySelector(".wk-usage");
+    var llmStateBox = root.querySelector(".wk-llm-state");
 
     /** 每一层右边那句小字：让用户一眼看出这层现在能不能用 */
     function layerNote(id) {
-      if (id === "dict") return "(" + (typeof LKDict !== "undefined" ? LKDict.count : "?") + " 条, 纯离线)";
+      if (id === "dict") return "(" + (typeof WKDict !== "undefined" ? WKDict.count : "?") + " 条, 纯离线)";
       if (id === "romaji") return "(歌词里的日式罗马字, 纯离线)";
       if (id === "rule") return "(拼写音译, 永远给得出结果)";
       if (id === "llm") return llmAvailable() ? "(已启用)" : "(没启用 / 没填 key)";
@@ -1143,15 +1143,15 @@
         (function (index) {
           var id = config.layerOrder[index];
           var row = document.createElement("div");
-          row.className = "lk-layer";
+          row.className = "wk-layer";
 
           var name = document.createElement("span");
-          name.className = "lk-layer-name";
+          name.className = "wk-layer-name";
           name.textContent = (index + 1) + ". " + (LAYER_NAMES[id] || id);
           row.appendChild(name);
 
           var note = document.createElement("span");
-          note.className = "lk-layer-note";
+          note.className = "wk-layer-note";
           note.textContent = layerNote(id);
           row.appendChild(note);
 
@@ -1170,7 +1170,7 @@
       var blocked = ruleBlocksSync();
       if (blocked.length) {
         var warnEl = document.createElement("div");
-        warnEl.className = "lk-hint lk-layer-warn";
+        warnEl.className = "wk-hint wk-layer-warn";
         warnEl.textContent =
           "⚠ " + blocked.join(" / ") + " 排在「英文音译规则」下面: 规则对每个词都会给答案, " +
           "这几层 (还有它下面的在线层) 就永远用不上 —— the 会变成规则猜的 セ" +
@@ -1187,7 +1187,7 @@
          * 不改也能用：罗马音行我们本来就会按罗马音读（lineLooksRomaji）。
          */
         var warn2 = document.createElement("div");
-        warn2.className = "lk-hint lk-layer-warn";
+        warn2.className = "wk-hint wk-layer-warn";
         warn2.textContent =
           "⚠ 「日式罗马音」排在「离线词典」前面: 它同样是「能切成音节就收」, " +
           "英文词也会被按罗马音读 (Shoo→ショオ、more→モレ、Do→ド); 除非你就是想要这样, " +
@@ -1204,7 +1204,7 @@
      * 把词典往下拖了几格，于是 `the` -> セ、`this` 变黄（规则层）、
      * `I'll` 被拆成「イ + ル」= イル，而且**大模型也不再被咨询**（规则先答了）。
      * 所以面板里直接不让这么换；真要"只用规则"就走控制台
-     * `LK.layers(['rule','dict',...])`（文档里有）。
+     * `WK.layers(['rule','dict',...])`（文档里有）。
      */
     function canSwap(index, delta) {
       var to = index + delta;
@@ -1220,7 +1220,7 @@
 
     function mkMoveBtn(index, id, delta, label) {
       var b = document.createElement("button");
-      b.className = "lk-layer-btn";
+      b.className = "wk-layer-btn";
       b.textContent = label;
       b.setAttribute("data-layer", id);
       b.setAttribute("data-dir", delta < 0 ? "up" : "down");
@@ -1256,7 +1256,7 @@
      * 「学会的词」那一行：模型答案沉淀成的离线词条。
      *
      * 用户问的就是这个 —— 让模型答过的词自动进词库、以后不再花钱问。
-     * 这里只说数量：具体哪些词用 `LK.learn.list()` 看（面板塞不下一长串）。
+     * 这里只说数量：具体哪些词用 `WK.learn.list()` 看（面板塞不下一长串）。
      */
     function refreshLearned() {
       var box = root.querySelector('[data-v="learned"]');
@@ -1291,12 +1291,12 @@
       ];
       for (var i = 0; i < rows.length; i++) {
         var line = document.createElement("div");
-        line.className = "lk-usage-row";
+        line.className = "wk-usage-row";
         line.textContent = rows[i].label + "：" + usageLine(rows[i].bucket, priceIn, priceOut);
         usageBox.appendChild(line);
       }
       var saved = document.createElement("div");
-      saved.className = "lk-hint";
+      saved.className = "wk-hint";
       var llmStats = state.llm ? state.llm.stats() : null;
       var savedHits = (llmStats ? llmStats.cacheHits : 0) + (state.corrector ? state.corrector.stats().memoryHits : 0);
       saved.textContent =
@@ -1331,11 +1331,11 @@
     }
 
     /** 从 usage 模块拿两层 id（别在 main.js 里写死一份） */
-    var USAGE_KINDS = typeof LKUsage !== "undefined" ? LKUsage.KINDS : ["llm", "google"];
+    var USAGE_KINDS = typeof WKUsage !== "undefined" ? WKUsage.KINDS : ["llm", "google"];
 
     function refreshPreview() {
       preview.innerHTML = "";
-      if (typeof LKMatcher === "undefined" || !state.reader) {
+      if (typeof WKMatcher === "undefined" || !state.reader) {
         preview.textContent = "核心模块未加载";
         return;
       }
@@ -1351,20 +1351,20 @@
       var demoTrans = "衬衫的价格为九磅十五便士";
       var frag = document.createDocumentFragment();
       var pos = 0;
-      var tokens = LKMatcher.scan(demo);
+      var tokens = WKMatcher.scan(demo);
       var got = 0;
       for (var i = 0; i < tokens.length; i++) {
         var tk = tokens[i];
         // 和 annotate.js 一样传**原始写法**：折过的形式会把连字符吃掉，
         // 记号（D/N/A）和普通词（x-ray）就分不出来了
-        var r = LKMatcher.looksReadable(tk) ? state.reader.read(tk.text) : null;
+        var r = WKMatcher.looksReadable(tk) ? state.reader.read(tk.text) : null;
         if (tk.start > pos) frag.appendChild(document.createTextNode(demo.slice(pos, tk.start)));
         if (r && r.kana) {
           var ruby = document.createElement("ruby");
-          ruby.className = "lt-ruby";
+          ruby.className = "wk-ruby";
           ruby.appendChild(document.createTextNode(tk.text));
           var rt = document.createElement("rt");
-          rt.className = "lt-rt";
+          rt.className = "wk-rt";
           rt.textContent = r.kana;
           ruby.appendChild(rt);
           frag.appendChild(ruby);
@@ -1382,20 +1382,20 @@
        */
       if (demoTrans) {
         var trans = document.createElement("div");
-        trans.className = "lk-preview-trans";
+        trans.className = "wk-preview-trans";
         trans.textContent = demoTrans;
         preview.appendChild(trans);
       }
       if (!got) {
         var hint = document.createElement("div");
-        hint.className = "lk-hint";
-        hint.textContent = "没能给示例词算出读音 (可在控制台调 LK.read('shirt') 查看)";
+        hint.className = "wk-hint";
+        hint.textContent = "没能给示例词算出读音 (可在控制台调 WK.read('shirt') 查看)";
         preview.appendChild(hint);
       }
     }
 
     function refreshStatus() {
-      // 原来的开发模式"状态转储"已经删掉: 面板上不该有这种东西, 需要数字时用控制台 LK.stats()
+      // 原来的开发模式"状态转储"已经删掉: 面板上不该有这种东西, 需要数字时用控制台 WK.stats()
       return;
     }
 
@@ -1416,7 +1416,7 @@
       var s = state.llm.stats();
       function say(text, cls) {
         var el = document.createElement("div");
-        el.className = "lk-hint" + (cls ? " " + cls : "");
+        el.className = "wk-hint" + (cls ? " " + cls : "");
         el.textContent = text;
         llmStateBox.appendChild(el);
       }
@@ -1445,7 +1445,7 @@
           "⚠ 「英文音译规则」排在 " + blockedHere.join(" / ") + " 前面 —— 规则对每个词都会给答案, " +
             "所以词典和模型都用不上 (the 变 セ、this 变黄、I'll 变 イル 都是这个原因); " +
             "点「恢复默认顺序」, 再把「大模型」往上提",
-          "lk-warn"
+          "wk-warn"
         );
         sayBtn("恢复默认顺序", "layersReset");
         return;
@@ -1458,13 +1458,13 @@
         say(
           "⚠ 请求失败后退避中, 还要等 " + Math.round(s.cooldownMs / 1000) + " 秒; " +
             "这段时间里读音不会矫正" + (s.lastError ? "; 最近错误: " + s.lastError : ""),
-          "lk-warn"
+          "wk-warn"
         );
         sayBtn("立刻重试", "llmRetryNow");
       } else if (s.failedSinceHit >= 2) {
         say(
           "⚠ 最近几次请求都没成功, 读音不会矫正" + (s.lastError ? "; 最近错误: " + s.lastError : ""),
-          "lk-warn"
+          "wk-warn"
         );
         sayBtn("立刻重试", "llmRetryNow");
       } else if (s.pending > 0) {
@@ -1539,8 +1539,8 @@
            * （`https://api.deepseek.com` 或 `…/v1`），那样 POST 过去是 404。
            * 纠正后的值写回输入框，免得每次都得记住补 `/chat/completions`。
            */
-          if (key === "llmEndpoint" && typeof LKLLM !== "undefined" && LKLLM.normalizeEndpoint) {
-            var fixed = LKLLM.normalizeEndpoint(config.llmEndpoint);
+          if (key === "llmEndpoint" && typeof WKLLM !== "undefined" && WKLLM.normalizeEndpoint) {
+            var fixed = WKLLM.normalizeEndpoint(config.llmEndpoint);
             if (fixed !== config.llmEndpoint) {
               config.llmEndpoint = fixed;
               el.value = fixed;
@@ -1551,8 +1551,8 @@
            * "Bearer xxx"。这些都会让请求 401（用户看到的就是"大模型请求全失败"），
            * 洗完之后写回输入框，免得每次都要自己盯着看有没有多余字符。
            */
-          if (key === "llmKey" && typeof LKLLM !== "undefined" && LKLLM.normalizeKey) {
-            var clean = LKLLM.normalizeKey(config.llmKey);
+          if (key === "llmKey" && typeof WKLLM !== "undefined" && WKLLM.normalizeKey) {
+            var clean = WKLLM.normalizeKey(config.llmKey);
             if (clean !== config.llmKey) {
               config.llmKey = clean;
               el.value = clean;
@@ -1756,16 +1756,16 @@
     trace("boot", "onLoad 开始 off=" + emergencyOff() + " enabled=" + config.enabled +
       " scope=" + config.scope + " annotateAll=" + config.annotateAll +
       " cfgVer=" + config.configVersion +
-      " 模块 matcher=" + typeof LKMatcher + " reading=" + typeof LKReading +
-      " dict=" + typeof LKDict + " annotate=" + typeof LKAnnotate);
+      " 模块 matcher=" + typeof WKMatcher + " reading=" + typeof WKReading +
+      " dict=" + typeof WKDict + " annotate=" + typeof WKAnnotate);
 
-    if (typeof LKMatcher === "undefined" || typeof LKReading === "undefined" ||
-        typeof LKAnnotate === "undefined" || typeof LKDict === "undefined") {
+    if (typeof WKMatcher === "undefined" || typeof WKReading === "undefined" ||
+        typeof WKAnnotate === "undefined" || typeof WKDict === "undefined") {
       warn("核心模块未注入，检查 manifest.json 的 injects 顺序");
       return;
     }
     // 语言层是可选的：没注入时只剩英语/罗马音（老行为），注音照常工作
-    if (typeof LKLangs === "undefined") warn("core/langs.js 没注入：法语 / 德语 / 拉丁语等西文语种不生效");
+    if (typeof WKLangs === "undefined") warn("core/langs.js 没注入：法语 / 德语 / 拉丁语等西文语种不生效");
 
     try {
       betterncm.app.getBetterNCMVersion().then(
@@ -1786,14 +1786,14 @@
        * 用量统计（本次 / 今天 / 累计）。core/usage.js 没注入时整块功能缺席，
        * 但注音本身照常工作 —— 统计是附属品，不能拖累主流程。
        */
-      if (typeof LKUsage !== "undefined") {
-        state.usage = LKUsage.createUsage();
+      if (typeof WKUsage !== "undefined") {
+        state.usage = WKUsage.createUsage();
       }
-      state.corrector = LKCorrect.createCorrector({
+      state.corrector = WKCorrect.createCorrector({
         online: config.online,
         // 纯片假名还不够：还要像这个词的音译（tick 不能被回成 カチカチ）
         validate: function (word, kana) {
-          return typeof LKReading === "undefined" ? true : LKReading.looksLikeTransliteration(word, kana);
+          return typeof WKReading === "undefined" ? true : WKReading.looksLikeTransliteration(word, kana);
         },
         // 免费接口没有 token 概念，用请求数 + 字符数记账
         onUsage: function (fields) {
@@ -1820,10 +1820,10 @@
           notifyConfigUI();
         },
       });
-      state.reader = LKReading.createReader({
-        dict: LKDict.words,
+      state.reader = WKReading.createReader({
+        dict: WKDict.words,
         // 英文常用词表：罗马音层靠它判断"这看着像英文词"，判出来就交给在线层仲裁
-        enWords: typeof LKEnWords !== "undefined" ? LKEnWords.words : null,
+        enWords: typeof WKEnWords !== "undefined" ? WKEnWords.words : null,
         // 同步层按用户排的顺序（异步层由 readForDisplay 处理，见那里）
         order: syncLayerOrder(),
         log: function () {
@@ -1836,16 +1836,16 @@
        * （见 core/learn.js）。它压在最前面、按离线词典的名次参与层序 ——
        * 这些词以后**不会再问模型**，用户要的"自动沉淀进词典"就是这个。
        */
-      if (typeof LKLearn !== "undefined") {
-        state.learned = LKLearn.createLearned({
+      if (typeof WKLearn !== "undefined") {
+        state.learned = WKLearn.createLearned({
           normalize: function (word) {
-            return typeof LKMatcher !== "undefined" ? LKMatcher.normalize(word) : String(word == null ? "" : word).toLowerCase();
+            return typeof WKMatcher !== "undefined" ? WKMatcher.normalize(word) : String(word == null ? "" : word).toLowerCase();
           },
         });
       }
       // 大模型校正：没填 key 就整层不工作（lookup 一律返回 null），自动退回上面的 Google 路子
-      if (typeof LKLLM !== "undefined") {
-        state.llm = LKLLM.createClient({          enabled: config.llmEnabled !== false,
+      if (typeof WKLLM !== "undefined") {
+        state.llm = WKLLM.createClient({          enabled: config.llmEnabled !== false,
           endpoint: config.llmEndpoint,
           model: config.llmModel,
           key: config.llmKey,
@@ -1884,7 +1884,7 @@
           },
           // 同上：拦住"意译/拟声词"（用户报的 tick -> カチカチ）
           validate: function (word, kana) {
-            return typeof LKReading === "undefined" ? true : LKReading.looksLikeTransliteration(word, kana);
+            return typeof WKReading === "undefined" ? true : WKReading.looksLikeTransliteration(word, kana);
           },
           log: function () {
             trace("llm", Array.prototype.join.call(arguments, " "));
@@ -1904,7 +1904,7 @@
           },
         });
       }
-      state.annotator = LKAnnotate.createAnnotator({
+      state.annotator = WKAnnotate.createAnnotator({
         // 返回 { kana, source }：source 用来给"按来源着色"的排障功能打标
         lookup: function (word, line) {
           return resolveReading(word, line);
@@ -1966,7 +1966,7 @@
 
     trace("boot", "初始化完成，annotator=" + !!state.annotator + " reader=" + !!state.reader);
 
-    window.LatinKatakana = {
+    window.WesternKatakana = {
       config: config,
       state: state,
       set: function (key, value) {
@@ -1980,7 +1980,7 @@
         return config[key];
       },
       /*
-       * 读音来源顺序：LK.layers() 看当前顺序，LK.layers(['llm','dict',...]) 直接改。
+       * 读音来源顺序：WK.layers() 看当前顺序，WK.layers(['llm','dict',...]) 直接改。
        * 设置面板里那对 ↑↓ 按钮走的就是同一条路（改完同样会重扫）。
        */
       layers: function (order) {
@@ -1992,8 +1992,8 @@
         return config.layerOrder.slice();
       },
       /*
-       * API 用量：LK.usage() 看账本（本次/今天/累计，两层分开），
-       * LK.usageReset('session'|'today'|'all') 清零。设置面板里那几个按钮走同一条路。
+       * API 用量：WK.usage() 看账本（本次/今天/累计，两层分开），
+       * WK.usageReset('session'|'today'|'all') 清零。设置面板里那几个按钮走同一条路。
        */
       usage: function () {
         return state.usage ? state.usage.snapshot() : null;
@@ -2009,16 +2009,16 @@
       /*
        * 「学会的词」：模型答过两次、且纠正了本地读音的词，已经沉淀成离线词条
        * （它们不再走模型，省钱就在这里）。面板上那一行显示的就是这份东西。
-       *   LK.learn.list()        看学会了哪些（按最近用到的排前面）
-       *   LK.learn.stats()       数量 / 待定数量 / 本次用上几个
-       *   LK.learn.forget('xxx') 忘掉一个（读音不对时用）
-       *   LK.learn.clear()       全清（等于回到"每次都得问模型"）
+       *   WK.learn.list()        看学会了哪些（按最近用到的排前面）
+       *   WK.learn.stats()       数量 / 待定数量 / 本次用上几个
+       *   WK.learn.forget('xxx') 忘掉一个（读音不对时用）
+       *   WK.learn.clear()       全清（等于回到"每次都得问模型"）
        */
       /*
        * 「把常用词沉淀进离线词典」的素材导出。
        *
        * 运行期写不进仓库里的 src/core/dict.js（那是构建产物），所以流程是：
-       *   面板「操作 → 导出词库素材」或控制台 LK.exportWords()
+       *   面板「操作 → 导出词库素材」或控制台 WK.exportWords()
        *   → 得到一段 JSON（已学会的词 + 大模型缓存命中 + 免费接口缓存命中）
        *   → 存成 data/learned.json
        *   → `npm run promote:learned` 筛选后写进 tools/seed-words-learned.js
@@ -2052,21 +2052,21 @@
         },
       },
       learned: function () {
-        // 短别名：LK.learned() 直接看列表
+        // 短别名：WK.learned() 直接看列表
         return state.learned ? state.learned.list() : [];
       },
       display: function (word) {
         /*
          * **页面上实际用的**那个读音：按用户排的层序取（默认
          * 词典 -> 罗马音 -> 大模型 -> Google -> 规则）。
-         * 判断"某个词到底是谁给的读音"就用它：和 LK.read() 比一下，
+         * 判断"某个词到底是谁给的读音"就用它：和 WK.read() 比一下，
          * 不一样就说明被大模型（或联网）换过了。
          */
         return readForDisplay(word);
       },
       /*
-       * 排障：按读音来源上色。LK.colorize(true) 开、LK.colorize(false) 关、
-       * 不带参数就是看当前状态。只改 CSS（lt-src-* 类名一直挂在注音节点上），
+       * 排障：按读音来源上色。WK.colorize(true) 开、WK.colorize(false) 关、
+       * 不带参数就是看当前状态。只改 CSS（wk-src-* 类名一直挂在注音节点上），
        * 所以不用重扫，开了立刻就变。
        */
       colorize: function (on) {
@@ -2078,30 +2078,30 @@
         return !!config.colorBySource;
       },
       dict: function () {
-        return typeof LKDict !== "undefined" ? LKDict.words : {};
+        return typeof WKDict !== "undefined" ? WKDict.words : {};
       },
       /*
        * 借词表（core/loan.js）：哪些词"日语里就是这么写的"。
-       * LK.loan() 看条数，LK.loan('de') 看德语那张表。
+       * WK.loan() 看条数，WK.loan('de') 看德语那张表。
        */
       loan: function (langId) {
-        if (typeof LKLoan === "undefined") return null;
-        if (!langId) return { count: LKLoan.count, langs: Object.keys(LKLoan.tables) };
-        return LKLoan.get(langId);
+        if (typeof WKLoan === "undefined") return null;
+        if (!langId) return { count: WKLoan.count, langs: Object.keys(WKLoan.tables) };
+        return WKLoan.get(langId);
       },
       /*
-       * 语言判定：LK.lang('这一行歌词') 看它被判成什么语言。
+       * 语言判定：WK.lang('这一行歌词') 看它被判成什么语言。
        * 插件支持法语 / 德语 / 拉丁语 / 葡萄牙语 / 荷兰语 / 斯瓦希里语 /
        * 汉语拼音 / 俄语 / 希腊语，判不出来返回 null（那就走词典/罗马音/英文规则）。
        */
       lang: function (text) {
-        if (typeof LKLangs === "undefined") return null;
-        var id = text === undefined || text === null ? null : LKLangs.detect(String(text));
-        return { id: id, label: id ? LKLangs.label(id) : "（没判出来）" };
+        if (typeof WKLangs === "undefined") return null;
+        var id = text === undefined || text === null ? null : WKLangs.detect(String(text));
+        return { id: id, label: id ? WKLangs.label(id) : "（没判出来）" };
       },
       stats: function () {
         return {
-          layers: config.layerOrder.slice(), // 当前层序（LK.layers() 改的就是它）
+          layers: config.layerOrder.slice(), // 当前层序（WK.layers() 改的就是它）
           lastPass: state.lastResult || null, // 含 skips：这一轮"为什么有行没注音"
           reading: state.reader ? state.reader.stats() : null,
           correct: state.corrector ? state.corrector.stats() : null,
@@ -2146,7 +2146,7 @@
             lines.push(
               "问过但没收下（不会再自动重问）：" + s.missesCached + " 条，其中首音校验判掉 " + s.rejected + " 次"
             );
-            lines.push("→ 想再问一次：点设置里的「重试没结果的词」；想查模型当时说了什么：LK.llm.rejects()");
+            lines.push("→ 想再问一次：点设置里的「重试没结果的词」；想查模型当时说了什么：WK.llm.rejects()");
           }
           if (typeof s.roomThisMinute === "number") lines.push("本分钟还剩 " + s.roomThisMinute + " 次请求额度");
           if (s.cooldownMs > 0) lines.push("退避中：还要等 " + Math.round(s.cooldownMs / 1000) + " 秒");
@@ -2157,12 +2157,12 @@
             lines.push("→ 请求都没成功，照上面的错误信息对号入座：");
             lines.push("　 401/403 = key 不对；402 = 余额用完；429 = 被限流；404 = 地址少了 /chat/completions；400 = 模型名不对");
             lines.push("　 没有状态码的那句（Failed to fetch 之类）= 网络不通，或被跨域拦住（服务商得允许 music.163.com 这个来源）");
-          } else if (s.hits > 0) lines.push("→ 已经生效 ✓（想看某个词是谁给的：LK.display('词') 对比 LK.read('词')）");
+          } else if (s.hits > 0) lines.push("→ 已经生效 ✓（想看某个词是谁给的：WK.display('词') 对比 WK.read('词')）");
           else if (s.requests > 0) lines.push("→ 请求发出去了但一个都没命中，看上面「模型没给 / 失败」的数字");
           else
             lines.push(
               "→ 还没问过任何词：说明到目前为止歌词里的拉丁词**全在离线词典里**（" +
-                (typeof LKDict !== "undefined" ? LKDict.count : "?") +
+                (typeof WKDict !== "undefined" ? WKDict.count : "?") +
                 " 条），这一层没活干。想立刻验证：点设置里的「测试连接」，或找一首带生僻词/英文人名的歌"
             );
           return lines.join("\n");
@@ -2205,7 +2205,7 @@
         },
       },
       scan: function (text) {
-        return LKMatcher.scan(text);
+        return WKMatcher.scan(text);
       },
       pass: pass,
       rescan: rescan,
@@ -2216,7 +2216,7 @@
         rescan();
       },
       rubyLayout: function () {
-        return LKAnnotate.hasRubyLayout(document);
+        return WKAnnotate.hasRubyLayout(document);
       },
       repairLine: function (lineEl) {
         return state.annotator && state.annotator.repairLine ? state.annotator.repairLine(lineEl) : false;
@@ -2224,21 +2224,21 @@
     };
 
     /*
-     * 短别名 `LK`：日志、README、排障文档里写的都是 LK.xxx，
-     * 以前只挂了 window.LatinKatakana，照着敲会 "LK is not defined"。
-     * 现在三个名字都留着：
+     * 四个名字都挂着：
      *   window.WesternKatakana  长名（插件现在的身份）
-     *   window.LatinKatakana    老长名，改名前的文档 / 脚本里是它，留个别名不至于失效
-     *   window.LK               短名，控制台里敲的就是它（文档里的 LK.stats() / LK.lang()）
+     *   window.WK               短名，控制台里敲的就是它（文档里写的 WK.stats() / WK.lang()）
+     *   window.LK               改名前的短名 ┐老文档 / 老脚本里是它们，各留一行别名不至于失效
+     *   window.LatinKatakana    改名前的长名 ┘
      */
-    window.WesternKatakana = window.LatinKatakana;
+    window.WK = window.WesternKatakana;
     window.LK = window.WesternKatakana;
+    window.LatinKatakana = window.WesternKatakana;
 
     log(
       "已加载" +
         (DEV ? "（开发模式）" : "") +
-        "，控制台可用 LK.stats() 看统计、LK.llm.check() 看大模型有没有生效、" +
-        "LK.display('light') 看某个词实际用的读音、LK.scan('light と clover') 看分词"
+        "，控制台可用 WK.stats() 看统计、WK.llm.check() 看大模型有没有生效、" +
+        "WK.display('light') 看某个词实际用的读音、WK.scan('light と clover') 看分词"
     );
     notifyConfigUI();
   });

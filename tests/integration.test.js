@@ -108,18 +108,18 @@ function bootPlugin(html, options) {
       for (const fn of listeners.load) await fn();
     },
   };
-  // window.LatinKatakana 要到 onLoad 之后才存在（BetterNCM 就是这个顺序），
+  // window.WK 要到 onLoad 之后才存在（BetterNCM 就是这个顺序），
   // 所以这里用 getter 延迟取值，别在 boot 阶段就抄一份 undefined。
   Object.defineProperty(env, "api", {
     get: function () {
-      return window.LatinKatakana;
+      return window.WK;
     },
   });
   return env;
 }
 
 function rubyCount(root) {
-  return root.querySelectorAll("ruby.lt-ruby").length;
+  return root.querySelectorAll("ruby.wk-ruby").length;
 }
 
 /** 离线词典里有没有这个词（写测试前提用；直接读 src/core/dict.js） */
@@ -131,7 +131,7 @@ function envDictHas(word) {
 /** 底字文本（剔掉注音）——标准 ruby 里 <rt> 的文本也算 textContent，必须显式去掉 */
 function baseText(el) {
   const clone = el.cloneNode(true);
-  const anns = clone.querySelectorAll("rt, .lt-rt, .kt-rt, .fg-rt, rp");
+  const anns = clone.querySelectorAll("rt, .wk-rt, .kt-rt, .fg-rt, rp");
   for (let i = 0; i < anns.length; i++) {
     if (anns[i].parentNode) anns[i].parentNode.removeChild(anns[i]);
   }
@@ -139,7 +139,7 @@ function baseText(el) {
 }
 
 const PAIRS = (p) =>
-  [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent]);
+  [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
 
 test("注入 7 个文件后，插件注册了 onLoad / onConfig 并导出 API", async () => {
   const env = bootPlugin();
@@ -169,8 +169,8 @@ test("播放栏的歌名 / 歌手也标", async () => {
   await env.runLoad();
   await sleep(600);
   const pairs = [];
-  const rubies = env.document.querySelectorAll(".m-playbar ruby.lt-ruby");
-  for (let i = 0; i < rubies.length; i++) pairs.push(rubies[i].querySelector(".lt-rt").textContent);
+  const rubies = env.document.querySelectorAll(".m-playbar ruby.wk-ruby");
+  for (let i = 0; i < rubies.length; i++) pairs.push(rubies[i].querySelector(".wk-rt").textContent);
   // dreamer 是变形词（规则会读成 ドレアメー），所以它必须在词典里 —— 见 tools/seed-words.js 第二批
   assert.deepStrictEqual(pairs.sort(), ["クローバー", "ドリーマー", "ライト"].sort());
   assert.strictEqual(baseText(env.document.querySelector(".m-playbar .name")), "light と clover");
@@ -207,8 +207,8 @@ test("已经带别人注音的行：只标底字，绝不往别人的注音里�
   const p = env.document.querySelector("ul.lyric li p");
   // 我们自己该标的那个词标上了
   assert.deepStrictEqual(PAIRS(p), [["clover", "クローバー"]]);
-  // 别人的注音节点内部一个 lt-ruby 都不能有
-  assert.strictEqual(p.querySelectorAll(".kt-rt ruby.lt-ruby, .fg-rt ruby.lt-ruby").length, 0);
+  // 别人的注音节点内部一个 wk-ruby 都不能有
+  assert.strictEqual(p.querySelectorAll(".kt-rt ruby.wk-ruby, .fg-rt ruby.wk-ruby").length, 0);
   assert.strictEqual(p.querySelector(".kt-rt").textContent, "dream", "片假名终结者的英文注释不能被改写");
   assert.strictEqual(p.querySelector(".fg-rt").textContent, "よつば", "jp-furigana 的振假名不能被改写");
   // 底字不变（别人的 <rt> 不算底字）
@@ -237,7 +237,7 @@ test("降级成 <span> 的别人注音，靠 class 也要认出来（不能给 d
   await sleep(600);
 
   const p = env.document.querySelector("ul.lyric li p");
-  assert.strictEqual(p.querySelectorAll(".kt-ruby ruby.lt-ruby, .kt-rt ruby.lt-ruby").length, 0, p.innerHTML);
+  assert.strictEqual(p.querySelectorAll(".kt-ruby ruby.wk-ruby, .kt-rt ruby.wk-ruby").length, 0, p.innerHTML);
   assert.strictEqual(p.querySelector(".kt-rt").textContent, "dream", "别人的注音文字不许被改写");
   assert.deepStrictEqual(PAIRS(p), [["clover", "クローバー"]], "同一行里我们该标的照样标");
 });
@@ -339,7 +339,7 @@ test("大模型层：规则读歪的词，结果回来之后注音会被换上�
 
   // 关键：DOM 里那个词现在必须是大模型给的读音，不是规则拼出来的
   const line = env.document.querySelector("ul.lyric li p");
-  const pairs = [...line.querySelectorAll("ruby.lt-ruby")].map((r) => r.querySelector(".lt-rt").textContent);
+  const pairs = [...line.querySelectorAll("ruby.wk-ruby")].map((r) => r.querySelector(".wk-rt").textContent);
   assert.ok(pairs.indexOf("カレイドスコープ") >= 0, "注音应该被换成大模型的读音：" + pairs.join(","));
   assert.strictEqual(baseText(line), "きらめく kaleidoscope の light", "底字不许动");
 });
@@ -375,7 +375,7 @@ test("用户报的那行：Tell me a story 里的 a 也要注音", async () => {
   await sleep(600);
 
   const p = env.document.querySelector("ul.lyric li p");
-  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent]);
+  const pairs = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
   assert.deepStrictEqual(pairs, [
     ["Tell", "テル"],
     ["me", "ミー"],
@@ -411,27 +411,30 @@ test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 �
   assert.ok(stats.reading.letterHits >= 1, "应该记在 letters 这一类上：" + JSON.stringify(stats.reading));
 });
 
-test("控制台诊断：LK 短别名存在，llm.check() 能一句话回答「生效了没有」", async () => {
+test("控制台诊断：WK 短别名存在，llm.check() 能一句话回答「生效了没有」", async () => {
   const env = bootPlugin();
   await env.runLoad();
 
-  assert.strictEqual(typeof env.window.LK, "object", "文档里写的是 LK.xxx，别名必须挂上");
-  assert.strictEqual(env.window.LK, env.window.LatinKatakana, "两个名字应该是同一个对象");
-  assert.strictEqual(typeof env.window.LK.llm.check, "function");
+  assert.strictEqual(typeof env.window.WK, "object", "文档里写的是 WK.xxx，别名必须挂上");
+  assert.strictEqual(env.window.WK, env.window.WesternKatakana, "长名和短名应该是同一个对象");
+  // 改名前的两个名字留着当别名（老文档 / 老脚本里是它们）
+  assert.strictEqual(env.window.WK, env.window.LK);
+  assert.strictEqual(env.window.WK, env.window.LatinKatakana);
+  assert.strictEqual(typeof env.window.WK.llm.check, "function");
 
   // 没填 key：check() 要说清是"没填 key"，而不是含糊的"没生效"
-  const noKey = env.window.LK.llm.check();
+  const noKey = env.window.WK.llm.check();
   assert.ok(noKey.indexOf("API Key：没填") >= 0, noKey);
   assert.ok(noKey.indexOf("填 API Key") >= 0, noKey);
 
   // 填了 key 但还没问过任何词（歌词里的词全在词典里）：要解释"这层没活干"，而不是让人以为坏了
-  env.window.LK.state.llm.configure({ key: "sk-test", enabled: true });
-  const idle = env.window.LK.llm.check();
+  env.window.WK.state.llm.configure({ key: "sk-test", enabled: true });
+  const idle = env.window.WK.llm.check();
   assert.ok(idle.indexOf("请求 0 次") >= 0, idle);
   assert.ok(idle.indexOf("全在离线词典里") >= 0, idle);
 });
 
-test("控制台诊断：LK.display() 给的是页面上实际用的读音（可能是大模型换过的）", async () => {
+test("控制台诊断：WK.display() 给的是页面上实际用的读音（可能是大模型换过的）", async () => {
   const env = bootPlugin(LLM_HTML, {
     config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions" },
     fetch: function (url, init) {
@@ -453,12 +456,12 @@ test("控制台诊断：LK.display() 给的是页面上实际用的读音（可�
   await sleep(1400);
 
   // 本地规则给的是一个拼出来的读音，display() 应该是大模型换上的那个
-  const local = env.window.LK.read("kaleidoscope");
+  const local = env.window.WK.read("kaleidoscope");
   assert.strictEqual(local.source, "rule", "前提：词典里没有这个词：" + JSON.stringify(local));
-  assert.strictEqual(env.window.LK.display("kaleidoscope"), "カレイドスコープ");
-  assert.notStrictEqual(env.window.LK.display("kaleidoscope"), local.kana, "display 和 read 应该不一样");
+  assert.strictEqual(env.window.WK.display("kaleidoscope"), "カレイドスコープ");
+  assert.notStrictEqual(env.window.WK.display("kaleidoscope"), local.kana, "display 和 read 应该不一样");
 
-  const verdict = env.window.LK.llm.check();
+  const verdict = env.window.WK.llm.check();
   assert.ok(verdict.indexOf("已经生效") >= 0, verdict);
 });
 
@@ -527,13 +530,13 @@ test("层序：在线那层还在问时先用暂定读音顶上（不空着）�
 
   const p = env.document.querySelector("ul.lyric li p");
   assert.strictEqual(rubyCount(p), 1, "等待期间也要注上（暂定），不能空着");
-  assert.ok(p.querySelector("ruby.lt-ruby").classList.contains("lt-pending"), "要标成暂定");
+  assert.ok(p.querySelector("ruby.wk-ruby").classList.contains("wk-pending"), "要标成暂定");
   assert.strictEqual(baseText(p), "きらめく kaleidoscope の夜", "底字不动");
 
   // 免费接口的攒批窗口 1.2s + 请求失败 -> 之后转为确定（规则读音），但**不能消失**
   await sleep(2600);
   assert.strictEqual(rubyCount(p), 1, "接口失败后注音不许消失：" + p.innerHTML);
-  assert.ok(!p.querySelector("ruby.lt-ruby").classList.contains("lt-pending"), "已经有结论了，不再是暂定");
+  assert.ok(!p.querySelector("ruby.wk-ruby").classList.contains("wk-pending"), "已经有结论了，不再是暂定");
 });
 
 test("层序：完全离线设置（关掉联网）时规则立刻生效，不等任何请求", async () => {
@@ -585,7 +588,7 @@ test("层序可调：把英文规则提到在线层前面 = 一个请求都不�
   assert.strictEqual(called, 0, "规则排在在线层前面时不许发请求");
   const p = env.document.querySelector("ul.lyric li p");
   assert.strictEqual(rubyCount(p), 1, "规则照样要注上：" + p.innerHTML);
-  assert.ok(!p.querySelector("ruby.lt-ruby").classList.contains("lt-pending"), "轮不到在线层，不存在暂定");
+  assert.ok(!p.querySelector("ruby.wk-ruby").classList.contains("wk-pending"), "轮不到在线层，不存在暂定");
   const s = env.api.stats();
   assert.strictEqual(s.llm.requests, 0, "大模型一次都没问");
 });
@@ -625,7 +628,7 @@ test("层序可调：把大模型提到词典前面，词典命中的词也会�
   const words = [].concat.apply([], requests);
   assert.ok(words.indexOf("light") >= 0, "词典命中的 light 也要问（它排在模型下面）：" + words.join(","));
   const p = env.document.querySelector("ul.lyric li p");
-  const got = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent]);
+  const got = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
   assert.deepStrictEqual(
     got,
     [
@@ -667,13 +670,13 @@ test("层序可调：默认顺序下词典压过大模型（词典命中的词�
 test("层序可调：设置面板的 ↑↓ 按钮能改顺序、落盘，并立刻重扫", async () => {
   const env = bootPlugin(NCM_HTML, { dev: true });
   await env.runLoad();
-  // 注意 [...]: LK.layers() 里的数组是 jsdom 那个 realm 的，
+  // 注意 [...]: WK.layers() 里的数组是 jsdom 那个 realm 的，
   // 直接 deepStrictEqual 会因为原型不同而失败（假报错）
   assert.deepStrictEqual([...env.api.layers()], ["dict", "romaji", "llm", "google", "rule"], "默认顺序");
 
   const root = env.listeners.config[0]();
-  const rows = root.querySelectorAll(".lk-layers .lk-layer");
-  assert.strictEqual(rows.length, 5, "五层都要列出来：" + root.querySelector(".lk-layers").innerHTML);
+  const rows = root.querySelectorAll(".wk-layers .wk-layer");
+  assert.strictEqual(rows.length, 5, "五层都要列出来：" + root.querySelector(".wk-layers").innerHTML);
 
   // 第一层的 ↓：词典和罗马音对调
   const down = rows[0].querySelector('[data-dir="down"]');
@@ -685,7 +688,7 @@ test("层序可调：设置面板的 ↑↓ 按钮能改顺序、落盘，并立
   assert.deepStrictEqual(saved.layerOrder, ["romaji", "dict", "llm", "google", "rule"], "顺序要落盘");
 
   // 面板上第一层的 ↑ 现在是禁用的（已经在最上面）
-  const rows2 = env.listeners.config[0]().querySelectorAll(".lk-layers .lk-layer");
+  const rows2 = env.listeners.config[0]().querySelectorAll(".wk-layers .wk-layer");
   assert.strictEqual(rows2[0].querySelector('[data-dir="up"]').disabled, true, "最上面那层不该还能往上");
   assert.strictEqual(rows2[4].querySelector('[data-dir="down"]').disabled, true, "最下面那层不该还能往下");
 
@@ -816,7 +819,7 @@ test("全英文的一行：等待在线结果期间先用暂定读音顶上，�
    *      这一行就空着；而这个词所在的原文本节点已经有记录了，后面拿到结果也不会再补注
    *      （一行的**首个词**尤其明显）。
    *   2. 在线结果回来时走的是 restoreAll + 重注，等于把整行先清空再补回来。
-   * 现在：等待期间用规则读音当**暂定值**（ruby 带 lt-pending，样式淡一点），
+   * 现在：等待期间用规则读音当**暂定值**（ruby 带 wk-pending，样式淡一点），
    * 结果回来由 annotate.relabel() 就地改写，DOM 节点一个都不动。
    */
   const HTML = `<!doctype html><html><head></head><body>
@@ -857,17 +860,17 @@ test("全英文的一行：等待在线结果期间先用暂定读音顶上，�
     ["kaleidoscope", "zephyr", "serendipity", "light"],
     "等待期间也不许空着：" + p.innerHTML
   );
-  const zephyrEl = [...p.querySelectorAll("ruby.lt-ruby")].find((r) => r.childNodes[0].nodeValue === "zephyr");
-  assert.ok(zephyrEl.classList.contains("lt-pending"), "词典外的词先标成暂定：" + zephyrEl.className);
-  const lightEl = [...p.querySelectorAll("ruby.lt-ruby")].find((r) => r.childNodes[0].nodeValue === "light");
-  assert.ok(!lightEl.classList.contains("lt-pending"), "词典命中的词不是暂定");
+  const zephyrEl = [...p.querySelectorAll("ruby.wk-ruby")].find((r) => r.childNodes[0].nodeValue === "zephyr");
+  assert.ok(zephyrEl.classList.contains("wk-pending"), "词典外的词先标成暂定：" + zephyrEl.className);
+  const lightEl = [...p.querySelectorAll("ruby.wk-ruby")].find((r) => r.childNodes[0].nodeValue === "light");
+  assert.ok(!lightEl.classList.contains("wk-pending"), "词典命中的词不是暂定");
 
   await sleep(600);
   // ② 结果回来：读音就地改写、暂定标记去掉、**同一个节点对象**（没有拆了重建）
-  const zephyrAfter = [...p.querySelectorAll("ruby.lt-ruby")].find((r) => r.childNodes[0].nodeValue === "zephyr");
+  const zephyrAfter = [...p.querySelectorAll("ruby.wk-ruby")].find((r) => r.childNodes[0].nodeValue === "zephyr");
   assert.strictEqual(zephyrAfter, zephyrEl, "不许把注音拆掉重建（那样就是一闪）");
-  assert.strictEqual(zephyrAfter.querySelector(".lt-rt").textContent, "ゼファー");
-  assert.ok(!zephyrAfter.classList.contains("lt-pending"), "有确定结果了就不是暂定");
+  assert.strictEqual(zephyrAfter.querySelector(".wk-rt").textContent, "ゼファー");
+  assert.ok(!zephyrAfter.classList.contains("wk-pending"), "有确定结果了就不是暂定");
   // ③ 模型给不出的词保持规则读音（不再标暂定），light 一直在
   const names = PAIRS(p).map((x) => x[0]);
   assert.deepStrictEqual(names, ["kaleidoscope", "zephyr", "serendipity", "light"]);
@@ -922,7 +925,7 @@ test("禁用后 DOM 完全还原并收走样式，重新启用又能标注", asy
   env.api.set("enabled", false);
   await sleep(200);
   assert.strictEqual(rubyCount(env.document.body), 0, "禁用后不该有注音");
-  assert.ok(!env.document.body.innerHTML.includes("lt-ruby"), "禁用后 DOM 里不该有痕迹");
+  assert.ok(!env.document.body.innerHTML.includes("wk-ruby"), "禁用后 DOM 里不该有痕迹");
   assert.strictEqual(env.document.getElementById("western-katakana-style"), null, "注入的样式表要收走");
 
   env.api.set("enabled", true);
@@ -1003,7 +1006,7 @@ test("用量：设置面板显示账本，三个清零按钮各管一段", async
   assert.strictEqual(u.session.llm.requests, 0, "本次是新的会话");
 
   const root = env.listeners.config[0]();
-  const usageText = root.querySelector(".lk-usage").textContent;
+  const usageText = root.querySelector(".wk-usage").textContent;
   assert.ok(usageText.indexOf("累计：大模型 9 次请求") >= 0, "面板要显示累计：" + usageText);
   assert.ok(usageText.indexOf("今天：大模型 7 次请求") >= 0, "面板要显示今天：" + usageText);
   assert.ok(usageText.indexOf("免费接口 3 次请求") >= 0, "免费接口单独记：" + usageText);
@@ -1041,7 +1044,7 @@ test("用量：单价填了就算花费，单价 0 就不显示钱", async () =>
     })
   );
   await env.runLoad();
-  const text = env.listeners.config[0]().querySelector(".lk-usage").textContent;
+  const text = env.listeners.config[0]().querySelector(".wk-usage").textContent;
   assert.ok(text.indexOf("2.0000 元") >= 0, "输入 1M token × 2 元 = 2 元：" + text);
 });
 
@@ -1078,14 +1081,14 @@ test("暂定标记不会卡住：大模型失败后那一行立刻恢复成确�
   const p = env.document.querySelector("ul.lyric li p");
   assert.strictEqual(rubyCount(p), 4, "四个词都要标上：" + p.innerHTML);
   assert.strictEqual(
-    p.querySelectorAll("ruby.lt-ruby.lt-pending").length,
+    p.querySelectorAll("ruby.wk-ruby.wk-pending").length,
     0,
-    "失败之后不该还淡着（lt-pending 会一直挂着就是那个 bug）：" + p.innerHTML
+    "失败之后不该还淡着（wk-pending 会一直挂着就是那个 bug）：" + p.innerHTML
   );
   // 退避期间再扫一轮，也不能又淡上
   env.api.pass();
   await sleep(80);
-  assert.strictEqual(p.querySelectorAll("ruby.lt-ruby.lt-pending").length, 0, "重扫也不许再淡");
+  assert.strictEqual(p.querySelectorAll("ruby.wk-ruby.wk-pending").length, 0, "重扫也不许再淡");
 });
 
 test("按来源着色：类名一直在，颜色只由开关决定（开了立刻生效，不用重扫）", async () => {
@@ -1093,23 +1096,23 @@ test("按来源着色：类名一直在，颜色只由开关决定（开了立�
   await env.runLoad();
   await sleep(200);
   const p = env.document.querySelector("ul.lyric li p");
-  assert.ok(p.querySelector("ruby.lt-src-dict"), "词典给的词要带 lt-src-dict：" + p.innerHTML);
+  assert.ok(p.querySelector("ruby.wk-src-dict"), "词典给的词要带 wk-src-dict：" + p.innerHTML);
 
   const styleText = () => env.document.getElementById("western-katakana-style").textContent;
   assert.strictEqual(env.api.colorize(), false, "默认不开");
-  assert.strictEqual(styleText().indexOf("lt-src-dict"), -1, "没开的时候一条颜色规则都不注入");
+  assert.strictEqual(styleText().indexOf("wk-src-dict"), -1, "没开的时候一条颜色规则都不注入");
 
   assert.strictEqual(env.api.colorize(true), true);
   const css = styleText();
   for (const src of ["dict", "letters", "romaji", "rule", "llm", "google"]) {
-    assert.ok(css.indexOf("lt-src-" + src) >= 0, "开了之后要有 " + src + " 的颜色规则");
+    assert.ok(css.indexOf("wk-src-" + src) >= 0, "开了之后要有 " + src + " 的颜色规则");
   }
   assert.ok(css.indexOf("#46d17e") >= 0, "词典是绿色");
 
   assert.strictEqual(env.api.colorize(false), false);
-  assert.strictEqual(styleText().indexOf("lt-src-dict"), -1, "关掉就撤掉颜色规则");
+  assert.strictEqual(styleText().indexOf("wk-src-dict"), -1, "关掉就撤掉颜色规则");
   // 但类名还在（下次开开关不用重扫）
-  assert.ok(p.querySelector("ruby.lt-src-dict"), "类名不该跟着开关消失");
+  assert.ok(p.querySelector("ruby.wk-src-dict"), "类名不该跟着开关消失");
 });
 
 test("按来源着色：大模型换过的词，颜色跟着来源一起变", async () => {
@@ -1139,24 +1142,24 @@ test("按来源着色：大模型换过的词，颜色跟着来源一起变", as
   await sleep(1400);
 
   const p = env.document.querySelector("ul.lyric li p");
-  const rubies = [...p.querySelectorAll("ruby.lt-ruby")];
+  const rubies = [...p.querySelectorAll("ruby.wk-ruby")];
   const light = rubies.find((r) => r.childNodes[0].nodeValue === "light");
   const kaleido = rubies.find((r) => r.childNodes[0].nodeValue === "kaleidoscope");
-  assert.ok(light.classList.contains("lt-src-dict"), "词典命中的词是词典色：" + light.className);
+  assert.ok(light.classList.contains("wk-src-dict"), "词典命中的词是词典色：" + light.className);
   assert.ok(
-    kaleido.classList.contains("lt-src-llm"),
-    "被大模型换过的词要变成大模型色（lt-src-llm），类名不能再留着 lt-src-rule：" + kaleido.className
+    kaleido.classList.contains("wk-src-llm"),
+    "被大模型换过的词要变成大模型色（wk-src-llm），类名不能再留着 wk-src-rule：" + kaleido.className
   );
-  assert.strictEqual(kaleido.className.indexOf("lt-src-rule"), -1, "旧来源的类名要换掉");
+  assert.strictEqual(kaleido.className.indexOf("wk-src-rule"), -1, "旧来源的类名要换掉");
 });
 
 test("注音不透明度真的生效（老版本被一条 !important 压掉了）", () => {
   const ctx = loadCore(NCM_HTML);
-  ctx.LKAnnotate.applyStyles(ctx.document, { rtSize: 55, rtOpacity: 40, colorBySource: false });
+  ctx.WKAnnotate.applyStyles(ctx.document, { rtSize: 55, rtOpacity: 40, colorBySource: false });
   const css = ctx.document.getElementById("western-katakana-style").textContent;
-  assert.ok(/rt\.lt-rt,\s*\.lt-rt\s*\{\s*opacity:\s*0\.4\s*!important/.test(css), "注音要用用户设的 40%：" + css);
+  assert.ok(/rt\.wk-rt,\s*\.wk-rt\s*\{\s*opacity:\s*0\.4\s*!important/.test(css), "注音要用用户设的 40%：" + css);
   assert.ok(
-    css.indexOf("ruby.lt-ruby { opacity: 1 !important; }") >= 0,
+    css.indexOf("ruby.wk-ruby { opacity: 1 !important; }") >= 0,
     "底字仍要锁死 1（别人的 opacity 不许把它压淡）"
   );
   // 暂定按比例再淡一档（40% * 0.6 = 24%），不是写死的 45%
@@ -1216,16 +1219,16 @@ test("罗马音像英文词时交给大模型仲裁；真罗马音一个请求�
   await env.runLoad();
   await sleep(200); // 趁模型还没回来：本地答案是"暂定"
   const p = env.document.querySelector("ul.lyric li p");
-  const pendingNow = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue);
+  const pendingNow = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue);
   assert.ok(pendingNow.indexOf("sake") >= 0, "sake 要先标上（暂定）：" + p.innerHTML);
 
   await sleep(1400);
   const words = [].concat.apply([], asked);
   assert.deepStrictEqual(words, ["sake"], "只该问 sake：词典词和真罗马音都不该浪费请求（实际 " + words.join(",") + "）");
 
-  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+  const pairs = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
     r.childNodes[0].nodeValue,
-    r.querySelector(".lt-rt").textContent,
+    r.querySelector(".wk-rt").textContent,
   ]);
   assert.deepStrictEqual(
     pairs,
@@ -1237,8 +1240,8 @@ test("罗马音像英文词时交给大模型仲裁；真罗马音一个请求�
     ],
     "sake 要被模型换成 セイク；其它三个保持本地答案：" + JSON.stringify(pairs)
   );
-  const shakeRuby = p.querySelectorAll("ruby.lt-ruby")[3];
-  assert.ok(shakeRuby.classList.contains("lt-src-dict"), "shake 现在是词典命中：" + shakeRuby.className);
+  const shakeRuby = p.querySelectorAll("ruby.wk-ruby")[3];
+  assert.ok(shakeRuby.classList.contains("wk-src-dict"), "shake 现在是词典命中：" + shakeRuby.className);
   assert.strictEqual(baseText(p), "sake sekai the shake");
 });
 
@@ -1266,7 +1269,7 @@ test("罗马音像英文词：用户把「英文规则」提到在线层前面�
   await sleep(1600);
   assert.strictEqual(called, 0, "纯离线顺序下一个请求都不该发");
   const p = env.document.querySelector("ul.lyric li p");
-  assert.strictEqual(p.querySelectorAll("ruby.lt-ruby.lt-pending").length, 0, "也不该标成暂定");
+  assert.strictEqual(p.querySelectorAll("ruby.wk-ruby.wk-pending").length, 0, "也不该标成暂定");
   assert.strictEqual(rubyCount(p), 2);
 });
 
@@ -1294,7 +1297,7 @@ test("换歌且页面不再变动时：被跳过的行会自己补回来（不�
   }
   assert.strictEqual(rubyCount(p), 0, "前提：窗口内变太快，这几轮被跳过");
   assert.ok(env.api.stats().lastPass.retryInMs > 0, "要安排下一轮：", JSON.stringify(env.api.stats().lastPass));
-  // 跳过原因留在 lastPass.skips 里（以前有个 LK.why() 专门读它，那个 API 已经删了）
+  // 跳过原因留在 lastPass.skips 里（以前有个 WK.why() 专门读它，那个 API 已经删了）
   assert.ok(
     env.api.stats().lastPass.skips.join(" ").indexOf("文本在动") >= 0,
     "要留痕说清为什么跳过：" + JSON.stringify(env.api.stats().lastPass.skips)
@@ -1303,7 +1306,7 @@ test("换歌且页面不再变动时：被跳过的行会自己补回来（不�
   // 关键：接下来**一个 DOM 事件都不发生**，只等 —— 注音必须自己出现
   await sleep(3600);
   assert.deepStrictEqual(
-    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    [...p.querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue),
     ["sky"],
     "窗口过后必须自己补上来（暂停时换歌就是这个场景）：" + p.innerHTML
   );
@@ -1316,8 +1319,8 @@ test("设置面板：把词典拖到「英文音译规则」下面会给出挡�
     config: { layerOrder: ["llm", "romaji", "google", "rule", "dict"] },
   });
   await env.runLoad();
-  const box = env.listeners.config[0]().querySelector(".lk-layers");
-  const warn = box.querySelector(".lk-layer-warn");
+  const box = env.listeners.config[0]().querySelector(".wk-layers");
+  const warn = box.querySelector(".wk-layer-warn");
   assert.ok(warn, "要有挡路提醒：" + box.textContent);
   assert.ok(warn.textContent.indexOf("离线词典") >= 0, "要点名被挡住的层：" + warn.textContent);
   assert.ok(warn.textContent.indexOf("セ") >= 0, "要说明后果（the 会变成 セ）：" + warn.textContent);
@@ -1326,7 +1329,7 @@ test("设置面板：把词典拖到「英文音译规则」下面会给出挡�
   const okEnv = bootPlugin(NCM_HTML, { dev: true });
   await okEnv.runLoad();
   assert.strictEqual(
-    okEnv.listeners.config[0]().querySelector(".lk-layer-warn"),
+    okEnv.listeners.config[0]().querySelector(".wk-layer-warn"),
     null,
     "默认顺序不该出现提醒"
   );
@@ -1338,7 +1341,7 @@ test("层序：面板不让把「英文音译规则」换到词典/罗马音前�
   // 词典和在线层就永远轮不到。面板直接不让换，并给出说明。
   const env = bootPlugin(NCM_HTML, { dev: true });
   await env.runLoad();
-  const rows = env.listeners.config[0]().querySelectorAll(".lk-layers .lk-layer");
+  const rows = env.listeners.config[0]().querySelectorAll(".wk-layers .wk-layer");
   // 默认序：1 词典 2 罗马音 3 大模型 4 免费接口 5 规则
   assert.strictEqual(rows[0].querySelector('[data-dir="down"]').disabled, false, "词典往下换（和罗马音）是允许的");
   assert.strictEqual(rows[2].querySelector('[data-dir="up"]').disabled, false, "大模型往上换（和罗马音）是允许的");
@@ -1346,7 +1349,7 @@ test("层序：面板不让把「英文音译规则」换到词典/罗马音前�
 
   // 但要和"规则"互换同步层就不行：先点两次把罗马音挪到规则下面，再试
   const click = (rowIndex, dir) =>
-    env.listeners.config[0]().querySelectorAll(".lk-layers .lk-layer")[rowIndex].querySelector('[data-dir="' + dir + '"]').dispatchEvent(new env.window.Event("click"));
+    env.listeners.config[0]().querySelectorAll(".wk-layers .wk-layer")[rowIndex].querySelector('[data-dir="' + dir + '"]').dispatchEvent(new env.window.Event("click"));
   // 现序：dict romaji llm google rule
   assert.deepStrictEqual([...env.api.layers()], ["dict", "romaji", "llm", "google", "rule"]);
   // 罗马音的 ↓（与 llm 换）-> dict llm romaji google rule
@@ -1356,19 +1359,19 @@ test("层序：面板不让把「英文音译规则」换到词典/罗马音前�
   click(2, "down");
   assert.deepStrictEqual([...env.api.layers()], ["dict", "llm", "google", "romaji", "rule"]);
   // 现在罗马音紧挨着规则：它的 ↓ 必须被禁用（换了就等于把罗马音藏起来）
-  const rows2 = env.listeners.config[0]().querySelectorAll(".lk-layers .lk-layer");
+  const rows2 = env.listeners.config[0]().querySelectorAll(".wk-layers .wk-layer");
   assert.strictEqual(rows2[3].querySelector('[data-dir="down"]').disabled, true, "罗马音不能换到规则后面");
   assert.strictEqual(rows2[4].querySelector('[data-dir="up"]').disabled, true, "规则不能换到罗马音前面");
   assert.ok(rows2[4].querySelector('[data-dir="up"]').title.indexOf("永远用不上") >= 0, "要说清为什么禁用");
 
-  // 手改配置（控制台 LK.layers）绕过去的话，面板要报警告
+  // 手改配置（控制台 WK.layers）绕过去的话，面板要报警告
   env.api.layers(["llm", "romaji", "google", "rule", "dict"]);
   const root = env.listeners.config[0]();
-  const warn = root.querySelector(".lk-layer-warn");
-  assert.ok(warn, "要有挡路提醒：" + root.querySelector(".lk-layers").textContent);
+  const warn = root.querySelector(".wk-layer-warn");
+  assert.ok(warn, "要有挡路提醒：" + root.querySelector(".wk-layers").textContent);
   assert.ok(warn.textContent.indexOf("离线词典") >= 0 && warn.textContent.indexOf("永远用不上") >= 0, "要说清后果：" + warn.textContent);
   // 而且大模型那块的告警要排在第一位（先修层序，再看别的）
-  const state = root.querySelector(".lk-llm-state").textContent;
+  const state = root.querySelector(".wk-llm-state").textContent;
   assert.ok(state.indexOf("英文音译规则") >= 0, "大模型状态区也要提这件事：" + state);
 });
 
@@ -1396,7 +1399,7 @@ test("设置面板：模型层停摆时给出大白话告警 + 「立刻重试�
   await sleep(1600); // 攒批窗口 + 失败
 
   const root = env.listeners.config[0]();
-  const box = root.querySelector(".lk-llm-state");
+  const box = root.querySelector(".wk-llm-state");
   assert.ok(box, "要有模型层状态区");
   const text = box.textContent;
   assert.ok(/退避|没成功/.test(text), "要说清现在为什么不矫正：" + text);
@@ -1425,9 +1428,9 @@ test("罗马音节行：短音节按罗马音读（PI→ピ / ME→メ），普�
   await sleep(250);
   const ps = env.document.querySelectorAll("ul.lyric li p");
   const reading = (p) =>
-    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+    [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
       r.childNodes[0].nodeValue,
-      r.querySelector(".lt-rt").textContent,
+      r.querySelector(".wk-rt").textContent,
     ]);
 
   const romaji = new Map(reading(ps[0]));
@@ -1477,9 +1480,9 @@ test("英文行里有 th/ck 这类拼写时，绝不当成罗马字行（`me` �
   const ps = env.document.querySelectorAll("ul.lyric li p");
   const reading = (p) =>
     new Map(
-      [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
         r.childNodes[0].nodeValue,
-        r.querySelector(".lt-rt").textContent,
+        r.querySelector(".wk-rt").textContent,
       ])
     );
 
@@ -1516,9 +1519,9 @@ test("不发音字母的英文词：直接进词典（用户问的「没歧义�
   const ps = env.document.querySelectorAll("ul.lyric li p");
   const reading = (p) =>
     new Map(
-      [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
         r.childNodes[0].nodeValue,
-        r.querySelector(".lt-rt").textContent,
+        r.querySelector(".wk-rt").textContent,
       ])
     );
   const want = [
@@ -1557,9 +1560,9 @@ test("know 一族：know ノウ 本身是对的，同族那几个错读也一起
   const ps = env.document.querySelectorAll("ul.lyric li p");
   const got = new Map();
   for (const p of ps) {
-    for (const [k, v] of [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+    for (const [k, v] of [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
       r.childNodes[0].nodeValue,
-      r.querySelector(".lt-rt").textContent,
+      r.querySelector(".wk-rt").textContent,
     ])) {
       got.set(k, v);
     }
@@ -1598,9 +1601,9 @@ test("notes 一族：复数/变形形的读音（notes→ノーツ，不是单�
   await sleep(250);
   const got = new Map();
   for (const p of env.document.querySelectorAll("ul.lyric li p")) {
-    for (const [k, v] of [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+    for (const [k, v] of [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
       r.childNodes[0].nodeValue,
-      r.querySelector(".lt-rt").textContent,
+      r.querySelector(".wk-rt").textContent,
     ])) {
       got.set(k, v);
     }
@@ -1637,7 +1640,7 @@ test("音乐术语：`(Lento, presto, andante larghetto)` 离线也要读对", a
   await sleep(250);
   const p = env.document.querySelector("ul.lyric li p");
   const got = new Map(
-    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
   assert.strictEqual(got.get("Lento"), "レント", JSON.stringify([...got]));
   assert.strictEqual(got.get("presto"), "プレスト", JSON.stringify([...got]));
@@ -1691,7 +1694,7 @@ test("`Every night … keeps me awake` 这一行：读音离线也要全对", as
   await sleep(250);
   const p = env.document.querySelector("ul.lyric li p");
   const got = new Map(
-    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
   for (const [w, kana] of [
     ["Every", "エブリ"],
@@ -1740,7 +1743,7 @@ test("缩写 / 喊叫 / 署名行：SOS・QTE・AAAAA 读对，署名行的碎�
   const ps = env.document.querySelectorAll("ul.lyric li p");
   const pairsOf = (p) =>
     new Map(
-      [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
     );
 
   assert.strictEqual(pairsOf(ps[1]).get("SOS"), "エスオーエス", "SOS 要逐字母：" + ps[1].innerHTML);
@@ -1799,7 +1802,7 @@ test("`KiLLKiSS judy / jude / juda` 与乐队名 `Ave Mujica`（アベ ムジカ
   await sleep(300);
   const p = env.document.querySelector("ul.lyric li p");
   const got = new Map(
-    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
   assert.strictEqual(got.get("KiLLKiSS"), "キルキス", JSON.stringify([...got]));
   assert.strictEqual(got.get("judy"), "ジュディ");
@@ -1838,7 +1841,7 @@ test("`YY` 标字母名、打码的 `XX` 留白；成串的大写单字母读字
   const ps = env.document.querySelectorAll("ul.lyric li p");
   const pairsOf = (p) =>
     new Map(
-      [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
     );
 
   // 打码：后面跟日语词尾 -> 留白
@@ -1899,12 +1902,12 @@ ${lines.map((l) => `  <li class="line"><p>${l}</p></li>`).join("\n")}
   }
   // 反向：只是带词头的正常歌词、以及名字出现在歌词里，照标
   const lyric1 = new Map(
-    [...ps[lines.length].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...ps[lines.length].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
   assert.strictEqual(lyric1.get("Music"), "ミュージック", "正常歌词不能被误杀：" + ps[lines.length].innerHTML);
   assert.strictEqual(lyric1.get("light"), "ライト");
   const lyric2 = new Map(
-    [...ps[lines.length + 1].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...ps[lines.length + 1].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
   assert.strictEqual(lyric2.get("love"), "ラブ", "歌词里的词照标：" + ps[lines.length + 1].innerHTML);
   assert.strictEqual(lyric2.get("CC"), "シーシー");
@@ -1924,14 +1927,14 @@ test("波浪号拉长音：`この feel~ing go~od` 读 フィーリング / グ�
   await sleep(300);
   const ps = env.document.querySelectorAll("ul.lyric li p");
   const got = new Map(
-    [...ps[0].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...ps[0].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
   assert.strictEqual(got.get("feel~ing"), "フィーリング", "波浪号要连起来读：" + ps[0].innerHTML);
   assert.strictEqual(got.get("go~od"), "グッド", "go~od 是 good：" + ps[0].innerHTML);
   assert.strictEqual(baseText(ps[0]), "この feel~ing go~od", "底字一字不改");
   // 结尾的波浪号不算连接符：还是 go / love
   const got2 = new Map(
-    [...ps[1].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...ps[1].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
   assert.strictEqual(got2.get("go"), "ゴー", ps[1].innerHTML);
   assert.strictEqual(got2.get("love"), "ラブ", ps[1].innerHTML);
@@ -1954,7 +1957,7 @@ test("打码的 `****ed`、采样行、以及全大写的 `DIVA`", async () => {
   await sleep(300);
   const ps = env.document.querySelectorAll("ul.lyric li p");
   const got = new Map(
-    [...ps[0].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...ps[0].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
   assert.strictEqual(got.has("ed"), false, "打码碎片 ed 不该注音：" + ps[0].innerHTML);
   assert.strictEqual(got.get("Oh"), "オー", "其它词照标：" + JSON.stringify([...got]));
@@ -1964,7 +1967,7 @@ test("打码的 `****ed`、采样行、以及全大写的 `DIVA`", async () => {
   assert.strictEqual(rubyCount(ps[1]), 0, "采样署名行整行不注音：" + ps[1].innerHTML);
 
   assert.strictEqual(
-    new Map([...ps[2].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])).get("DIVA"),
+    new Map([...ps[2].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])).get("DIVA"),
     "ディーヴァ",
     "DIVA 是词，不是字母名：" + ps[2].innerHTML
   );
@@ -1994,7 +1997,7 @@ test("法语歌词：整行用「法语拼读」，常用词走人工词表", as
   const ps = env.document.querySelectorAll("ul.lyric li p");
   const pairsOf = (i) =>
     new Map(
-      [...ps[i].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+      [...ps[i].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
     );
 
   const l0 = pairsOf(0);
@@ -2084,7 +2087,7 @@ test("法语借词表只作用于法语行（`rose`：法语行 ロゼ / 英文�
   const ps = env.document.querySelectorAll("ul.lyric li p");
   const pairsOf = (i) =>
     new Map(
-      [...ps[i].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+      [...ps[i].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
     );
 
   const fr = pairsOf(0);
@@ -2107,7 +2110,7 @@ test("法语借词表只作用于法语行（`rose`：法语行 ロゼ / 英文�
 /** 把第 i 行的 ruby 收成 Map（底字 -> 注音） */
 function linePairs(ps, i) {
   return new Map(
-    [...ps[i].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...ps[i].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
 }
 
@@ -2271,7 +2274,7 @@ test("斯瓦希里语歌词（用例 3 / 4）：按开音节直读，中文译�
 
   // 中文译文部分一个注音都没有
   for (let i = 0; i < ps.length; i++) {
-    const rubies = [...ps[i].querySelectorAll("ruby.lt-ruby")];
+    const rubies = [...ps[i].querySelectorAll("ruby.wk-ruby")];
     for (const r of rubies) {
       assert.ok(!/[\u4e00-\u9fa5]/.test(r.childNodes[0].nodeValue), "中文不许注音：" + ps[i].innerHTML);
     }
@@ -2325,7 +2328,7 @@ test("非日语歌是否注音可以开关（默认注音，关掉只标日语�
   await envOn.runLoad();
   await sleep(300);
   assert.strictEqual(
-    envOn.document.querySelectorAll("ul.lyric li p ruby.lt-ruby").length > 0,
+    envOn.document.querySelectorAll("ul.lyric li p ruby.wk-ruby").length > 0,
     true,
     "默认要照旧注音（英文歌也标）"
   );
@@ -2335,7 +2338,7 @@ test("非日语歌是否注音可以开关（默认注音，关掉只标日语�
   await envOff.runLoad();
   await sleep(300);
   assert.strictEqual(
-    envOff.document.querySelectorAll("ul.lyric li p ruby.lt-ruby").length,
+    envOff.document.querySelectorAll("ul.lyric li p ruby.wk-ruby").length,
     0,
     "关掉之后英文歌不许注音：" + envOff.document.querySelector("ul.lyric").innerHTML
   );
@@ -2481,7 +2484,7 @@ test("两可的短音节：大模型按整句语境判（Do→ド / Re→レ）�
 
   const p = env.document.querySelector("ul.lyric li p");
   const got = new Map(
-    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
   assert.strictEqual(got.get("Do"), "ド", "唱名要按语境读成 ド：" + JSON.stringify([...got]));
   assert.strictEqual(got.get("Re"), "レ", "唱名要按语境读成 レ：" + JSON.stringify([...got]));
@@ -2502,7 +2505,7 @@ test("Shoo / Gimme / Yeah：词典里补上，不再被罗马音层抢走", asyn
   await sleep(250);
   const p = env.document.querySelector("ul.lyric li p");
   const got = new Map(
-    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+    [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
   );
   assert.strictEqual(got.get("Shoo"), "シュー", "Shoo 该是 シュー：" + JSON.stringify([...got]));
   assert.strictEqual(got.get("Gimme"), "ギミー", "Gimme 该是 ギミー");
@@ -2553,7 +2556,7 @@ test("学会的词：模型在两个句子里答同一个读音 -> 沉淀成离�
   // 页面用的是模型答案
   const ps = env.document.querySelectorAll("ul.lyric li p");
   for (const p of ps) {
-    const rt = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.querySelector(".lt-rt").textContent);
+    const rt = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => r.querySelector(".wk-rt").textContent);
     assert.deepStrictEqual(rt, ["セレンディピティ"], "两句都要用模型答案：" + p.innerHTML);
   }
   // 两句 -> 收下
@@ -2586,11 +2589,11 @@ test("学会的词：模型在两个句子里答同一个读音 -> 沉淀成离�
   await sleep(600);
 
   const ps2 = env2.document.querySelectorAll("ul.lyric li p");
-  const got2 = [...ps2[0].querySelectorAll("ruby.lt-ruby")].map((r) => r.querySelector(".lt-rt").textContent);
+  const got2 = [...ps2[0].querySelectorAll("ruby.wk-ruby")].map((r) => r.querySelector(".wk-rt").textContent);
   assert.deepStrictEqual(got2, ["セレンディピティ"], "重启后离线也要读对：" + ps2[0].innerHTML);
   assert.strictEqual(calls, 0, "已经学会的词一个字都不该再问模型（这就是省钱的地方）");
   // 来源标记也要是 learned（按来源上色时显示成"学会的词"）
-  assert.ok(ps2[0].querySelector("ruby.lt-src-learned"), "要标成 learned 来源：" + ps2[0].innerHTML);
+  assert.ok(ps2[0].querySelector("ruby.wk-src-learned"), "要标成 learned 来源：" + ps2[0].innerHTML);
   // 面板上那一行也要报出来
   assert.ok(
     env2.api.learn.stats().count === 1 && env2.api.learn.stats().usedSession >= 1,
@@ -2649,15 +2652,15 @@ test("学会的词：只答过一次不收、两可的短音节不收、模型�
 test("设置面板：罗马音排在词典前面时给出提醒（它会把英文词按罗马音读）", async () => {
   const env = bootPlugin(NCM_HTML, { config: { layerOrder: ["romaji", "dict", "llm", "google", "rule"] } });
   await env.runLoad();
-  const box = env.listeners.config[0]().querySelector(".lk-layers");
-  const warn = box.querySelector(".lk-layer-warn");
+  const box = env.listeners.config[0]().querySelector(".wk-layers");
+  const warn = box.querySelector(".wk-layer-warn");
   assert.ok(warn, "要有提醒：" + box.textContent);
   assert.ok(warn.textContent.indexOf("Shoo") >= 0, "要举例子说清后果：" + warn.textContent);
 
   const okEnv = bootPlugin(NCM_HTML, { dev: true });
   await okEnv.runLoad();
   assert.strictEqual(
-    okEnv.listeners.config[0]().querySelector(".lk-layer-warn"),
+    okEnv.listeners.config[0]().querySelector(".wk-layer-warn"),
     null,
     "默认顺序不该有提醒"
   );
@@ -2669,7 +2672,7 @@ test("设置面板：默认只有三块（开关 / 大模型 / 预览），其�
   const env = bootPlugin(NCM_HTML, { dev: true });
   await env.runLoad();
   const root = env.listeners.config[0]();
-  const adv = root.querySelector("details.lk-adv");
+  const adv = root.querySelector("details.wk-adv");
   assert.ok(adv, "要有「高级设置」折叠块");
   assert.strictEqual(adv.open, false, "默认应该收起");
 
@@ -2680,8 +2683,8 @@ test("设置面板：默认只有三块（开关 / 大模型 / 预览），其�
     '[data-k="llmEnabled"]',
     '[data-k="llmKey"]',
     '[data-a="llmTest"]',
-    ".lk-llm-state",
-    ".lk-preview",
+    ".wk-llm-state",
+    ".wk-preview",
   ];
   for (const sel of outside) {
     const el = root.querySelector(sel);
@@ -2695,8 +2698,8 @@ test("设置面板：默认只有三块（开关 / 大模型 / 预览），其�
     '[data-k="rtSize"]',
     '[data-k="rtOpacity"]',
     '[data-k="scope"]',
-    ".lk-layers",
-    ".lk-usage",
+    ".wk-layers",
+    ".wk-usage",
     '[data-a="rescan"]',
   ];
   for (const sel of inside) {
@@ -2721,12 +2724,12 @@ test("设置面板的预览：高考听力那句 + 中文翻译行不注音", as
   const env = bootPlugin(NCM_HTML, { dev: true });
   await env.runLoad();
   const root = env.listeners.config[0]();
-  const preview = root.querySelector(".lk-preview");
+  const preview = root.querySelector(".wk-preview");
   assert.ok(preview, "面板里应该有预览区");
 
-  const pairs = [...preview.querySelectorAll("ruby.lt-ruby")].map((r) => [
+  const pairs = [...preview.querySelectorAll("ruby.wk-ruby")].map((r) => [
     r.childNodes[0].nodeValue,
-    r.querySelector(".lt-rt").textContent,
+    r.querySelector(".wk-rt").textContent,
   ]);
   assert.deepStrictEqual(
     pairs,
@@ -2742,7 +2745,7 @@ test("设置面板的预览：高考听力那句 + 中文翻译行不注音", as
     "预览示例句的读音"
   );
 
-  const trans = preview.querySelector(".lk-preview-trans");
+  const trans = preview.querySelector(".wk-preview-trans");
   assert.ok(trans, "预览里应该带一行中文翻译");
   assert.strictEqual(trans.textContent, "衬衫的价格为九磅十五便士");
   assert.strictEqual(trans.querySelectorAll("ruby, rt").length, 0, "翻译行不许注音");
@@ -2821,11 +2824,12 @@ test("缺核心模块时优雅退出，不抛异常", () => {
     onConfig: () => {},
   };
   window.betterncm = { app: {}, ncm: {}, fs: {} };
-  for (const k of ["LKMatcher", "LKDict", "LKReading", "LKCorrect", "LKLLM", "LKAnnotate"]) delete window[k];
+  for (const k of ["WKMatcher", "WKDict", "WKReading", "WKCorrect", "WKLLM", "WKAnnotate"]) delete window[k];
 
   assert.doesNotThrow(() => {
     loadScripts(ctx.dom, ["main.js"]);
     for (const fn of listeners) fn();
   }, "缺依赖时不应抛异常");
-  assert.strictEqual(window.LatinKatakana, undefined, "初始化失败就不该导出 API");
+  assert.strictEqual(window.WK, undefined, "初始化失败就不该导出 API");
+  assert.strictEqual(window.WesternKatakana, undefined);
 });

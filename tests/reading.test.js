@@ -13,281 +13,281 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const LK = require("../src/core/reading.js");
+const WK = require("../src/core/reading.js");
 
 // ============================================================ normalize
 
 test("normalize：小写化 + 去掉首尾标点", () => {
-  assert.strictEqual(LK.normalize("Clover"), "clover");
-  assert.strictEqual(LK.normalize("  ...Clover!! "), "clover");
-  assert.strictEqual(LK.normalize("SEKAI"), "sekai");
+  assert.strictEqual(WK.normalize("Clover"), "clover");
+  assert.strictEqual(WK.normalize("  ...Clover!! "), "clover");
+  assert.strictEqual(WK.normalize("SEKAI"), "sekai");
 });
 
 test("normalize：中间的连字符保留，交给查表时再折", () => {
-  assert.strictEqual(LK.normalize("e-mail"), "e-mail");
+  assert.strictEqual(WK.normalize("e-mail"), "e-mail");
 });
 
 test("normalize：空输入与非字符串都返回空串", () => {
-  assert.strictEqual(LK.normalize(""), "");
-  assert.strictEqual(LK.normalize("!!!"), "");
-  assert.strictEqual(LK.normalize(undefined), "");
-  assert.strictEqual(LK.normalize(null), "");
-  assert.strictEqual(LK.normalize(123), "");
+  assert.strictEqual(WK.normalize(""), "");
+  assert.strictEqual(WK.normalize("!!!"), "");
+  assert.strictEqual(WK.normalize(undefined), "");
+  assert.strictEqual(WK.normalize(null), "");
+  assert.strictEqual(WK.normalize(123), "");
 });
 
 // ============================================================ romajiToKatakana
 
 test("罗马音：基本行（a 段到 p 段）", () => {
-  assert.strictEqual(LK.romajiToKatakana("a"), "ア");
-  assert.strictEqual(LK.romajiToKatakana("i"), "イ");
-  assert.strictEqual(LK.romajiToKatakana("u"), "ウ");
-  assert.strictEqual(LK.romajiToKatakana("e"), "エ");
-  assert.strictEqual(LK.romajiToKatakana("o"), "オ");
-  assert.strictEqual(LK.romajiToKatakana("ka"), "カ");
-  assert.strictEqual(LK.romajiToKatakana("ki"), "キ");
-  assert.strictEqual(LK.romajiToKatakana("ku"), "ク");
-  assert.strictEqual(LK.romajiToKatakana("ke"), "ケ");
-  assert.strictEqual(LK.romajiToKatakana("ko"), "コ");
+  assert.strictEqual(WK.romajiToKatakana("a"), "ア");
+  assert.strictEqual(WK.romajiToKatakana("i"), "イ");
+  assert.strictEqual(WK.romajiToKatakana("u"), "ウ");
+  assert.strictEqual(WK.romajiToKatakana("e"), "エ");
+  assert.strictEqual(WK.romajiToKatakana("o"), "オ");
+  assert.strictEqual(WK.romajiToKatakana("ka"), "カ");
+  assert.strictEqual(WK.romajiToKatakana("ki"), "キ");
+  assert.strictEqual(WK.romajiToKatakana("ku"), "ク");
+  assert.strictEqual(WK.romajiToKatakana("ke"), "ケ");
+  assert.strictEqual(WK.romajiToKatakana("ko"), "コ");
 });
 
 test("罗马音：sa 行用 shi，ta 行用 chi/tsu", () => {
-  assert.strictEqual(LK.romajiToKatakana("sa"), "サ");
-  assert.strictEqual(LK.romajiToKatakana("shi"), "シ");
-  assert.strictEqual(LK.romajiToKatakana("su"), "ス");
-  assert.strictEqual(LK.romajiToKatakana("se"), "セ");
-  assert.strictEqual(LK.romajiToKatakana("so"), "ソ");
-  assert.strictEqual(LK.romajiToKatakana("ta"), "タ");
-  assert.strictEqual(LK.romajiToKatakana("chi"), "チ");
-  assert.strictEqual(LK.romajiToKatakana("tsu"), "ツ");
-  assert.strictEqual(LK.romajiToKatakana("te"), "テ");
-  assert.strictEqual(LK.romajiToKatakana("to"), "ト");
+  assert.strictEqual(WK.romajiToKatakana("sa"), "サ");
+  assert.strictEqual(WK.romajiToKatakana("shi"), "シ");
+  assert.strictEqual(WK.romajiToKatakana("su"), "ス");
+  assert.strictEqual(WK.romajiToKatakana("se"), "セ");
+  assert.strictEqual(WK.romajiToKatakana("so"), "ソ");
+  assert.strictEqual(WK.romajiToKatakana("ta"), "タ");
+  assert.strictEqual(WK.romajiToKatakana("chi"), "チ");
+  assert.strictEqual(WK.romajiToKatakana("tsu"), "ツ");
+  assert.strictEqual(WK.romajiToKatakana("te"), "テ");
+  assert.strictEqual(WK.romajiToKatakana("to"), "ト");
 });
 
 test("罗马音：ha 行用 fu 而不是 hu", () => {
-  assert.strictEqual(LK.romajiToKatakana("ha"), "ハ");
-  assert.strictEqual(LK.romajiToKatakana("hi"), "ヒ");
-  assert.strictEqual(LK.romajiToKatakana("fu"), "フ");
-  assert.strictEqual(LK.romajiToKatakana("he"), "ヘ");
-  assert.strictEqual(LK.romajiToKatakana("ho"), "ホ");
+  assert.strictEqual(WK.romajiToKatakana("ha"), "ハ");
+  assert.strictEqual(WK.romajiToKatakana("hi"), "ヒ");
+  assert.strictEqual(WK.romajiToKatakana("fu"), "フ");
+  assert.strictEqual(WK.romajiToKatakana("he"), "ヘ");
+  assert.strictEqual(WK.romajiToKatakana("ho"), "ホ");
 });
 
 test("罗马音：ya 行只有 ya/yu/yo", () => {
-  assert.strictEqual(LK.romajiToKatakana("ya"), "ヤ");
-  assert.strictEqual(LK.romajiToKatakana("yu"), "ユ");
-  assert.strictEqual(LK.romajiToKatakana("yo"), "ヨ");
+  assert.strictEqual(WK.romajiToKatakana("ya"), "ヤ");
+  assert.strictEqual(WK.romajiToKatakana("yu"), "ユ");
+  assert.strictEqual(WK.romajiToKatakana("yo"), "ヨ");
 });
 
 test("罗马音：浊音行 ga/za/da/ba/pa", () => {
-  assert.strictEqual(LK.romajiToKatakana("ga"), "ガ");
-  assert.strictEqual(LK.romajiToKatakana("ji"), "ジ");
-  assert.strictEqual(LK.romajiToKatakana("zu"), "ズ");
-  assert.strictEqual(LK.romajiToKatakana("da"), "ダ");
-  assert.strictEqual(LK.romajiToKatakana("de"), "デ");
-  assert.strictEqual(LK.romajiToKatakana("ba"), "バ");
-  assert.strictEqual(LK.romajiToKatakana("bo"), "ボ");
-  assert.strictEqual(LK.romajiToKatakana("pa"), "パ");
-  assert.strictEqual(LK.romajiToKatakana("po"), "ポ");
+  assert.strictEqual(WK.romajiToKatakana("ga"), "ガ");
+  assert.strictEqual(WK.romajiToKatakana("ji"), "ジ");
+  assert.strictEqual(WK.romajiToKatakana("zu"), "ズ");
+  assert.strictEqual(WK.romajiToKatakana("da"), "ダ");
+  assert.strictEqual(WK.romajiToKatakana("de"), "デ");
+  assert.strictEqual(WK.romajiToKatakana("ba"), "バ");
+  assert.strictEqual(WK.romajiToKatakana("bo"), "ボ");
+  assert.strictEqual(WK.romajiToKatakana("pa"), "パ");
+  assert.strictEqual(WK.romajiToKatakana("po"), "ポ");
 });
 
 test("罗马音：wa 行与单独成拍的 n", () => {
-  assert.strictEqual(LK.romajiToKatakana("wa"), "ワ");
-  assert.strictEqual(LK.romajiToKatakana("wo"), "ヲ");
-  assert.strictEqual(LK.romajiToKatakana("n"), "ン");
+  assert.strictEqual(WK.romajiToKatakana("wa"), "ワ");
+  assert.strictEqual(WK.romajiToKatakana("wo"), "ヲ");
+  assert.strictEqual(WK.romajiToKatakana("n"), "ン");
 });
 
 test("罗马音：拗音用小的 ャュョ", () => {
-  assert.strictEqual(LK.romajiToKatakana("kya"), "キャ");
-  assert.strictEqual(LK.romajiToKatakana("kyu"), "キュ");
-  assert.strictEqual(LK.romajiToKatakana("kyo"), "キョ");
-  assert.strictEqual(LK.romajiToKatakana("sha"), "シャ");
-  assert.strictEqual(LK.romajiToKatakana("shu"), "シュ");
-  assert.strictEqual(LK.romajiToKatakana("sho"), "ショ");
-  assert.strictEqual(LK.romajiToKatakana("cha"), "チャ");
-  assert.strictEqual(LK.romajiToKatakana("chu"), "チュ");
-  assert.strictEqual(LK.romajiToKatakana("cho"), "チョ");
-  assert.strictEqual(LK.romajiToKatakana("nya"), "ニャ");
-  assert.strictEqual(LK.romajiToKatakana("hya"), "ヒャ");
-  assert.strictEqual(LK.romajiToKatakana("mya"), "ミャ");
-  assert.strictEqual(LK.romajiToKatakana("rya"), "リャ");
-  assert.strictEqual(LK.romajiToKatakana("gya"), "ギャ");
-  assert.strictEqual(LK.romajiToKatakana("ja"), "ジャ");
-  assert.strictEqual(LK.romajiToKatakana("bya"), "ビャ");
-  assert.strictEqual(LK.romajiToKatakana("pya"), "ピャ");
+  assert.strictEqual(WK.romajiToKatakana("kya"), "キャ");
+  assert.strictEqual(WK.romajiToKatakana("kyu"), "キュ");
+  assert.strictEqual(WK.romajiToKatakana("kyo"), "キョ");
+  assert.strictEqual(WK.romajiToKatakana("sha"), "シャ");
+  assert.strictEqual(WK.romajiToKatakana("shu"), "シュ");
+  assert.strictEqual(WK.romajiToKatakana("sho"), "ショ");
+  assert.strictEqual(WK.romajiToKatakana("cha"), "チャ");
+  assert.strictEqual(WK.romajiToKatakana("chu"), "チュ");
+  assert.strictEqual(WK.romajiToKatakana("cho"), "チョ");
+  assert.strictEqual(WK.romajiToKatakana("nya"), "ニャ");
+  assert.strictEqual(WK.romajiToKatakana("hya"), "ヒャ");
+  assert.strictEqual(WK.romajiToKatakana("mya"), "ミャ");
+  assert.strictEqual(WK.romajiToKatakana("rya"), "リャ");
+  assert.strictEqual(WK.romajiToKatakana("gya"), "ギャ");
+  assert.strictEqual(WK.romajiToKatakana("ja"), "ジャ");
+  assert.strictEqual(WK.romajiToKatakana("bya"), "ビャ");
+  assert.strictEqual(WK.romajiToKatakana("pya"), "ピャ");
 });
 
 // ---- 任务点名的 10 个直接用例
 
 test("罗马音：task 点名的 10 个词", () => {
-  assert.strictEqual(LK.romajiToKatakana("sekai"), "セカイ");
-  assert.strictEqual(LK.romajiToKatakana("watashi"), "ワタシ");
-  assert.strictEqual(LK.romajiToKatakana("shinjiteru"), "シンジテル");
-  assert.strictEqual(LK.romajiToKatakana("tsuki"), "ツキ");
-  assert.strictEqual(LK.romajiToKatakana("matte"), "マッテ");
+  assert.strictEqual(WK.romajiToKatakana("sekai"), "セカイ");
+  assert.strictEqual(WK.romajiToKatakana("watashi"), "ワタシ");
+  assert.strictEqual(WK.romajiToKatakana("shinjiteru"), "シンジテル");
+  assert.strictEqual(WK.romajiToKatakana("tsuki"), "ツキ");
+  assert.strictEqual(WK.romajiToKatakana("matte"), "マッテ");
   // gakkou 的 ou 按规则读 オウ（不是长音符）
-  assert.strictEqual(LK.romajiToKatakana("gakkou"), "ガッコウ");
-  assert.strictEqual(LK.romajiToKatakana("shinbun"), "シンブン");
-  assert.strictEqual(LK.romajiToKatakana("zasshi"), "ザッシ");
-  assert.strictEqual(LK.romajiToKatakana("kyou"), "キョウ");
-  assert.strictEqual(LK.romajiToKatakana("toire"), "トイレ");
+  assert.strictEqual(WK.romajiToKatakana("gakkou"), "ガッコウ");
+  assert.strictEqual(WK.romajiToKatakana("shinbun"), "シンブン");
+  assert.strictEqual(WK.romajiToKatakana("zasshi"), "ザッシ");
+  assert.strictEqual(WK.romajiToKatakana("kyou"), "キョウ");
+  assert.strictEqual(WK.romajiToKatakana("toire"), "トイレ");
 });
 
 test("罗马音：促音 kk/tt/ss 只留一个 ッ", () => {
-  assert.strictEqual(LK.romajiToKatakana("kekkon"), "ケッコン");
-  assert.strictEqual(LK.romajiToKatakana("issho"), "イッショ");
-  assert.strictEqual(LK.romajiToKatakana("zannen"), "ザンネン");
+  assert.strictEqual(WK.romajiToKatakana("kekkon"), "ケッコン");
+  assert.strictEqual(WK.romajiToKatakana("issho"), "イッショ");
+  assert.strictEqual(WK.romajiToKatakana("zannen"), "ザンネン");
 });
 
 test("罗马音：n 在辅音前或词尾读 ン", () => {
-  assert.strictEqual(LK.romajiToKatakana("nihon"), "ニホン");
-  assert.strictEqual(LK.romajiToKatakana("zannen"), "ザンネン");
-  assert.strictEqual(LK.romajiToKatakana("shinbun"), "シンブン");
+  assert.strictEqual(WK.romajiToKatakana("nihon"), "ニホン");
+  assert.strictEqual(WK.romajiToKatakana("zannen"), "ザンネン");
+  assert.strictEqual(WK.romajiToKatakana("shinbun"), "シンブン");
   // n 后面是 y 时要连读，不能收 ン
-  assert.strictEqual(LK.romajiToKatakana("nyan"), "ニャン");
+  assert.strictEqual(WK.romajiToKatakana("nyan"), "ニャン");
 });
 
 test("罗马音：长音规则（注释里定死的那条）", () => {
   // ou -> オウ
-  assert.strictEqual(LK.romajiToKatakana("ou"), "オウ");
-  assert.strictEqual(LK.romajiToKatakana("kyou"), "キョウ");
-  assert.strictEqual(LK.romajiToKatakana("ryokou"), "リョコウ");
+  assert.strictEqual(WK.romajiToKatakana("ou"), "オウ");
+  assert.strictEqual(WK.romajiToKatakana("kyou"), "キョウ");
+  assert.strictEqual(WK.romajiToKatakana("ryokou"), "リョコウ");
   // oo -> オー
-  assert.strictEqual(LK.romajiToKatakana("oo"), "オー");
+  assert.strictEqual(WK.romajiToKatakana("oo"), "オー");
   // aa -> アー
-  assert.strictEqual(LK.romajiToKatakana("aa"), "アー");
-  assert.strictEqual(LK.romajiToKatakana("aasan"), "アーサン");
+  assert.strictEqual(WK.romajiToKatakana("aa"), "アー");
+  assert.strictEqual(WK.romajiToKatakana("aasan"), "アーサン");
   // uu -> ウー
-  assert.strictEqual(LK.romajiToKatakana("uu"), "ウー");
+  assert.strictEqual(WK.romajiToKatakana("uu"), "ウー");
   // ee -> エー
-  assert.strictEqual(LK.romajiToKatakana("ee"), "エー");
+  assert.strictEqual(WK.romajiToKatakana("ee"), "エー");
   // ei -> エイ（不是长音）
-  assert.strictEqual(LK.romajiToKatakana("ei"), "エイ");
-  assert.strictEqual(LK.romajiToKatakana("sensei"), "センセイ");
+  assert.strictEqual(WK.romajiToKatakana("ei"), "エイ");
+  assert.strictEqual(WK.romajiToKatakana("sensei"), "センセイ");
 });
 
 test("罗马音：aa 系列只在词首合并（已知取舍，见实现注释）", () => {
   // 这一条记的是已知行为，不是理想行为：aa 出现在词首时并成长音，
   // 出现在别的音节后面时目前是各读各的（okaasan -> オカアサン）。
   // 之所以断言出来，是为了让以后改这块逻辑时能看见影响面。
-  assert.strictEqual(LK.romajiToKatakana("aa"), "アー");
-  assert.strictEqual(LK.romajiToKatakana("aasan"), "アーサン");
-  assert.strictEqual(LK.romajiToKatakana("okaasan"), "オカアサン");
+  assert.strictEqual(WK.romajiToKatakana("aa"), "アー");
+  assert.strictEqual(WK.romajiToKatakana("aasan"), "アーサン");
+  assert.strictEqual(WK.romajiToKatakana("okaasan"), "オカアサン");
 });
 
 test("罗马音：词尾的 - 原样保留成长音符", () => {
-  assert.strictEqual(LK.romajiToKatakana("saka-"), "サカー");
-  assert.strictEqual(LK.romajiToKatakana("kya-"), "キャー");
+  assert.strictEqual(WK.romajiToKatakana("saka-"), "サカー");
+  assert.strictEqual(WK.romajiToKatakana("kya-"), "キャー");
 });
 
 test("罗马音：大小写和首尾空白都能吃", () => {
-  assert.strictEqual(LK.romajiToKatakana("SEKAI"), "セカイ");
-  assert.strictEqual(LK.romajiToKatakana("  sekai  "), "セカイ");
+  assert.strictEqual(WK.romajiToKatakana("SEKAI"), "セカイ");
+  assert.strictEqual(WK.romajiToKatakana("  sekai  "), "セカイ");
 });
 
 test("罗马音：整串切不干净就返回 null（英文词不能当罗马音）", () => {
-  assert.strictEqual(LK.romajiToKatakana("clover"), null); // cl 不是合法音节
-  assert.strictEqual(LK.romajiToKatakana("light"), null); // l 起头
-  assert.strictEqual(LK.romajiToKatakana("rhythm"), null); // y 不能单独做音节
-  assert.strictEqual(LK.romajiToKatakana("xyzzy"), null);
+  assert.strictEqual(WK.romajiToKatakana("clover"), null); // cl 不是合法音节
+  assert.strictEqual(WK.romajiToKatakana("light"), null); // l 起头
+  assert.strictEqual(WK.romajiToKatakana("rhythm"), null); // y 不能单独做音节
+  assert.strictEqual(WK.romajiToKatakana("xyzzy"), null);
 });
 
 test("罗马音：空输入、纯标点、混标点都返回 null", () => {
-  assert.strictEqual(LK.romajiToKatakana(""), null);
-  assert.strictEqual(LK.romajiToKatakana("   "), null);
-  assert.strictEqual(LK.romajiToKatakana("!!!"), null);
-  assert.strictEqual(LK.romajiToKatakana("sekai!"), null); // 混了标点就不算纯罗马音
-  assert.strictEqual(LK.romajiToKatakana("----"), null);
-  assert.strictEqual(LK.romajiToKatakana("bcdfg"), null);
-  assert.strictEqual(LK.romajiToKatakana(undefined), null);
-  assert.strictEqual(LK.romajiToKatakana(null), null);
+  assert.strictEqual(WK.romajiToKatakana(""), null);
+  assert.strictEqual(WK.romajiToKatakana("   "), null);
+  assert.strictEqual(WK.romajiToKatakana("!!!"), null);
+  assert.strictEqual(WK.romajiToKatakana("sekai!"), null); // 混了标点就不算纯罗马音
+  assert.strictEqual(WK.romajiToKatakana("----"), null);
+  assert.strictEqual(WK.romajiToKatakana("bcdfg"), null);
+  assert.strictEqual(WK.romajiToKatakana(undefined), null);
+  assert.strictEqual(WK.romajiToKatakana(null), null);
 });
 
 test("罗马音：超长元音串不吐一串 ー，判负交给英文规则", () => {
-  assert.strictEqual(LK.romajiToKatakana("aaaaaaaa-"), null);
-  assert.strictEqual(LK.romajiToKatakana("aaaaaaaaaaaaaaaaaaaaaaaa"), null);
+  assert.strictEqual(WK.romajiToKatakana("aaaaaaaa-"), null);
+  assert.strictEqual(WK.romajiToKatakana("aaaaaaaaaaaaaaaaaaaaaaaa"), null);
 });
 
 // ============================================================ englishToKatakana
 
 test("英文：例外表逐字对上（任务点名的 31 个）", () => {
-  assert.strictEqual(LK.englishToKatakana("light").kana, "ライト");
-  assert.strictEqual(LK.englishToKatakana("night").kana, "ナイト");
-  assert.strictEqual(LK.englishToKatakana("right").kana, "ライト");
-  assert.strictEqual(LK.englishToKatakana("high").kana, "ハイ");
-  assert.strictEqual(LK.englishToKatakana("through").kana, "スルー");
-  assert.strictEqual(LK.englishToKatakana("though").kana, "ゾウ");
-  assert.strictEqual(LK.englishToKatakana("enough").kana, "イナフ");
-  assert.strictEqual(LK.englishToKatakana("love").kana, "ラブ");
-  assert.strictEqual(LK.englishToKatakana("one").kana, "ワン");
-  assert.strictEqual(LK.englishToKatakana("two").kana, "トゥー");
-  assert.strictEqual(LK.englishToKatakana("eight").kana, "エイト");
-  assert.strictEqual(LK.englishToKatakana("heart").kana, "ハート");
-  assert.strictEqual(LK.englishToKatakana("world").kana, "ワールド");
-  assert.strictEqual(LK.englishToKatakana("dream").kana, "ドリーム");
-  assert.strictEqual(LK.englishToKatakana("school").kana, "スクール");
-  assert.strictEqual(LK.englishToKatakana("blue").kana, "ブルー");
-  assert.strictEqual(LK.englishToKatakana("eyes").kana, "アイズ");
-  assert.strictEqual(LK.englishToKatakana("time").kana, "タイム");
-  assert.strictEqual(LK.englishToKatakana("shine").kana, "シャイン");
-  assert.strictEqual(LK.englishToKatakana("sky").kana, "スカイ");
-  assert.strictEqual(LK.englishToKatakana("star").kana, "スター");
-  assert.strictEqual(LK.englishToKatakana("snow").kana, "スノウ");
-  assert.strictEqual(LK.englishToKatakana("flow").kana, "フロウ");
-  assert.strictEqual(LK.englishToKatakana("know").kana, "ノウ");
-  assert.strictEqual(LK.englishToKatakana("why").kana, "ホワイ");
-  assert.strictEqual(LK.englishToKatakana("fall").kana, "フォール");
-  assert.strictEqual(LK.englishToKatakana("call").kana, "コール");
-  assert.strictEqual(LK.englishToKatakana("wall").kana, "ウォール");
-  assert.strictEqual(LK.englishToKatakana("girl").kana, "ガール");
-  assert.strictEqual(LK.englishToKatakana("summer").kana, "サマー");
-  assert.strictEqual(LK.englishToKatakana("winter").kana, "ウィンター");
+  assert.strictEqual(WK.englishToKatakana("light").kana, "ライト");
+  assert.strictEqual(WK.englishToKatakana("night").kana, "ナイト");
+  assert.strictEqual(WK.englishToKatakana("right").kana, "ライト");
+  assert.strictEqual(WK.englishToKatakana("high").kana, "ハイ");
+  assert.strictEqual(WK.englishToKatakana("through").kana, "スルー");
+  assert.strictEqual(WK.englishToKatakana("though").kana, "ゾウ");
+  assert.strictEqual(WK.englishToKatakana("enough").kana, "イナフ");
+  assert.strictEqual(WK.englishToKatakana("love").kana, "ラブ");
+  assert.strictEqual(WK.englishToKatakana("one").kana, "ワン");
+  assert.strictEqual(WK.englishToKatakana("two").kana, "トゥー");
+  assert.strictEqual(WK.englishToKatakana("eight").kana, "エイト");
+  assert.strictEqual(WK.englishToKatakana("heart").kana, "ハート");
+  assert.strictEqual(WK.englishToKatakana("world").kana, "ワールド");
+  assert.strictEqual(WK.englishToKatakana("dream").kana, "ドリーム");
+  assert.strictEqual(WK.englishToKatakana("school").kana, "スクール");
+  assert.strictEqual(WK.englishToKatakana("blue").kana, "ブルー");
+  assert.strictEqual(WK.englishToKatakana("eyes").kana, "アイズ");
+  assert.strictEqual(WK.englishToKatakana("time").kana, "タイム");
+  assert.strictEqual(WK.englishToKatakana("shine").kana, "シャイン");
+  assert.strictEqual(WK.englishToKatakana("sky").kana, "スカイ");
+  assert.strictEqual(WK.englishToKatakana("star").kana, "スター");
+  assert.strictEqual(WK.englishToKatakana("snow").kana, "スノウ");
+  assert.strictEqual(WK.englishToKatakana("flow").kana, "フロウ");
+  assert.strictEqual(WK.englishToKatakana("know").kana, "ノウ");
+  assert.strictEqual(WK.englishToKatakana("why").kana, "ホワイ");
+  assert.strictEqual(WK.englishToKatakana("fall").kana, "フォール");
+  assert.strictEqual(WK.englishToKatakana("call").kana, "コール");
+  assert.strictEqual(WK.englishToKatakana("wall").kana, "ウォール");
+  assert.strictEqual(WK.englishToKatakana("girl").kana, "ガール");
+  assert.strictEqual(WK.englishToKatakana("summer").kana, "サマー");
+  assert.strictEqual(WK.englishToKatakana("winter").kana, "ウィンター");
 });
 
 test("英文：例外表一律 confident:true", () => {
-  assert.strictEqual(LK.englishToKatakana("light").confident, true);
-  assert.strictEqual(LK.englishToKatakana("through").confident, true);
-  assert.strictEqual(LK.englishToKatakana("world").confident, true);
-  assert.strictEqual(LK.englishToKatakana("girl").confident, true);
+  assert.strictEqual(WK.englishToKatakana("light").confident, true);
+  assert.strictEqual(WK.englishToKatakana("through").confident, true);
+  assert.strictEqual(WK.englishToKatakana("world").confident, true);
+  assert.strictEqual(WK.englishToKatakana("girl").confident, true);
 });
 
 test("英文：任务点名的外来语靠规则/小表读对", () => {
-  assert.strictEqual(LK.englishToKatakana("clover").kana, "クローバー");
-  assert.strictEqual(LK.englishToKatakana("diorama").kana, "ジオラマ");
-  assert.strictEqual(LK.englishToKatakana("guitar").kana, "ギター");
-  assert.strictEqual(LK.englishToKatakana("coffee").kana, "コーヒー");
-  assert.strictEqual(LK.englishToKatakana("camera").kana, "カメラ");
-  assert.strictEqual(LK.englishToKatakana("radio").kana, "ラジオ");
-  assert.strictEqual(LK.englishToKatakana("melody").kana, "メロディー");
-  assert.strictEqual(LK.englishToKatakana("computer").kana, "コンピューター");
-  assert.strictEqual(LK.englishToKatakana("story").kana, "ストーリー");
+  assert.strictEqual(WK.englishToKatakana("clover").kana, "クローバー");
+  assert.strictEqual(WK.englishToKatakana("diorama").kana, "ジオラマ");
+  assert.strictEqual(WK.englishToKatakana("guitar").kana, "ギター");
+  assert.strictEqual(WK.englishToKatakana("coffee").kana, "コーヒー");
+  assert.strictEqual(WK.englishToKatakana("camera").kana, "カメラ");
+  assert.strictEqual(WK.englishToKatakana("radio").kana, "ラジオ");
+  assert.strictEqual(WK.englishToKatakana("melody").kana, "メロディー");
+  assert.strictEqual(WK.englishToKatakana("computer").kana, "コンピューター");
+  assert.strictEqual(WK.englishToKatakana("story").kana, "ストーリー");
 });
 
 test("英文：sh/ch/ck/ng 这些字母组合", () => {
   // she：sh -> シ，词尾 e 是默字，不补长音（参照 sljfaq：词尾 e 不发音）
-  assert.strictEqual(LK.englishToKatakana("she").kana, "シ");
+  assert.strictEqual(WK.englishToKatakana("she").kana, "シ");
   // cheese：ch -> チ、ee -> イー、词尾 se 里 s + 默字 e -> セ
   // （s 在词尾读 /s/ 不是 /z/，所以是 セ 不是 ズ；/z/ 要靠词表）
-  assert.strictEqual(LK.englishToKatakana("cheese").kana, "チイーセ");
-  assert.strictEqual(LK.englishToKatakana("box").kana, "ボックス");
-  assert.strictEqual(LK.englishToKatakana("six").kana, "シックス");
+  assert.strictEqual(WK.englishToKatakana("cheese").kana, "チイーセ");
+  assert.strictEqual(WK.englishToKatakana("box").kana, "ボックス");
+  assert.strictEqual(WK.englishToKatakana("six").kana, "シックス");
 });
 
 test("英文：词尾 l -> ル、词尾 r -> ー", () => {
-  assert.strictEqual(LK.englishToKatakana("school").kana, "スクール");
-  assert.strictEqual(LK.englishToKatakana("girl").kana, "ガール");
-  assert.strictEqual(LK.englishToKatakana("over").kana, "オーバー");
-  assert.strictEqual(LK.englishToKatakana("star").kana, "スター");
+  assert.strictEqual(WK.englishToKatakana("school").kana, "スクール");
+  assert.strictEqual(WK.englishToKatakana("girl").kana, "ガール");
+  assert.strictEqual(WK.englishToKatakana("over").kana, "オーバー");
+  assert.strictEqual(WK.englishToKatakana("star").kana, "スター");
 });
 
 test("英文：l 结尾一律 ル（规则路径也算）", () => {
   // 这两个没进表，走规则；断言的是规则里「词尾 l -> ル」那条
-  assert.strictEqual(LK.englishToKatakana("novel").kana.slice(-1), "ル");
-  assert.strictEqual(LK.englishToKatakana("hotel").kana.slice(-1), "ル");
+  assert.strictEqual(WK.englishToKatakana("novel").kana.slice(-1), "ル");
+  assert.strictEqual(WK.englishToKatakana("hotel").kana.slice(-1), "ル");
 });
 
 test("英文：永远返回非空片假名", () => {
   const samples = ["clover", "zzxqw", "a", "x", "", "!!!", "12345", "e-mail", "qqqq", "b", "n"];
   for (let i = 0; i < samples.length; i++) {
-    const res = LK.englishToKatakana(samples[i]);
+    const res = WK.englishToKatakana(samples[i]);
     assert.strictEqual(typeof res.kana, "string", samples[i]);
     assert.ok(res.kana.length > 0, "空结果：" + samples[i]);
     assert.strictEqual(typeof res.confident, "boolean", samples[i]);
@@ -295,34 +295,34 @@ test("英文：永远返回非空片假名", () => {
 });
 
 test("英文：非字符串输入也给一个安全的空读音", () => {
-  assert.deepStrictEqual(LK.englishToKatakana(undefined), { kana: "ア", confident: false });
-  assert.deepStrictEqual(LK.englishToKatakana(null), { kana: "ア", confident: false });
+  assert.deepStrictEqual(WK.englishToKatakana(undefined), { kana: "ア", confident: false });
+  assert.deepStrictEqual(WK.englishToKatakana(null), { kana: "ア", confident: false });
 });
 
 test("英文：confident:false 的判定条件", () => {
   // ① 拼写读不出音的元音块：ow 在 now / snow 里读法不同
   //    （参照 sljfaq 的 "Conversions based on spelling" 那节）
-  assert.strictEqual(LK.englishToKatakana("now").confident, false);
+  assert.strictEqual(WK.englishToKatakana("now").confident, false);
   // ② th：页面对 θ（-> サ行）和 ð（-> ザ行）都有明确落点，所以**读音**
   //    照规则给；但「哪个词是 θ、哪个是 ð」拼写分不出来 —— 仍然算不放心。
-  assert.strictEqual(LK.englishToKatakana("the").confident, false);
-  assert.strictEqual(LK.englishToKatakana("think").confident, false);
+  assert.strictEqual(WK.englishToKatakana("the").confident, false);
+  assert.strictEqual(WK.englishToKatakana("think").confident, false);
   // ③ 元音连写不在表里 / 三个元音连写
-  assert.strictEqual(LK.englishToKatakana("beautiful").confident, false);
+  assert.strictEqual(WK.englishToKatakana("beautiful").confident, false);
   // ④ 连缀过长、拼不出音
-  assert.strictEqual(LK.englishToKatakana("rhythm").confident, false);
+  assert.strictEqual(WK.englishToKatakana("rhythm").confident, false);
   // ⑤ 压根没元音（不是词）
-  assert.strictEqual(LK.englishToKatakana("zzxqw").confident, false);
+  assert.strictEqual(WK.englishToKatakana("zzxqw").confident, false);
   // 反例：规则能读顺的不该被标
-  assert.strictEqual(LK.englishToKatakana("hello").confident, true);
-  assert.strictEqual(LK.englishToKatakana("world").confident, true);
+  assert.strictEqual(WK.englishToKatakana("hello").confident, true);
+  assert.strictEqual(WK.englishToKatakana("world").confident, true);
 });
 
 // ============================================================ 首音校验
 
 test("首音校验：拦住拟声词/意译，不误伤默字组合", () => {
   // 用户报的：tick 注成 カチカチ（Google 的 en→ja 会把它当拟声词回）
-  const V = LK.looksLikeTransliteration;
+  const V = WK.looksLikeTransliteration;
   const rejected = [
     ["tick", "カチカチ"],
     ["tick", "ダニ"], // 名词义（蜱虫）
@@ -373,7 +373,7 @@ test("缩写：'s / 're / 'll / 'd / 've / 'm / n't 都要读对", () => {
   // 用户报的：you're / I'll / it's / I'd 注不准。
   // 根因是折掉撇号之后撞上别的词条（I'll -> ill、I'd -> id），
   // 所以缩写必须排在词典前面。词典里故意塞了 ill / id 当"陷阱"。
-  const r = LK.createReader({
+  const r = WK.createReader({
     dict: {
       ill: "イル",
       id: "アイディー",
@@ -437,7 +437,7 @@ test("缩写：'s / 're / 'll / 'd / 've / 'm / n't 都要读对", () => {
 });
 
 test("缩写的拆分与拼接（splitContraction / mergeContraction）", () => {
-  const S = LK.splitContraction;
+  const S = WK.splitContraction;
   assert.deepStrictEqual(S("you're"), { base: "you", suffix: "re", fixed: null });
   assert.deepStrictEqual(S("I'll".replace("'", "\u2019")), { base: "I", suffix: "ll", fixed: null });
   assert.deepStrictEqual(S("don't"), { base: "do", suffix: "nt", fixed: "ドント" });
@@ -445,7 +445,7 @@ test("缩写的拆分与拼接（splitContraction / mergeContraction）", () => 
   assert.strictEqual(S("light"), null, "没有撇号就不是缩写");
   assert.strictEqual(S("rock'n'roll"), null, "中间夹撇号但尾巴不认识 -> 不碰");
 
-  const M = LK.mergeContraction;
+  const M = WK.mergeContraction;
   assert.strictEqual(M("イット", "s"), "イッツ", "t 结尾并成 ツ");
   assert.strictEqual(M("キッド", "s"), "キッズ", "d 结尾并成 ズ");
   assert.strictEqual(M("ヒー", "s"), "ヒーズ", "其它直接接 ズ");
@@ -460,7 +460,7 @@ test("缩写的拆分与拼接（splitContraction / mergeContraction）", () => 
 // ============================================================ 记号逐字母
 
 test("记号：逐字母读（字母名），分隔符不发音、& 读 アンド", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   const cases = [
     ["D/N/A", "ディーエヌエー"],
     ["N/A", "エヌエー"],
@@ -479,7 +479,7 @@ test("记号：逐字母读（字母名），分隔符不发音、& 读 アン�
 });
 
 test("记号优先于词典：N/A 不能因为 na 在词典里就读成 ナ", () => {
-  const r = LK.createReader({ dict: { na: "ナ", xy: "クスィ" } });
+  const r = WK.createReader({ dict: { na: "ナ", xy: "クスィ" } });
   const na = r.read("N/A");
   assert.strictEqual(na.kana, "エヌエー", "N/A 不能读成 ナ");
   assert.strictEqual(na.source, "letters");
@@ -490,22 +490,22 @@ test("记号优先于词典：N/A 不能因为 na 在词典里就读成 ナ", ()
 });
 
 test("不是记号的连字符词照旧按单词读（x-ray 不能逐字母念）", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   const x = r.read("x-ray");
   assert.notStrictEqual(x.source, "letters", "x-ray 是词不是记号");
   assert.notStrictEqual(x.kana, "エックスアールエーワイ");
   // 字母名表本身也要齐全、边界要挡住
-  assert.strictEqual(LK.lettersToKatakana("abc"), "エービーシー");
-  assert.strictEqual(LK.lettersToKatakana("a"), null, "单字母不走这条");
-  assert.strictEqual(LK.lettersToKatakana("&"), null, "只有 & 不算");
-  assert.strictEqual(LK.lettersToKatakana("abcdefghijklm"), null, "太长的不当记号");
+  assert.strictEqual(WK.lettersToKatakana("abc"), "エービーシー");
+  assert.strictEqual(WK.lettersToKatakana("a"), null, "单字母不走这条");
+  assert.strictEqual(WK.lettersToKatakana("&"), null, "只有 & 不算");
+  assert.strictEqual(WK.lettersToKatakana("abcdefghijklm"), null, "太长的不当记号");
 });
 
 // ============================================================ 缩写
 
 test("全大写的无元音缩写逐字母读（LDK / TV / BGM …）", () => {
   // 用户报的：LDK 被规则拼成 ラダク、TV 拼成 タブ
-  const r = LK.createReader({ dict: { cm: "シーエム" } });
+  const r = WK.createReader({ dict: { cm: "シーエム" } });
   const cases = [
     ["LDK", "エルディーケー"],
     ["NHK", "エヌエイチケー"],
@@ -527,7 +527,7 @@ test("全大写的无元音缩写逐字母读（LDK / TV / BGM …）", () => {
 });
 
 test("逐字母缩写的判据不能误伤真词（my / sky / why / hmm / Ldk）", () => {
-  const A = LK.spellOutAcronym;
+  const A = WK.spellOutAcronym;
   assert.strictEqual(A("LDK"), "エルディーケー");
   assert.strictEqual(A("TV"), "ティーブイ");
   /*
@@ -565,7 +565,7 @@ test("逐字母缩写的判据不能误伤真词（my / sky / why / hmm / Ldk）
 // ============================================================ 变音符号
 
 test("变音符号折叠：长音符 ā ē ī ō ū 折成「元音 + -」（= 长音）", () => {
-  const f = LK.foldLatin;
+  const f = WK.foldLatin;
   assert.deepStrictEqual(f("Tōkyō"), { text: "to-kyo-", pureMacron: true });
   assert.deepStrictEqual(f("kōhī"), { text: "ko-hi-", pureMacron: true });
   assert.deepStrictEqual(f("Ō"), { text: "o-", pureMacron: true });
@@ -579,7 +579,7 @@ test("变音符号折叠：长音符 ā ē ī ō ū 折成「元音 + -」（= �
 });
 
 test("日语罗马字的长音符按罗马音读：Tōkyō -> トーキョー", () => {
-  const r = LK.createReader({ dict: { tokyo: "トウキョウ" } });
+  const r = WK.createReader({ dict: { tokyo: "トウキョウ" } });
   // 长音符是"日语罗马字"的标志，按罗马音读更贴近唱出来的音，所以排在词典前面
   assert.deepStrictEqual(r.read("Tōkyō"), { kana: "トーキョー", source: "romaji", confident: true });
   assert.deepStrictEqual(r.read("kōhī"), { kana: "コーヒー", source: "romaji", confident: true });
@@ -589,24 +589,24 @@ test("日语罗马字的长音符按罗马音读：Tōkyō -> トーキョー", 
 });
 
 test("别的变音符号：词典优先，读不准的标 confident:false 交给大模型", () => {
-  const r = LK.createReader({ dict: { cafe: "カフェ", jose: "ホセ" } });
+  const r = WK.createReader({ dict: { cafe: "カフェ", jose: "ホセ" } });
   assert.deepStrictEqual(r.read("Café"), { kana: "カフェ", source: "dict", confident: true });
   assert.deepStrictEqual(r.read("José"), { kana: "ホセ", source: "dict", confident: true });
 
   // 词典里没有的：走罗马音/规则，但**必须**标不放心（读音取决于语种，José 是 ホセ 不是 ジョセ）
-  const r2 = LK.createReader({ dict: {} });
+  const r2 = WK.createReader({ dict: {} });
   const deja = r2.read("déjà");
   assert.strictEqual(deja.kana, "デジャ");
   assert.strictEqual(deja.confident, false, "非长音符的变音符号要交给上层校正");
   // 关键回归：折叠写法不能再去撞"去掉非字母"那一档键（déjà -> dj -> ディージェイ）
-  const r3 = LK.createReader({ dict: { dj: "ディージェイ" } });
+  const r3 = WK.createReader({ dict: { dj: "ディージェイ" } });
   assert.strictEqual(r3.read("déjà").kana, "デジャ", "déjà 不能被读成 DJ");
 });
 
 // ============================================================ createReader
 
 test("reader：dict 命中优先于罗马音和规则", () => {
-  const r = LK.createReader({ dict: { clover: "クローバー" } });
+  const r = WK.createReader({ dict: { clover: "クローバー" } });
   const got = r.read("Clover");
   assert.strictEqual(got.source, "dict");
   assert.strictEqual(got.kana, "クローバー");
@@ -615,25 +615,25 @@ test("reader：dict 命中优先于罗马音和规则", () => {
 
 test("reader：dict 查表顺序是 原样 -> 小写 -> 去非字母", () => {
   // 原样命中
-  const r1 = LK.createReader({ dict: { "E-Mail": "イーメール" } });
+  const r1 = WK.createReader({ dict: { "E-Mail": "イーメール" } });
   assert.strictEqual(r1.read("E-Mail").source, "dict");
   assert.strictEqual(r1.read("E-Mail").kana, "イーメール");
   // 去掉非字母后命中
-  const r2 = LK.createReader({ dict: { email: "イーメール" } });
+  const r2 = WK.createReader({ dict: { email: "イーメール" } });
   const got = r2.read("E-mail!");
   assert.strictEqual(got.source, "dict");
   assert.strictEqual(got.kana, "イーメール");
 });
 
 test("reader：dict 命中会计进 dictHits", () => {
-  const r = LK.createReader({ dict: { clover: "クローバー" } });
+  const r = WK.createReader({ dict: { clover: "クローバー" } });
   r.read("clover");
   r.read("clover");
   assert.strictEqual(r.stats().dictHits, 2);
 });
 
 test("reader：dict 为空时 sekai 走 romaji", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   const got = r.read("sekai");
   assert.strictEqual(got.source, "romaji");
   assert.strictEqual(got.kana, "セカイ");
@@ -641,14 +641,14 @@ test("reader：dict 为空时 sekai 走 romaji", () => {
 });
 
 test("reader：dict 为 undefined 也能建起来", () => {
-  const r = LK.createReader();
+  const r = WK.createReader();
   assert.strictEqual(r.read("sekai").source, "romaji");
-  const r2 = LK.createReader({ dict: undefined, log: undefined });
+  const r2 = WK.createReader({ dict: undefined, log: undefined });
   assert.strictEqual(r2.read("hello").source, "rule");
 });
 
 test("reader：罗马音切不干净时落到 rule，且不抛异常", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   const got = r.read("zzxqw");
   assert.strictEqual(got.source, "rule");
   assert.strictEqual(typeof got.kana, "string");
@@ -656,7 +656,7 @@ test("reader：罗马音切不干净时落到 rule，且不抛异常", () => {
 });
 
 test("reader：英文词的来源是 rule（不是 romaji）", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   assert.strictEqual(r.read("clover").source, "rule");
   assert.strictEqual(r.read("clover").kana, "クローバー");
   assert.strictEqual(r.read("light").source, "rule");
@@ -664,7 +664,7 @@ test("reader：英文词的来源是 rule（不是 romaji）", () => {
 });
 
 test("reader：空输入 / 纯标点 / 无拉丁字母都返回 null", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   assert.strictEqual(r.read(""), null);
   assert.strictEqual(r.read("   "), null);
   assert.strictEqual(r.read("..."), null);
@@ -677,7 +677,7 @@ test("reader：空输入 / 纯标点 / 无拉丁字母都返回 null", () => {
 });
 
 test("reader：missed 会计上返回 null 的次数", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   r.read("");
   r.read("...");
   r.read("光");
@@ -685,7 +685,7 @@ test("reader：missed 会计上返回 null 的次数", () => {
 });
 
 test("reader：stats 五种计数各自独立", () => {
-  const r = LK.createReader({ dict: { clover: "クローバー" } });
+  const r = WK.createReader({ dict: { clover: "クローバー" } });
   r.read("clover"); // dict
   r.read("sekai"); // romaji
   r.read("light"); // rule
@@ -701,7 +701,7 @@ test("reader：stats 五种计数各自独立", () => {
 });
 
 test("reader：stats 返回副本，改它不影响内部计数", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   r.read("sekai");
   const s = r.stats();
   s.romajiHits = 999;
@@ -710,7 +710,7 @@ test("reader：stats 返回副本，改它不影响内部计数", () => {
 
 test("reader：log 只在传了函数时才调用", () => {
   const seen = [];
-  const r = LK.createReader({
+  const r = WK.createReader({
     dict: {},
     log: function (msg) {
       seen.push(msg);
@@ -720,7 +720,7 @@ test("reader：log 只在传了函数时才调用", () => {
   assert.ok(seen.length > 0);
   assert.ok(seen.join(" ").indexOf("romaji") >= 0);
   // 没传 log 时不能炸
-  const r2 = LK.createReader({ dict: {} });
+  const r2 = WK.createReader({ dict: {} });
   assert.doesNotThrow(function () {
     r2.read("sekai");
   });
@@ -729,7 +729,7 @@ test("reader：log 只在传了函数时才调用", () => {
 // ============================================================ addOnline
 
 test("addOnline：接受纯片假名，之后 read 返回 online", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   assert.strictEqual(r.addOnline("clover", "クローバー"), true);
   const got = r.read("clover");
   assert.strictEqual(got.source, "online");
@@ -738,14 +738,14 @@ test("addOnline：接受纯片假名，之后 read 返回 online", () => {
 });
 
 test("addOnline：接受带长音符的片假名", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   assert.strictEqual(r.addOnline("computer", "コンピューター"), true);
   assert.strictEqual(r.read("computer").source, "online");
   assert.strictEqual(r.read("computer").kana, "コンピューター");
 });
 
 test("addOnline：拒绝非片假名（英文、汉字、混排）", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   assert.strictEqual(r.addOnline("clover", "clover"), false);
   assert.strictEqual(r.addOnline("clover", "光"), false);
   assert.strictEqual(r.addOnline("clover", "アabc"), false);
@@ -756,7 +756,7 @@ test("addOnline：拒绝非片假名（英文、汉字、混排）", () => {
 });
 
 test("addOnline：拒绝空串和非法 word", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   assert.strictEqual(r.addOnline("", "ア"), false);
   assert.strictEqual(r.addOnline("   ", "ア"), false);
   assert.strictEqual(r.addOnline("...", "ア"), false);
@@ -766,13 +766,13 @@ test("addOnline：拒绝空串和非法 word", () => {
 });
 
 test("addOnline：查表也能折掉非字母（e-mail -> email）", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   assert.strictEqual(r.addOnline("email", "イーメール"), true);
   assert.strictEqual(r.read("email").source, "online");
   assert.strictEqual(r.read("email").kana, "イーメール");
   // word 里的连字符在 addOnline 里会被折掉，所以写进去之后
   // 读 "email" 和读 "e-mail" 都能命中同一个读音
-  const r2 = LK.createReader({ dict: {} });
+  const r2 = WK.createReader({ dict: {} });
   assert.strictEqual(r2.addOnline("e-mail", "イーメール"), true);
   assert.strictEqual(r2.read("email").source, "online");
   assert.strictEqual(r2.read("e-mail").kana, "イーメール");
@@ -780,7 +780,7 @@ test("addOnline：查表也能折掉非字母（e-mail -> email）", () => {
 });
 
 test("addOnline：dict 命中仍然优先于 online", () => {
-  const r = LK.createReader({ dict: { clover: "クローバー" } });
+  const r = WK.createReader({ dict: { clover: "クローバー" } });
   r.addOnline("clover", "クロバー");
   const got = r.read("clover");
   assert.strictEqual(got.source, "dict");
@@ -788,7 +788,7 @@ test("addOnline：dict 命中仍然优先于 online", () => {
 });
 
 test("addOnline：写成片假名后读同一处的次数会累加", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   r.addOnline("sorairo", "ソライロ");
   r.read("sorairo");
   r.read("SORAIRO");
@@ -798,39 +798,39 @@ test("addOnline：写成片假名后读同一处的次数会累加", () => {
 // ============================================================ 边界
 
 test("边界：带连字符的词不抛异常", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   const samples = ["e-mail", "x-ray", "-", "-a-", "a--b", "co-op", "don't", "rock'n'roll"];
   for (let i = 0; i < samples.length; i++) {
     assert.doesNotThrow(function () {
       r.read(samples[i]);
     }, samples[i]);
     assert.doesNotThrow(function () {
-      LK.englishToKatakana(samples[i]);
+      WK.englishToKatakana(samples[i]);
     }, samples[i]);
     assert.doesNotThrow(function () {
-      LK.romajiToKatakana(samples[i]);
+      WK.romajiToKatakana(samples[i]);
     }, samples[i]);
   }
 });
 
 test("边界：超长词不抛异常、不死循环、有结果", () => {
   const long = new Array(500).join("a");
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   const got = r.read(long);
   assert.ok(got !== null);
   assert.ok(got.kana.length > 0);
   assert.doesNotThrow(function () {
-    LK.romajiToKatakana(long);
+    WK.romajiToKatakana(long);
   });
   const longEn = "pneumonoultramicroscopicsilicovolcanoconiosis";
   assert.doesNotThrow(function () {
-    LK.englishToKatakana(longEn);
+    WK.englishToKatakana(longEn);
   });
-  assert.ok(LK.englishToKatakana(longEn).kana.length > 0);
+  assert.ok(WK.englishToKatakana(longEn).kana.length > 0);
 });
 
 test("边界：数字、符号、空格混排", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   const samples = ["123", "12ab34", "!!!", " ", "\t", "@#$%", "ａｂｃ"];
   for (let i = 0; i < samples.length; i++) {
     assert.doesNotThrow(function () {
@@ -861,7 +861,7 @@ test("首音校验：th 的两种读法都放行（the ザ / think シンク）�
     ["tick", "ティック"],
     ["take", "テイク"],
   ]) {
-    assert.strictEqual(LK.looksLikeTransliteration(w, k), true, w + " -> " + k + " 不该被拒");
+    assert.strictEqual(WK.looksLikeTransliteration(w, k), true, w + " -> " + k + " 不该被拒");
   }
   // 词首不发音的组合：m 不发音的 mn（memo 这种正常 m 不受影响）、
   // p 不发音的 pn、Ng 开头的姓名
@@ -873,14 +873,14 @@ test("首音校验：th 的两种读法都放行（the ザ / think シンク）�
     ["phone", "フォン"],
     ["psychology", "サイコロジー"],
   ]) {
-    assert.strictEqual(LK.looksLikeTransliteration(w, k), true, w + " -> " + k + " 不该被拒");
+    assert.strictEqual(WK.looksLikeTransliteration(w, k), true, w + " -> " + k + " 不该被拒");
   }
   // tick -> カチカチ 是拟声词/意译，仍然要拦住（这是这条校验存在的理由）
-  assert.strictEqual(LK.looksLikeTransliteration("tick", "カチカチ"), false);
-  assert.strictEqual(LK.looksLikeTransliteration("kaleidoscope", "ダニ"), false);
+  assert.strictEqual(WK.looksLikeTransliteration("tick", "カチカチ"), false);
+  assert.strictEqual(WK.looksLikeTransliteration("kaleidoscope", "ダニ"), false);
   // 没把握的首字母（h/w/y/元音）一律不校验
-  assert.strictEqual(LK.looksLikeTransliteration("hour", "アワー"), true);
-  assert.strictEqual(LK.looksLikeTransliteration("write", "ライト"), true);
+  assert.strictEqual(WK.looksLikeTransliteration("hour", "アワー"), true);
+  assert.strictEqual(WK.looksLikeTransliteration("write", "ライト"), true);
 });
 
 // ============================================================ -ize / -yze
@@ -889,7 +889,7 @@ test("词尾 -ize / -yze：读「辅音 + イズ」，不许被罗马音层抢�
   // 用户截图里的 `memorize` 被标成 メモリゼ —— 那是**罗马音层**抢答的
   // （me-mo-ri-ze 切得干净），而日语罗马字里根本没有 -ize 结尾的动词。
   // 现在罗马音层直接拒绝这种形状，交给规则层的 EN_IZE：辅音并入 a，读成「…イズ」。
-  const r = LK.createReader({ dict: {}, enWords: null });
+  const r = WK.createReader({ dict: {}, enWords: null });
   assert.strictEqual(r.read("memorize").source, "rule", "memorize 不该走罗马音层");
   for (const [w, kana] of [
     ["memorize", "メモライズ"],
@@ -902,11 +902,11 @@ test("词尾 -ize / -yze：读「辅音 + イズ」，不许被罗马音层抢�
     ["paralyze", "パラライズ"],
     ["fantasize", "ファンタサイズ"],
   ]) {
-    assert.strictEqual(LK.englishToKatakana(w).kana, kana, w);
+    assert.strictEqual(WK.englishToKatakana(w).kana, kana, w);
   }
   // 词干是空的（size / prize 这种词根）不走这条，免得把 s 当尾巴读出"サイズ"
-  assert.ok(LK.englishToKatakana("size").kana.length > 0);
-  assert.notStrictEqual(LK.englishToKatakana("size").kana, "サ\u30A4\u30BA\u30A4\u30BA");
+  assert.ok(WK.englishToKatakana("size").kana.length > 0);
+  assert.notStrictEqual(WK.englishToKatakana("size").kana, "サ\u30A4\u30BA\u30A4\u30BA");
 });
 
 // ============================================================ 法语
@@ -930,7 +930,7 @@ test("法语：拼读近似 + 整行判定（用户给的那首歌词）", () =>
     "Et ça ne changera jamais, jamais..",
   ];
   for (const line of french) {
-    assert.strictEqual(LK.looksFrench(line), true, "这行是法语：" + line);
+    assert.strictEqual(WK.looksFrench(line), true, "这行是法语：" + line);
   }
   const notFrench = [
     "I love you so much",
@@ -940,7 +940,7 @@ test("法语：拼读近似 + 整行判定（用户给的那首歌词）", () =>
     "きらめく light と clover",
   ];
   for (const line of notFrench) {
-    assert.strictEqual(LK.looksFrench(line), false, "这行不是法语：" + line);
+    assert.strictEqual(WK.looksFrench(line), false, "这行不是法语：" + line);
   }
 
   // 拼读近似：鼻化、哑音词尾、oi/ou/eu、连缀、elision
@@ -964,14 +964,14 @@ test("法语：拼读近似 + 整行判定（用户给的那首歌词）", () =>
     ["non", "ノン"],
     ["un", "アン"],
   ]) {
-    const got = LK.frenchToKatakana(w);
+    const got = WK.frenchToKatakana(w);
     assert.ok(got, w + " 要能拼出来");
     assert.strictEqual(got.kana, kana, w);
     assert.strictEqual(got.confident, false, w + " 是近似，要标成「没把握」交给模型");
   }
   // 非拉丁（中文/假名）不给结果，不能瞎拼
-  assert.strictEqual(LK.frenchToKatakana("こんにちは"), null);
-  assert.strictEqual(LK.frenchToKatakana(""), null);
+  assert.strictEqual(WK.frenchToKatakana("こんにちは"), null);
+  assert.strictEqual(WK.frenchToKatakana(""), null);
 });
 
 test("法语借词表（用户给的 sljfaq 测试用例）", () => {
@@ -1017,18 +1017,18 @@ test("法语借词表（用户给的 sljfaq 测试用例）", () => {
     ["vacances", "バカンス"],
   ];
   for (const [w, kana] of pairs) {
-    assert.strictEqual(LK.frenchWord(w), kana, w);
+    assert.strictEqual(WK.frenchWord(w), kana, w);
   }
   // 带连字符/撇号的写法要能折到同一个键上
-  assert.strictEqual(LK.frenchWord("rendez-vous"), "ランデブー");
-  assert.strictEqual(LK.frenchWord("Rendez-Vous"), "ランデブー");
+  assert.strictEqual(WK.frenchWord("rendez-vous"), "ランデブー");
+  assert.strictEqual(WK.frenchWord("Rendez-Vous"), "ランデブー");
   // 表外的词返回 null（交给规则层/大模型）
-  assert.strictEqual(LK.frenchWord("ordinateur"), null);
-  assert.strictEqual(LK.frenchWord(""), null);
+  assert.strictEqual(WK.frenchWord("ordinateur"), null);
+  assert.strictEqual(WK.frenchWord(""), null);
   // 表里的键值是纯片假名（构建期/人工都这么写）
-  for (const k in LK.FR_LOAN) {
-    if (!Object.prototype.hasOwnProperty.call(LK.FR_LOAN, k)) continue;
-    assert.match(LK.FR_LOAN[k], /^[\u30A0-\u30FF\u30FC]+$/, k + " -> " + LK.FR_LOAN[k]);
+  for (const k in WK.FR_LOAN) {
+    if (!Object.prototype.hasOwnProperty.call(WK.FR_LOAN, k)) continue;
+    assert.match(WK.FR_LOAN[k], /^[\u30A0-\u30FF\u30FC]+$/, k + " -> " + WK.FR_LOAN[k]);
   }
 });
 
@@ -1037,7 +1037,7 @@ test("法语借词表（用户给的 sljfaq 测试用例）", () => {
 test("全大写缩写：无元音的照旧，有元音但既不是词、也切不成罗马音的也逐字母", () => {
   // 用户截图里 `SOS` 被读成 ソス、`QTE` 读成 クテ —— 都错。
   // 新判据放两条进来（都要过两道闸门）：不是词典里的词、罗马音也切不出来。
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   for (const [w, kana] of [
     ["SOS", "エスオーエス"],
     ["QTE", "キューティーイー"],
@@ -1054,7 +1054,7 @@ test("全大写缩写：无元音的照旧，有元音但既不是词、也切�
   assert.strictEqual(r.read("SORA").kana, "ソラ");
   assert.strictEqual(r.read("KIMI").kana, "キミ");
   // 全大写但词典里有这个词的（LOVE / OK）：也不念字母
-  const r2 = LK.createReader({ dict: { love: "ラブ", ok: "オーケー" } });
+  const r2 = WK.createReader({ dict: { love: "ラブ", ok: "オーケー" } });
   assert.strictEqual(r2.read("LOVE").kana, "ラブ");
   assert.strictEqual(r2.read("OK").kana, "オーケー");
 });
@@ -1062,7 +1062,7 @@ test("全大写缩写：无元音的照旧，有元音但既不是词、也切�
 test("同一个元音重复成串：按那个元音叠出来（AAAAA -> アアアアア）", () => {
   // 用户截图：`邪魔者は成敗いたAAAAAす！` 里的 AAAAA 一个音都没标。
   // 它是喊叫/拖长音，不是词 —— 词典里 `aaa` 是 トリプルエー、规则也会读歪。
-  const r = LK.createReader({ dict: { aaa: "トリプルエー" } });
+  const r = WK.createReader({ dict: { aaa: "トリプルエー" } });
   const cases = [
     ["AAAAA", "アアアアア"],
     ["aaa", "アアア"],
@@ -1074,7 +1074,7 @@ test("同一个元音重复成串：按那个元音叠出来（AAAAA -> アア�
     assert.strictEqual(got.kana, kana, w);
     assert.strictEqual(got.source, "letters", w + " 是形态层的确定答案，不该去问模型");
   }
-  // 辅音串仍然不标（XX 是打码）—— 这条在 matcher 那一层（latin.test.js 里锁着），
+  // 辅音串仍然不标（XX 是打码）—— 这条在 matcher 那一层（letters.test.js 里锁着），
   // 这里的 reader 只负责"有读音就给出"，插不插到页面上由 annotate 层决定。
   assert.strictEqual(r.read("XX").kana, "エックスエックス");
 });
@@ -1083,7 +1083,7 @@ test("词尾 -ude：读「辅音 + ウー + ド」，不许被罗马音层切成
   // 用户截图（Ave Mujica 的歌）：`KiLLKiSS jude...` 里的 jude 被罗马音层
   // 切成 ju-de 读成 ジュデ。英语 -ude 的 e 不发音、u 是长音
   // （jude ジュード、rude ルード、gratitude グラティテュード）。
-  const r = LK.createReader({ dict: {}, enWords: null });
+  const r = WK.createReader({ dict: {}, enWords: null });
   assert.strictEqual(r.read("jude").source, "rule", "jude 不该走罗马音层");
   for (const [w, kana] of [
     ["jude", "ジュード"],
@@ -1093,13 +1093,13 @@ test("词尾 -ude：读「辅音 + ウー + ド」，不许被罗马音层切成
     ["magnitude", "マグニテュード"],
     ["interlude", "インタールード"],
   ]) {
-    assert.strictEqual(LK.englishToKatakana(w).kana, kana, w);
+    assert.strictEqual(WK.englishToKatakana(w).kana, kana, w);
   }
   // du / tu 按日语惯例读 デュ / テュ（dude デュード、attitude アティテュード）
-  assert.strictEqual(LK.englishToKatakana("dude").kana, "デュード");
+  assert.strictEqual(WK.englishToKatakana("dude").kana, "デュード");
   // 词干为空的 -ize 也要能读（size / prize，词典里本来就有，规则层不能崩）
-  assert.strictEqual(LK.englishToKatakana("size").kana, "サイズ");
-  assert.strictEqual(LK.englishToKatakana("prize").kana, "プライズ");
+  assert.strictEqual(WK.englishToKatakana("size").kana, "サイズ");
+  assert.strictEqual(WK.englishToKatakana("prize").kana, "プライズ");
 });
 
 // ============================================================ 不发音字母
@@ -1119,18 +1119,18 @@ test("词首不发音的字母：kn- / wr- / gn- / ps- / pn- 不许读出来", (
     ["gnaw", "ナウ"],
     ["wring", "リン"], // w 哑
   ]) {
-    assert.strictEqual(LK.englishToKatakana(w).kana, kana, w);
+    assert.strictEqual(WK.englishToKatakana(w).kana, kana, w);
   }
   // 词首那一格绝不能再出现 kn/wr/gn 的第一个音（ナ/ラ/グ 之类）
   for (const w of ["knee", "kneel", "knife", "knight", "write", "wrong", "wrist", "gnome"]) {
-    const kana = LK.englishToKatakana(w).kana;
+    const kana = WK.englishToKatakana(w).kana;
     assert.ok(!/^[クラグ]/.test(kana), w + " 的首字母是哑音，不能读出来：" + kana);
   }
 });
 
 test("词尾 -mb：b 不发音（comb / climb / lamb / bomb / thumb）", () => {
   for (const w of ["comb", "climb", "lamb", "bomb", "thumb", "tomb", "dumb", "crumb", "rhomb", "aplomb", "coomb"]) {
-    const kana = LK.englishToKatakana(w).kana;
+    const kana = WK.englishToKatakana(w).kana;
     // 词尾不能落在バ行上（老引擎的错法：bomb ボンブ、climb クルンブ）。
     // 词首的 b 该读还得读（bomb 的 ボ 是对的），所以只看结尾。
     assert.ok(!/[バビブベボ]$/.test(kana), w + " 词尾的 b 不发音，不该以バ行收尾：" + kana);
@@ -1141,14 +1141,14 @@ test("词尾 -mb：b 不发音（comb / climb / lamb / bomb / thumb）", () => {
     ["amber", "アンバー"],
     ["timber", "ティンバー"],
   ]) {
-    assert.strictEqual(LK.englishToKatakana(w).kana, kana, w + " 词中的 b 要读出来");
+    assert.strictEqual(WK.englishToKatakana(w).kana, kana, w + " 词中的 b 要读出来");
   }
 });
 
 // ============================================================ 边界
 
 test("边界：stats 初值都是 0", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   assert.deepStrictEqual(r.stats(), {
     dictHits: 0,
     letterHits: 0,
@@ -1160,8 +1160,8 @@ test("边界：stats 初值都是 0", () => {
 });
 
 test("边界：多个 reader 之间互不干扰", () => {
-  const a = LK.createReader({ dict: { clover: "クローバー" } });
-  const b = LK.createReader({ dict: {} });
+  const a = WK.createReader({ dict: { clover: "クローバー" } });
+  const b = WK.createReader({ dict: {} });
   a.addOnline("clover", "クロバー");
   // a 有 dict，仍然是 dict 优先；b 没 dict，走规则
   assert.strictEqual(a.read("clover").source, "dict");
@@ -1180,7 +1180,7 @@ test("罗马音：在英文词表里的（shake/open）标成没把握，好让�
   // 罗马音层只判"整串能不能切干净"，于是 shake(sha-ke) -> シャケ、open -> オペン
   // 这种英文词会被当成日语罗马字；而层序里罗马音排在大模型前面，它一答就没人能纠。
   const enWords = { shake: true, open: true };
-  const r = LK.createReader({ dict: {}, enWords: enWords });
+  const r = WK.createReader({ dict: {}, enWords: enWords });
   const got = r.read("shake");
   assert.strictEqual(got.source, "romaji");
   assert.strictEqual(got.kana, "シャケ", "读音本身还是罗马音切的（等在线层回来再换）");
@@ -1190,7 +1190,7 @@ test("罗马音：在英文词表里的（shake/open）标成没把握，好让�
 
 test("罗马音：真正的日语罗马字不受影响（sekai / kaze 仍然是确定的）", () => {
   const enWords = { shake: true, open: true };
-  const r = LK.createReader({ dict: {}, enWords: enWords });
+  const r = WK.createReader({ dict: {}, enWords: enWords });
   for (const w of ["sekai", "kaze", "shinjiteru"]) {
     const got = r.read(w);
     assert.strictEqual(got.source, "romaji", w);
@@ -1199,12 +1199,12 @@ test("罗马音：真正的日语罗马字不受影响（sekai / kaze 仍然是�
 });
 
 test("罗马音：不传英文词表时行为跟以前一样（罗马音一律算确定）", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   assert.strictEqual(r.read("shake").confident, true);
 });
 
 test("边界：dict 里塞了空值不会把结果读成空串", () => {
-  const r = LK.createReader({ dict: { clover: "" } });
+  const r = WK.createReader({ dict: { clover: "" } });
   const got = r.read("clover");
   assert.ok(got.kana.length > 0);
   assert.notStrictEqual(got.source, "dict");
@@ -1213,38 +1213,38 @@ test("边界：dict 里塞了空值不会把结果读成空串", () => {
 // ============================================================ 层序（用户可调）
 
 test("层序：默认是 dict > romaji > rule", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   assert.deepStrictEqual(r.getOrder(), ["dict", "romaji", "rule"]);
 });
 
 test("层序：把 romaji 提到词典前面，罗马音命中就压倒词典", () => {
   // sekai 既是合法罗马音、又在词典里 —— 正好用来看谁优先
   const dict = { sekai: "セカイデハナイ" };
-  const byDict = LK.createReader({ dict: dict });
+  const byDict = WK.createReader({ dict: dict });
   assert.strictEqual(byDict.read("sekai").source, "dict");
   assert.strictEqual(byDict.read("sekai").kana, "セカイデハナイ");
 
-  const byRomaji = LK.createReader({ dict: dict, order: ["romaji", "dict", "rule"] });
+  const byRomaji = WK.createReader({ dict: dict, order: ["romaji", "dict", "rule"] });
   const got = byRomaji.read("sekai");
   assert.strictEqual(got.source, "romaji");
   assert.strictEqual(got.kana, "セカイ");
 });
 
 test("层序：把 rule 提到最前面，规则层就压过词典和罗马音", () => {
-  const r = LK.createReader({ dict: { sekai: "セカイデハナイ" }, order: ["rule", "dict", "romaji"] });
+  const r = WK.createReader({ dict: { sekai: "セカイデハナイ" }, order: ["rule", "dict", "romaji"] });
   const got = r.read("sekai");
   assert.strictEqual(got.source, "rule", "规则层排在前面就该由它说了算");
   assert.notStrictEqual(got.kana, "セカイデハナイ");
 });
 
 test("层序：rule 排最后时，词典/罗马音都给不出答案才轮到它", () => {
-  const r = LK.createReader({ dict: { clover: "クローバー" }, order: ["romaji", "dict", "rule"] });
+  const r = WK.createReader({ dict: { clover: "クローバー" }, order: ["romaji", "dict", "rule"] });
   assert.strictEqual(r.read("clover").source, "dict", "罗马音切不出来的词仍然归词典");
   assert.strictEqual(r.read("zxqwk").source, "rule", "谁都不认识才落到规则");
 });
 
 test("层序：运行时 setOrder 立刻生效，getOrder 返回副本", () => {
-  const r = LK.createReader({ dict: { sekai: "セカイデハナイ" } });
+  const r = WK.createReader({ dict: { sekai: "セカイデハナイ" } });
   assert.strictEqual(r.read("sekai").source, "dict");
   r.setOrder(["romaji", "dict", "rule"]);
   assert.strictEqual(r.read("sekai").source, "romaji");
@@ -1254,7 +1254,7 @@ test("层序：运行时 setOrder 立刻生效，getOrder 返回副本", () => {
 });
 
 test("层序：脏配置不会让层变少（去重 + 缺的补在后面）", () => {
-  const r = LK.createReader({ dict: {} });
+  const r = WK.createReader({ dict: {} });
   r.setOrder(["rule", "rule", "不存在的层"]);
   assert.deepStrictEqual(r.getOrder(), ["rule", "dict", "romaji"]);
   r.setOrder([]);
@@ -1265,12 +1265,12 @@ test("层序：脏配置不会让层变少（去重 + 缺的补在后面）", ()
 
 test("层序：形态层（记号 / 缩写 / 长音符罗马字）不受排序影响", () => {
   // 这三类决定的不是"读音该信谁"，而是"这个词该怎么断"，永远最先
-  const r = LK.createReader({ dict: { dna: "ディーエヌエー" }, order: ["rule", "romaji", "dict"] });
+  const r = WK.createReader({ dict: { dna: "ディーエヌエー" }, order: ["rule", "romaji", "dict"] });
   assert.strictEqual(r.read("D/N/A").source, "letters", "记号永远先判");
   assert.strictEqual(r.read("D/N/A").kana, "ディーエヌエー");
-  const r2 = LK.createReader({ dict: { ill: "イル" }, order: ["rule", "romaji", "dict"] });
+  const r2 = WK.createReader({ dict: { ill: "イル" }, order: ["rule", "romaji", "dict"] });
   assert.strictEqual(r2.read("I'll").source, "rule", "缩写拆出来的词干按当轮层序读，但拆词本身先做");
-  const r3 = LK.createReader({ dict: { tokyo: "トウキョウ" }, order: ["rule", "romaji", "dict"] });
+  const r3 = WK.createReader({ dict: { tokyo: "トウキョウ" }, order: ["rule", "romaji", "dict"] });
   assert.strictEqual(r3.read("Tōkyō").source, "romaji", "长音符就是罗马字，先于其它层判定");
   assert.strictEqual(r3.read("Tōkyō").kana, "トーキョー");
 });

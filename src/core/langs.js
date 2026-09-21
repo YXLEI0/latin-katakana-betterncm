@@ -13,8 +13,8 @@
  * 它是**日语通行写法**，等于人工词条，所以在外语行上比英语词典还优先。
  *
  * 两种字母：
- *   拉丁字母：词由 core/latin.js 切出来，读音走这里的引擎；
- *   西里尔 / 希腊字母：core/latin.js 一样会切（它认这三种字母），但词典层和
+ *   拉丁字母：词由 core/letters.js 切出来，读音走这里的引擎；
+ *   西里尔 / 希腊字母：core/letters.js 一样会切（它认这三种字母），但词典层和
  *   罗马音层都读不了 —— 俄语和希腊语的支持就落在"这里必须给出答案"上。
  *
  * 所有规则层的结果都是 confident:false（拼写近似，配了 key 交给大模型按整句定，
@@ -24,7 +24,7 @@
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory(typeof globalThis !== "undefined" ? globalThis : null);
-  else root.LKLangs = factory(root);
+  else root.WKLangs = factory(root);
 })(typeof globalThis !== "undefined" ? globalThis : this, function (root) {
   "use strict";
 
@@ -1409,7 +1409,7 @@
     if (/[\u0370-\u03FF\u1F00-\u1FFF]/.test(s)) return "el";
 
     var cands = [];
-    var reading = dep("LKReading");
+    var reading = dep("WKReading");
     if (reading && typeof reading.looksFrench === "function") {
       var isFr = false;
       try {
@@ -1521,7 +1521,7 @@
   // （俄语那张保持西里尔小写），查表时用同一套折法，两边都试。
 
   function loanTable(id) {
-    var loan = dep("LKLoan");
+    var loan = dep("WKLoan");
     if (!loan || typeof loan.get !== "function") return null;
     return loan.get(id);
   }
@@ -1607,7 +1607,7 @@
   /** 按语言拼读一个词；法语仍走 reading.js 那套（不改已有的行为） */
   function toKatakana(id, raw) {
     if (id === "fr") {
-      var reading = dep("LKReading");
+      var reading = dep("WKReading");
       if (!reading || typeof reading.frenchToKatakana !== "function") return null;
       return reading.frenchToKatakana(raw);
     }
@@ -1623,7 +1623,7 @@
   /** 借词表查询（法语那张仍在 reading.js 里） */
   function word(id, raw) {
     if (id === "fr") {
-      var reading = dep("LKReading");
+      var reading = dep("WKReading");
       if (!reading || typeof reading.frenchWord !== "function") return null;
       return reading.frenchWord(raw);
     }
@@ -1643,7 +1643,7 @@
     word: word,
     homograph: homograph,
     loanCount: function () {
-      var loan = dep("LKLoan");
+      var loan = dep("WKLoan");
       return loan && loan.count ? loan.count : 0;
     },
     // 给测试翻表用

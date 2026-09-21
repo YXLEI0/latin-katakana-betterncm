@@ -16,7 +16,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const LK = require("../src/core/reading.js");
+const WK = require("../src/core/reading.js");
 
 // 引擎逐字读对、且读音与参考页一致的例子
 const ROWS = [
@@ -248,7 +248,7 @@ const KNOWN_GAPS = [
 test("sljfaq 例子：引擎逐字读对的那些（与页面一致）", () => {
   const failures = [];
   for (const row of ROWS) {
-    const got = LK.englishToKatakana(row.en).kana;
+    const got = WK.englishToKatakana(row.en).kana;
     if (got !== row.kana) failures.push(row.en + "：得到 " + got + "，页面给 " + row.kana);
   }
   assert.deepStrictEqual(failures, [], "与参考页不一致：\n  " + failures.join("\n  "));
@@ -286,7 +286,7 @@ test("sljfaq 例子：两张表里的词都吐得出纯片假名", () => {
   const RE = /^[\u30A1-\u30F6\u30FC]+$/;
   for (const row of ROWS.concat(KNOWN_GAPS)) {
     if (row.en.indexOf(" ") >= 0 || row.en.indexOf("'") >= 0) continue; // 多词/撇号由上层分词
-    const got = LK.englishToKatakana(row.en).kana;
+    const got = WK.englishToKatakana(row.en).kana;
     assert.ok(RE.test(got), row.en + " 的输出不是纯片假名：" + JSON.stringify(got));
   }
 });

@@ -85,7 +85,7 @@ console.log("[0/7] 运行时版本");
   // 对 --test 的 glob 支持不一致）。加了新测试文件却忘了写进 package.json
   // 的话，这里会提醒。
   const TEST_FILES = [
-    "tests/latin.test.js",
+    "tests/letters.test.js",
     "tests/reading.test.js",
     "tests/langs.test.js",
     "tests/sljfaq-words.test.js",
@@ -164,7 +164,7 @@ if (manifest) {
 
 console.log("[3/7] 注入清单");
 const WANT_ORDER = [
-  "core/latin.js",
+  "core/letters.js",
   "core/dict.js",
   "core/enwords.js",
   "core/reading.js",

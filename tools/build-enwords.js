@@ -86,7 +86,7 @@ async function main() {
     banner +
     "(function (root, factory) {\n" +
     "  if (typeof module === \"object\" && module.exports) module.exports = factory();\n" +
-    "  else root.LKEnWords = factory();\n" +
+    "  else root.WKEnWords = factory();\n" +
     "})(typeof globalThis !== \"undefined\" ? globalThis : this, function () {\n" +
     "  \"use strict\";\n\n" +
     "  // 空格分隔的一长串，运行时拆成一个查表对象（比写 3000 个 key 的 JS 对象小得多）\n" +

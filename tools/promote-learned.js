@@ -3,7 +3,7 @@
  *
  * 用法：
  *   1. 网易云里听一阵歌（大模型那层多听几句），面板「操作 → 导出词库素材」
- *      （或控制台 `LK.exportWordsJson()`），把那段 JSON 存成 `data/learned.json`
+ *      （或控制台 `WK.exportWordsJson()`），把那段 JSON 存成 `data/learned.json`
  *      （`data/` 目录不存在就建一个，它不进仓库）；
  *   2. `npm run promote:learned`   —— 筛选后写进 `tools/seed-words-learned.js`
  *   3. `npm run build:dict`        —— 合并进 `src/core/dict.js`
@@ -136,7 +136,7 @@ function writeSeed(accepted) {
   lines.push("/*");
   lines.push(" * 从运行期素材沉淀下来的词（生成物，勿手改）。");
   lines.push(" *");
-  lines.push(" * 来源：面板「操作 → 导出词库素材」（或 LK.exportWordsJson()）导出的 JSON，");
+  lines.push(" * 来源：面板「操作 → 导出词库素材」（或 WK.exportWordsJson()）导出的 JSON，");
   lines.push(" *      经 tools/promote-learned.js 筛选 —— 已学会的词 + 大模型/免费接口缓存的命中。");
   lines.push(" * 生成命令：npm run promote:learned && npm run build:dict");
   lines.push(" *");
@@ -191,7 +191,7 @@ function main() {
   const input = readInput(file);
   if (!input) {
     console.error("没有素材文件：" + path.relative(ROOT, file));
-    console.error("先在网易云里听一阵歌，面板「操作 → 导出词库素材」（或控制台 LK.exportWordsJson()），");
+    console.error("先在网易云里听一阵歌，面板「操作 → 导出词库素材」（或控制台 WK.exportWordsJson()），");
     console.error("把那段 JSON 存成 " + path.relative(ROOT, INPUT_DEFAULT) + " 再跑这个命令。");
     process.exit(1);
   }

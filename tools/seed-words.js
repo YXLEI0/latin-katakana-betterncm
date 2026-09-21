@@ -396,7 +396,7 @@ module.exports = [
   { en: "history", kana: "ヒストリー" },
   { en: "horror", kana: "ホラー" },
   { en: "hotel", kana: "ホテル" },
-  { en: "i", kana: "アイ" }, // 英文的 "I"：アイ（罗马音里的裸 i = イ，见 latin.js 里的取舍说明）
+  { en: "i", kana: "アイ" }, // 英文的 "I"：アイ（罗马音里的裸 i = イ，见 letters.js 里的取舍说明）
   { en: "icon", kana: "アイコン" },
   { en: "idea", kana: "アイデア" },
   { en: "image", kana: "イメージ" },

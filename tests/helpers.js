@@ -13,7 +13,7 @@ const { after } = require("node:test");
 const SRC = path.join(__dirname, "..", "src");
 
 /** 按 manifest 顺序注入的核心模块（加文件时这里和 manifest 一起改） */
-const CORE_FILES = ["core/latin.js", "core/dict.js", "core/enwords.js", "core/reading.js", "core/loan.js", "core/langs.js", "core/correct.js", "core/llm.js", "core/usage.js", "core/learn.js", "core/annotate.js"];
+const CORE_FILES = ["core/letters.js", "core/dict.js", "core/enwords.js", "core/reading.js", "core/loan.js", "core/langs.js", "core/correct.js", "core/llm.js", "core/usage.js", "core/learn.js", "core/annotate.js"];
 
 /**
  * jsdom 的窗口里会有 setInterval / MutationObserver，不关掉进程就不退出。
@@ -41,7 +41,7 @@ function loadScripts(dom, files) {
   }
 }
 
-/** 按顺序注入核心模块，返回 { dom, window, LK* } */
+/** 按顺序注入核心模块，返回 { dom, window, WK* } */
 function loadCore(html, options) {
   options = options || {};
   const dom = new JSDOM(html || "<!doctype html><html><head></head><body></body></html>", {
@@ -61,19 +61,19 @@ function loadCore(html, options) {
     dom,
     window,
     document: window.document,
-    LKMatcher: window.LKMatcher,
-    LKDict: window.LKDict,
-    LKReading: window.LKReading,
-    LKLoan: window.LKLoan,
-    LKLangs: window.LKLangs,
-    LKCorrect: window.LKCorrect,
-    LKLLM: window.LKLLM,
-    LKLearn: window.LKLearn,
-    LKAnnotate: window.LKAnnotate,
+    WKMatcher: window.WKMatcher,
+    WKDict: window.WKDict,
+    WKReading: window.WKReading,
+    WKLoan: window.WKLoan,
+    WKLangs: window.WKLangs,
+    WKCorrect: window.WKCorrect,
+    WKLLM: window.WKLLM,
+    WKLearn: window.WKLearn,
+    WKAnnotate: window.WKAnnotate,
   };
 
   if (options.reader !== false) {
-    out.reader = out.LKReading.createReader({ dict: out.LKDict.words });
+    out.reader = out.WKReading.createReader({ dict: out.WKDict.words });
   }
   return out;
 }
@@ -83,7 +83,7 @@ function makeAnnotator(ctx, opts) {
   opts = opts || {};
   const reader = opts.reader || ctx.reader;
   // opts.annotator 里可以塞任意 createAnnotator 选项（motionWindowMs / churnBaseMs 这类排障旋钮）
-  return ctx.LKAnnotate.createAnnotator(
+  return ctx.WKAnnotate.createAnnotator(
     Object.assign({}, opts.annotator || {}, {
       document: ctx.document,
       lookup: function (word) {
@@ -100,7 +100,7 @@ function makeAnnotator(ctx, opts) {
 function forceRubyLayout(ctx, supported) {
   // jsdom 没有布局引擎，getBoundingClientRect 全返回 0，探针必然判成「不支持」。
   // annotate.js 认这个开关，方便分别测 ruby 分支和降级分支。
-  ctx.window.__LK_FORCE_RUBY__ = supported;
+  ctx.window.__WK_FORCE_RUBY__ = supported;
 }
 
 module.exports = { loadCore, makeAnnotator, forceRubyLayout, loadScripts, SRC, CORE_FILES };

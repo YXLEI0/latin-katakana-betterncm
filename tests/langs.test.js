@@ -16,8 +16,8 @@ const test = require("node:test");
 const assert = require("node:assert");
 
 // langs.js 是 UMD：Node 分支下依赖（法语引擎 / 借词表）从 globalThis 取
-globalThis.LKReading = require("../src/core/reading.js");
-globalThis.LKLoan = require("../src/core/loan.js");
+globalThis.WKReading = require("../src/core/reading.js");
+globalThis.WKLoan = require("../src/core/loan.js");
 const L = require("../src/core/langs.js");
 
 /** 查一个词的读音（借词表优先，然后引擎） */

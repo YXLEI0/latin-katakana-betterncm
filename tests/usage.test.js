@@ -29,8 +29,8 @@ function fakeStorage(initial) {
 function newUsage(opts) {
   // 用 loadCore 的默认注入清单（helpers.js 会顺便建 reader，所以不能只注入 usage.js）
   const ctx = loadCore("<!doctype html><html><body></body></html>");
-  const usage = ctx.window.LKUsage.createUsage(opts);
-  return { usage, LKUsage: ctx.window.LKUsage, window: ctx.window };
+  const usage = ctx.window.WKUsage.createUsage(opts);
+  return { usage, WKUsage: ctx.window.WKUsage, window: ctx.window };
 }
 
 test("记账：两层分开记，三份账（本次 / 今天 / 累计）同时涨", () => {

@@ -13,7 +13,7 @@ const { loadCore } = require("./helpers");
 
 function newStore(opts) {
   const ctx = loadCore();
-  return ctx.LKLearn.createLearned(opts || {});
+  return ctx.WKLearn.createLearned(opts || {});
 }
 
 /** 最小可用的 localStorage 桩 */

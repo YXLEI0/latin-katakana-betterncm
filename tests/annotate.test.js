@@ -5,7 +5,7 @@
  *   - 只改文本节点、底字逐字节保持原文；
  *   - 不改任何既有元素的 class（改别人的 class 会让对方插件判定"行变了"并重建）；
  *   - 还原要干净，不留 class="" 之类的痕迹；
- *   - 「可见原文」必须把所有注音（自家的 lt-rt、别人的 kt-rt / fg-rt）都排除掉，
+ *   - 「可见原文」必须把所有注音（自家的 wk-rt、别人的 kt-rt / fg-rt）都排除掉，
  *     否则别人的注音会被算成底字，我们就会每轮都判定"馊了"并重注 —— 就是一直闪。
  */
 "use strict";
@@ -30,7 +30,7 @@ function newCtx(html) {
 /** 底字文本（剔掉注音）——标准 ruby 里 <rt> 的文本也算 textContent，必须显式去掉 */
 function baseText(el) {
   const clone = el.cloneNode(true);
-  const anns = clone.querySelectorAll("rt, .lt-rt, .kt-rt, .fg-rt, rp");
+  const anns = clone.querySelectorAll("rt, .wk-rt, .kt-rt, .fg-rt, rp");
   for (let i = 0; i < anns.length; i++) {
     if (anns[i].parentNode) anns[i].parentNode.removeChild(anns[i]);
   }
@@ -43,9 +43,9 @@ test("把拉丁词包成 ruby，注音是片假名读音", () => {
   ann.pass();
 
   const p = ctx.document.querySelectorAll("ul.lyric li p")[0];
-  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+  const pairs = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
     r.childNodes[0].nodeValue,
-    r.querySelector(".lt-rt").textContent,
+    r.querySelector(".wk-rt").textContent,
   ]);
   assert.deepStrictEqual(pairs, [
     ["light", "ライト"],
@@ -65,7 +65,7 @@ test("含汉字的行也照标（本插件不做「按行分工」）", () => {
   ann.pass();
 
   const p = ctx.document.querySelector("p");
-  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.querySelector(".lt-rt").textContent);
+  const pairs = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => r.querySelector(".wk-rt").textContent);
   assert.deepStrictEqual(pairs, ["ドリーム"], "含汉字的行里的英文也要标");
   assert.strictEqual(baseText(p), "取とり戻もどしたい dream の 中なか");
 });
@@ -88,7 +88,7 @@ test("词正好在文本开头时，注音不能跑到行尾", () => {
     (n) => n.nodeType === 1 || (n.nodeValue || "").length > 0
   );
   assert.strictEqual(firstVisible.nodeType, 1);
-  assert.ok(firstVisible.classList.contains("lt-ruby"));
+  assert.ok(firstVisible.classList.contains("wk-ruby"));
   assert.strictEqual(firstVisible.childNodes[0].nodeValue, "clover");
   assert.strictEqual(baseText(p), "clover と dream の 話はなし");
 });
@@ -107,7 +107,7 @@ test("换歌：行首是拉丁词的行，框架改写原文本节点之后必�
 
   const p = ctx.document.querySelector("p");
   assert.deepStrictEqual(
-    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    [...p.querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue),
     ["KiLLKiSS", "judy", "KiLLKiSS", "jude"]
   );
 
@@ -118,9 +118,9 @@ test("换歌：行首是拉丁词的行，框架改写原文本节点之后必�
   orig.nodeValue = "そして light が 消えた";
 
   ann.pass();
-  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+  const pairs = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
     r.childNodes[0].nodeValue,
-    r.querySelector(".lt-rt").textContent,
+    r.querySelector(".wk-rt").textContent,
   ]);
   assert.deepStrictEqual(pairs, [["light", "ライト"]], "只该剩新歌词里的注音：" + JSON.stringify(pairs));
   assert.strictEqual(p.textContent, "そして lightライト が 消えた", "新歌词一个字都不许丢");
@@ -154,7 +154,7 @@ test("换歌：同一个元素被快速复用很多次，跳过只是暂时的�
     ann.pass(); // 四次都挤在一个窗口里，第 3、4 次会被判成"文本在动"
   }
   assert.strictEqual(
-    p.querySelectorAll("ruby.lt-ruby").length,
+    p.querySelectorAll("ruby.wk-ruby").length,
     0,
     "窗口内变太快时确实该跳过（追就是抽搐）：" + p.innerHTML
   );
@@ -166,9 +166,9 @@ test("换歌：同一个元素被快速复用很多次，跳过只是暂时的�
   // 窗口一过：同样的那一行必须能注回来（老版本这里就永远回不来了）
   await new Promise((r) => setTimeout(r, 80));
   ann.pass();
-  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+  const pairs = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
     r.childNodes[0].nodeValue,
-    r.querySelector(".lt-rt").textContent,
+    r.querySelector(".wk-rt").textContent,
   ]);
   assert.deepStrictEqual(pairs, [["sky", "スカイ"]], "窗口过后要恢复正常注音：" + JSON.stringify(pairs));
 });
@@ -205,7 +205,7 @@ test("跳过要自己安排重试：pass() 报出 retryInMs，别等页面再动
   await new Promise((r) => setTimeout(r, 260));
   ann.pass();
   assert.deepStrictEqual(
-    [...p.querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    [...p.querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue),
     ["sky"],
     "窗口过后要自动补上"
   );
@@ -221,9 +221,9 @@ test("单字母：a / I 要标，其它单字母不标", () => {
   const ann = makeAnnotator(ctx);
   ann.pass();
   const p = ctx.document.querySelector("p");
-  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+  const pairs = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
     r.childNodes[0].nodeValue,
-    r.querySelector(".lt-rt").textContent,
+    r.querySelector(".wk-rt").textContent,
   ]);
   assert.deepStrictEqual(pairs, [
     ["a", "ア"],
@@ -256,9 +256,9 @@ test("换歌：框架复用同一行只换文字时，上一首的注音必须�
   assert.strictEqual(p.textContent.indexOf("きらめく"), -1, "旧歌词不许被写回来");
   assert.strictEqual(p.textContent.indexOf("light"), -1, "上一首的注音不该留在新歌的行里");
   // 换完歌还要能继续正常工作：新歌里那个 clover 必须标上
-  const pairs = [...p.querySelectorAll("ruby.lt-ruby")].map((r) => [
+  const pairs = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [
     r.childNodes[0].nodeValue,
-    r.querySelector(".lt-rt").textContent,
+    r.querySelector(".wk-rt").textContent,
   ]);
   assert.deepStrictEqual(pairs, [["clover", "クローバー"]], "换歌之后要能重新注音");
   assert.strictEqual(ann.churnedCount(), 0, "换歌是正常重绘，不该被当成打架而认输");
@@ -278,14 +278,14 @@ test("认输的判据（一）：注音活了 70ms 才被重绘掉，不算打�
   };
 
   ann.pass();
-  assert.strictEqual(p.querySelectorAll("ruby.lt-ruby").length, 2, "前提：先注上：" + p.innerHTML);
+  assert.strictEqual(p.querySelectorAll("ruby.wk-ruby").length, 2, "前提：先注上：" + p.innerHTML);
 
   for (let i = 0; i < 4; i++) {
     await new Promise((r) => setTimeout(r, 70));
     wipe();
     ann.pass();
     assert.strictEqual(
-      p.querySelectorAll("ruby.lt-ruby").length,
+      p.querySelectorAll("ruby.wk-ruby").length,
       2,
       `第 ${i + 1} 次重绘后要立刻补回来：` + p.innerHTML
     );
@@ -311,7 +311,7 @@ test("认输的判据（二）：同一拍就被抹掉（真死循环）仍然�
 
   wipe();
   const last = ann.pass();
-  assert.strictEqual(p.querySelectorAll("ruby.lt-ruby").length, 0, "认输期内不再注音：" + p.innerHTML);
+  assert.strictEqual(p.querySelectorAll("ruby.wk-ruby").length, 0, "认输期内不再注音：" + p.innerHTML);
   assert.ok(
     (last.skips || []).join(" ").indexOf("认输期") >= 0,
     "跳过原因要写进结果，不然排障时看不到是故意的：" + JSON.stringify(last.skips)
@@ -331,7 +331,7 @@ test("换歌：禁用/重扫时的还原也不能把上一首的歌词写回去"
   // restoreAll 是禁用插件、改设置、大模型结果回来时都会走的路径
   ann.restoreAll();
   assert.strictEqual(p.textContent, "新しい歌の メロディ", "还原不许把 rec.plain 写回一个已经换过内容的节点");
-  assert.strictEqual(p.querySelectorAll("ruby.lt-ruby").length, 0, "注音要撤干净");
+  assert.strictEqual(p.querySelectorAll("ruby.wk-ruby").length, 0, "注音要撤干净");
 });
 
 test("重复扫描稳定，不会反复重注", () => {
@@ -386,7 +386,7 @@ test("别人的注音不算底字：kt-rt / fg-rt 都要排除", () => {
   assert.strictEqual(r.changed + r.restored, 0, "既有的 kt-rt 不该让我们判定失效");
   const p = ctx.document.querySelector("p");
   assert.deepStrictEqual(
-    [...p.querySelectorAll("ruby.lt-ruby")].map((x) => x.querySelector(".lt-rt").textContent),
+    [...p.querySelectorAll("ruby.wk-ruby")].map((x) => x.querySelector(".wk-rt").textContent),
     ["ドリーム"]
   );
 });
@@ -408,9 +408,9 @@ test("RNP 的罗马音层和中文翻译层要跳过", () => {
   const orig = ctx.document.querySelector(".rnp-lyrics-line-original");
   const romaji = ctx.document.querySelector(".rnp-lyrics-line-romaji");
   const translated = ctx.document.querySelector(".rnp-lyrics-line-translated");
-  assert.strictEqual(orig.querySelectorAll("ruby.lt-ruby").length, 1, "原文层要标");
-  assert.strictEqual(romaji.querySelectorAll("ruby.lt-ruby").length, 0, "罗马音层要跳过");
-  assert.strictEqual(translated.querySelectorAll("ruby.lt-ruby").length, 0, "翻译层要跳过");
+  assert.strictEqual(orig.querySelectorAll("ruby.wk-ruby").length, 1, "原文层要标");
+  assert.strictEqual(romaji.querySelectorAll("ruby.wk-ruby").length, 0, "罗马音层要跳过");
+  assert.strictEqual(translated.querySelectorAll("ruby.wk-ruby").length, 0, "翻译层要跳过");
 });
 
 test("RNP 总览页的翻译层 / 罗马音层也要跳过", () => {
@@ -431,9 +431,9 @@ test("RNP 总览页的翻译层 / 罗马音层也要跳过", () => {
   const orig = ctx.document.querySelector(".rnp-lyrics-overview-line-original");
   const romaji = ctx.document.querySelector(".rnp-lyrics-overview-line-romaji");
   const trans = ctx.document.querySelector(".rnp-lyrics-overview-line-translation");
-  assert.strictEqual(orig.querySelectorAll("ruby.lt-ruby").length, 1, "总览页原文要标");
-  assert.strictEqual(romaji.querySelectorAll("ruby.lt-ruby").length, 0, "总览页罗马音层要跳过");
-  assert.strictEqual(trans.querySelectorAll("ruby.lt-ruby").length, 0, "总览页翻译层要跳过");
+  assert.strictEqual(orig.querySelectorAll("ruby.wk-ruby").length, 1, "总览页原文要标");
+  assert.strictEqual(romaji.querySelectorAll("ruby.wk-ruby").length, 0, "总览页罗马音层要跳过");
+  assert.strictEqual(trans.querySelectorAll("ruby.wk-ruby").length, 0, "总览页翻译层要跳过");
 });
 
 test("网易云默认歌词页：同一个 <li> 里的第二个 <p>（翻译）不许注音", () => {
@@ -452,9 +452,9 @@ test("网易云默认歌词页：同一个 <li> 里的第二个 <p>（翻译）�
   ann.pass();
 
   const ps = ctx.document.querySelectorAll("ul.lyric li p");
-  const first = [...ps[0].querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue);
-  const second = [...ps[1].querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue);
-  const third = [...ps[2].querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue);
+  const first = [...ps[0].querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue);
+  const second = [...ps[1].querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue);
+  const third = [...ps[2].querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue);
   assert.deepStrictEqual(first, ["light", "clover"], "原文行要标");
   assert.deepStrictEqual(second, [], "翻译行一个字都不许标");
   assert.deepStrictEqual(third, ["dream"], "第二行的原文也要标");
@@ -474,11 +474,11 @@ test("网易云默认歌词页：原文是纯英文时，翻译仍然要跳过",
 
   const ps = ctx.document.querySelectorAll("ul.lyric li p");
   assert.deepStrictEqual(
-    [...ps[0].querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    [...ps[0].querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue),
     ["light", "and", "clover"],
     "纯英文原文行要标（用户专门要求的行为）"
   );
-  assert.strictEqual(ps[1].querySelectorAll("ruby.lt-ruby").length, 0, "翻译行不许标");
+  assert.strictEqual(ps[1].querySelectorAll("ruby.wk-ruby").length, 0, "翻译行不许标");
 });
 
 test("网易云默认歌词页：前一块是空的/没假名时，带假名的那一块要接上", () => {
@@ -493,9 +493,9 @@ test("网易云默认歌词页：前一块是空的/没假名时，带假名的�
   ann.pass();
 
   const ps = ctx.document.querySelectorAll("ul.lyric li p");
-  assert.strictEqual(ps[0].querySelectorAll("ruby.lt-ruby").length, 0, "空的占位块不标");
+  assert.strictEqual(ps[0].querySelectorAll("ruby.wk-ruby").length, 0, "空的占位块不标");
   assert.deepStrictEqual(
-    [...ps[1].querySelectorAll("ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    [...ps[1].querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue),
     ["light"],
     "原文那一块要标上"
   );
@@ -519,10 +519,10 @@ test("制作信息行不注音：编曲 / 作词 / Arranged by", () => {
 
   const ps = ctx.document.querySelectorAll("ul.lyric li p");
   for (let i = 0; i < 4; i++) {
-    assert.strictEqual(ps[i].querySelectorAll("ruby.lt-ruby").length, 0, "制作信息行不标：" + ps[i].textContent);
+    assert.strictEqual(ps[i].querySelectorAll("ruby.wk-ruby").length, 0, "制作信息行不标：" + ps[i].textContent);
     assert.strictEqual(baseText(ps[i]), ps[i].textContent, "制作信息行原样不动");
   }
-  assert.strictEqual(ps[4].querySelectorAll("ruby.lt-ruby").length, 1, "歌词行照标");
+  assert.strictEqual(ps[4].querySelectorAll("ruby.wk-ruby").length, 1, "歌词行照标");
 });
 
 test("制作信息行：标签和名字分在两个 <p> 里时，名字也不许注音", () => {
@@ -539,10 +539,10 @@ test("制作信息行：标签和名字分在两个 <p> 里时，名字也不许
   ann.pass();
 
   const ps = ctx.document.querySelectorAll("ul.lyric li p");
-  assert.strictEqual(ps[0].querySelectorAll("ruby.lt-ruby").length, 0, "标签块不标");
-  assert.strictEqual(ps[1].querySelectorAll("ruby.lt-ruby").length, 0, "名字块也不许标");
+  assert.strictEqual(ps[0].querySelectorAll("ruby.wk-ruby").length, 0, "标签块不标");
+  assert.strictEqual(ps[1].querySelectorAll("ruby.wk-ruby").length, 0, "名字块也不许标");
   assert.strictEqual(ps[1].textContent, "Kenji", "名字块原样不动");
-  assert.strictEqual(ps[2].querySelectorAll("ruby.lt-ruby").length, 1, "歌词行不受影响");
+  assert.strictEqual(ps[2].querySelectorAll("ruby.wk-ruby").length, 1, "歌词行不受影响");
 });
 
 test("歌词行里带「Music」之类词头但不带分隔符的，照标", () => {
@@ -556,7 +556,7 @@ test("歌词行里带「Music」之类词头但不带分隔符的，照标", () 
   const ann = makeAnnotator(ctx);
   ann.pass();
   assert.deepStrictEqual(
-    [...ctx.document.querySelectorAll("ul.lyric li p ruby.lt-ruby")].map((r) => r.childNodes[0].nodeValue),
+    [...ctx.document.querySelectorAll("ul.lyric li p ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue),
     ["Music", "light"],
     "「Music」后面没有分隔符，是歌词不是制作信息"
   );

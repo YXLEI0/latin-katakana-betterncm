@@ -32,6 +32,12 @@
  *   node tools/patch-jp-furigana.js --revert   # 还原
  *   node tools/patch-jp-furigana.js --check    # 只看状态
  *
+ * 版本
+ * ----
+ *   v1  只认 kt- / lt-（本插件改名前的 DOM 前缀）
+ *   v2  改认 kt- / lt- / wk-（本插件现在的前缀），并且认 __wkOwned 标记位
+ * 装上的是 v1 时，直接重跑一次本脚本就会**就地升级**（只改类名枚举和标记位）。
+ *
  * 注意：jp-furigana 更新后补丁会丢失，需要重新执行一次。
  */
 "use strict";
@@ -39,7 +45,23 @@
 const fs = require("fs");
 const path = require("path");
 
-const MARK = "/* KT-COEXIST-PATCH */";
+const MARK = "/* KT-COEXIST-PATCH v2 */";
+/*
+ * v1 的标记：装上的是 v1（外来节点判据只认 kt- / lt-）时，applyPatch 会**就地升级**成 v2，
+ * 而不是报错让人先去 --revert —— 升级要改的只有两处类名枚举和一个标记字符串。
+ *
+ * 为什么要升级：本插件的 DOM 前缀从 lt- 改成了 wk-（latin-katakana → western-katakana），
+ * 老 v1 补丁认不出 wk-ruby，于是我们的注音会让那行被判脏并重建 → 一直闪。
+ * v2 的判据同时认 kt-（片假名终结者）/ lt-（本插件改名前的节点）/ wk-（现在）。
+ */
+const MARK_V1 = "/* KT-COEXIST-PATCH */";
+
+/** 类名枚举：v1 -> v2（老的一份枚举要照着加 wk- 变体） */
+const CLASS_UPGRADES = [
+  ["(kt-ruby|kt-rt|kt-ov-label|lt-ruby|lt-rt|lt-ov-label)", "(kt-ruby|kt-rt|kt-ov-label|lt-ruby|lt-rt|lt-ov-label|wk-ruby|wk-rt|wk-ov-label)"],
+  ["(kt-ruby|lt-ruby)", "(kt-ruby|lt-ruby|wk-ruby)"],
+  ["(n.__ktOwned || n.__ltOwned)", "(n.__ktOwned || n.__ltOwned || n.__wkOwned)"],
+];
 
 // ---------------------------------------------------------------- 补丁内容
 
@@ -48,19 +70,20 @@ const HELPER = `
 	// 判断子节点是不是别的插件插进来的注音。
 	// 这类节点不该让 isClean() 判定"行被外人改过"。
 	//
-	// 目前要认两家（都是同一个作者、可能同时开着）：
+	// 认三家（前两家和本插件都是同一个作者、可能同时开着）：
 	//   kt-ruby / kt-rt —— 片假名终结者（片假名 -> 英文）
-	//   lt-ruby / lt-rt —— 西文字母片假名注音（字母词 -> 片假名读音；DOM 前缀仍是 lt-，
-	//   改它会让已经打过补丁的 jp-furigana 认不出我们的节点，必须所有人重跑一次补丁）
+	//   lt-ruby / lt-rt —— 西文字母片假名注音（改名前的 DOM 前缀，老版本装的还是它）
+	//   wk-ruby / wk-rt —— 西文字母片假名注音（现在的 DOM 前缀；插件从
+	//                     latin-katakana 改名 western-katakana 时一起换的）
 	// 少认一家的后果是实打实的：那家的注音会让这一行被判脏并重建，
 	// 于是那一家开始闪 —— 而且是"只有它一家闪"，非常难查。
 	function __ktIsForeign(node) {
 		if (!node || node.nodeType !== 1) return false;
 		const cls = typeof node.className === 'string' ? node.className : '';
-		if (/(^|\\s)(kt-ruby|kt-rt|kt-ov-label|lt-ruby|lt-rt|lt-ov-label)(\\s|$)/.test(cls)) return true;
+		if (/(^|\\s)(kt-ruby|kt-rt|kt-ov-label|lt-ruby|lt-rt|lt-ov-label|wk-ruby|wk-rt|wk-ov-label)(\\s|$)/.test(cls)) return true;
 		if (node.tagName === 'RT' && node.parentNode) {
 			const pc = typeof node.parentNode.className === 'string' ? node.parentNode.className : '';
-			if (/(^|\\s)(kt-ruby|lt-ruby)(\\s|$)/.test(pc)) return true;
+			if (/(^|\\s)(kt-ruby|lt-ruby|wk-ruby)(\\s|$)/.test(pc)) return true;
 		}
 		return false;
 	}
@@ -73,9 +96,10 @@ const HELPER = `
 		return n;
 	}
 
-	// 这个文本节点是不是注音插件改写/新建的？（两家各用自己的标记位）
+	// 这个文本节点是不是注音插件改写/新建的？（两家各用自己的标记位；
+	// 本插件改名时标记位从 __ltOwned 换成 __wkOwned，两个都认）
 	function __ktTextIsOurs(n) {
-		return !!(n && n.nodeType === 3 && (n.__ktOwned || n.__ltOwned));
+		return !!(n && n.nodeType === 3 && (n.__ktOwned || n.__ltOwned || n.__wkOwned));
 	}
 
 	// 这条 MutationRecord 是不是"某个注音插件插注音"引起的？
@@ -244,13 +268,34 @@ const PATCHES = [
 
 // ---------------------------------------------------------------- 纯函数
 
+/** 打的是当前这一版（v2）吗 */
 function isPatched(src) {
   return src.includes(MARK);
+}
+
+/** 打的是旧版 v1（只认 kt- / lt-）吗 —— 需要就地升级 */
+function isPatchedV1(src) {
+  return !isPatched(src) && src.includes(MARK_V1);
+}
+
+/** v1 -> v2：只改两处类名枚举和一个标记位，别的字节都不动 */
+function upgradeV1(src) {
+  let out = src;
+  const done = [];
+  for (const [from, to] of CLASS_UPGRADES) {
+    if (!out.includes(from)) continue;
+    out = out.split(from).join(to);
+    done.push(from);
+  }
+  if (!done.length) return { src, applied: [], error: ["v1 补丁里找不到要升级的类名枚举（先 --revert 再重打）"] };
+  out = out.split(MARK_V1).join(MARK);
+  return { src: out, applied: ["v1 → v2（外来节点判据加上 wk- 前缀）"], upgraded: true };
 }
 
 /** 返回 { src, applied[], error } —— 不改任何文件，方便测试与 --check */
 function applyPatch(src) {
   if (isPatched(src)) return { src, applied: [], already: true };
+  if (isPatchedV1(src)) return upgradeV1(src);
 
   const missing = PATCHES.filter((p) => !src.includes(p.from));
   if (missing.length) {
@@ -284,6 +329,15 @@ function applyPatch(src) {
  * 内容完全确定），再退回两处替换，最后按可选的 origSrc 断言一致性。
  */
 function revertPatch(src, origSrc) {
+  // 装的是 v1 补丁：先把它降回 v1 的写法（类名枚举 + 标记位），再走下面的正规还原。
+  // v1 的 helper 注释和 v2 不完全一样，所以"逐字节回到原始"仍然靠备份（CLI 会传进来）。
+  if (isPatchedV1(src)) {
+    let back = src;
+    for (const [from, to] of CLASS_UPGRADES) back = back.split(to).join(from);
+    back = back.split(MARK).join(MARK_V1);
+    const r = revertPatch(back, origSrc);
+    return { src: r.src, reverted: r.reverted, exact: r.exact, fromV1: true, usedBackup: r.usedBackup };
+  }
   if (!isPatched(src)) return { src, reverted: [], notPatched: true };
 
   let out = src;
@@ -329,19 +383,22 @@ function main() {
   const src = fs.readFileSync(file, "utf8");
 
   if (args.includes("--check")) {
-    console.log(isPatched(src) ? "已打补丁" : "未打补丁");
+    console.log(isPatched(src) ? "已打补丁（v2）" : isPatchedV1(src) ? "已打补丁（旧版 v1：只认 kt- / lt-，建议重跑一次升级到 v2）" : "未打补丁");
     console.log("文件: " + file);
     return;
   }
 
   if (args.includes("--revert")) {
-    const r = revertPatch(src);
+    // 有备份就用备份还原（最可靠；v1 补丁的 helper 文案和现在这份不同，只能靠它）
+    const bak = file + ".kt-bak";
+    const orig = fs.existsSync(bak) ? fs.readFileSync(bak, "utf8") : null;
+    const r = revertPatch(src, orig);
     if (r.notPatched) {
       console.log("没有打补丁，无需还原。");
       return;
     }
     fs.writeFileSync(file, r.src, "utf8");
-    console.log("已还原：" + file);
+    console.log("已还原：" + file + (r.usedBackup ? "（用备份还原）" : ""));
     return;
   }
 
@@ -358,9 +415,13 @@ function main() {
     process.exit(2);
   }
 
+  // 备份只在没有备份时写：升级（v1 → v2）时**不能**用当前这份 v1 覆盖掉原始备份，
+  // 否则 --revert 会把 v1 补丁当成"原始文件"还原回来。
   const bak = file + ".kt-bak";
-  if (!fs.existsSync(bak)) fs.writeFileSync(bak, src, "utf8");
-  console.log("已备份原文件 -> " + path.basename(bak));
+  if (!fs.existsSync(bak)) {
+    fs.writeFileSync(bak, src, "utf8");
+    console.log("已备份原文件 -> " + path.basename(bak));
+  }
 
   // 写之前先确认打出来的代码语法没坏，不能把别人的插件弄崩
   try {
@@ -379,4 +440,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { applyPatch, revertPatch, isPatched, MARK };
+module.exports = { applyPatch, revertPatch, isPatched, isPatchedV1, upgradeV1, MARK, MARK_V1 };

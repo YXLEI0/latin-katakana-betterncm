@@ -27,12 +27,12 @@ const RE_EN = /^[a-z]+$/;
 const RE_KANA = /^[\u30A0-\u30FF\u30FC]+$/;
 
 const ctx = loadCore("<!doctype html><html><body></body></html>", { reader: false });
-const DICT = ctx.LKDict ? ctx.LKDict.words : {};
+const DICT = ctx.WKDict ? ctx.WKDict.words : {};
 const KEYS = Object.keys(DICT);
 
 test("词典非空，而且规模够大（生成物被截断/写坏时要报出来）", () => {
   assert.ok(KEYS.length >= 4000, "词典只有 " + KEYS.length + " 条，像是生成坏了");
-  assert.strictEqual(ctx.LKDict.count, KEYS.length, "count 字段和实际条数对不上");
+  assert.strictEqual(ctx.WKDict.count, KEYS.length, "count 字段和实际条数对不上");
 });
 
 test("词典的键都是小写英文、值都是纯片假名", () => {
@@ -48,7 +48,7 @@ test("词典的键都是小写英文、值都是纯片假名", () => {
 test("规则层对词典里每个词都吐得出纯片假名（占位符/异常字符的兜底检查）", () => {
   const bad = [];
   for (const k of KEYS) {
-    const r = ctx.LKReading.englishToKatakana(k);
+    const r = ctx.WKReading.englishToKatakana(k);
     if (!r || typeof r.kana !== "string" || !r.kana) bad.push(k + " -> 空");
     else if (!RE_KANA.test(r.kana)) bad.push(k + " -> " + JSON.stringify(r.kana));
     if (bad.length > 30) break;
@@ -74,7 +74,7 @@ test("生成词表和词典同步：忘了跑 build:dict 会在这里露馅", ()
 test("常见歌词词都能「确定地」读出纯片假名（不许掉进猜的规则里）", () => {
   // 词典 / 罗马音 / reading.js 里人工核过的例外表与外来语小表都算"确定"，
   // 只有拼写规则那一层是猜的（confident:false 或者结果明显是拼出来的）。
-  const reader = ctx.LKReading.createReader({ dict: DICT });
+  const reader = ctx.WKReading.createReader({ dict: DICT });
   const must = [
     // 英文外来语
     "hello", "question", "shining", "dancing", "forever", "tomorrow", "believe",

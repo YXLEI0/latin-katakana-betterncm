@@ -90,12 +90,12 @@
 
 ## 读音从哪来
 
-五层, 按顺序命中 (`src/core/reading.js` + `src/core/llm.js`)。**顺序用户可调** (设置面板「读音来源顺序」的 ↑↓, 或 `LK.layers(['rule','dict',...])`):
+五层, 按顺序命中 (`src/core/reading.js` + `src/core/llm.js`)。**顺序用户可调** (设置面板「读音来源顺序」的 ↑↓, 或 `WK.layers(['rule','dict',...])`):
 
 | 默认顺序 | 来源 | 例子 | 可信度 / 行为 |
 | --- | --- | --- | --- |
 | 1 | **离线词典** (`src/core/dict.js`, 6470 条) | `clover` → クローバー | 确定对, 直接用 |
-| 1.5 | **学会的词** (运行期由模型答案沉淀, 见下) | `serendipity` → セレンディピティ | 和离线词典同级 (不再问模型, 钱省在这里); 不对就 `LK.learn.forget()` |
+| 1.5 | **学会的词** (运行期由模型答案沉淀, 见下) | `serendipity` → セレンディピティ | 和离线词典同级 (不再问模型, 钱省在这里); 不对就 `WK.learn.forget()` |
 | 2 | **罗马音切分** (歌词里官方写的罗马音) | `sekai` → セカイ | 切得干净就算确定; 但**在英文词表里的词标成"没把握"** (`shake` → シャケ), 交给在线层仲裁 |
 | 3 | **大模型校正** (配了 key 时, **带整句歌词当语境**) | `kaleidoscope` → カレイドスコープ | 很准; 等待期间先用低优先那层的读音当暂定值 (注音淡一点), 结果回来就地改写 |
 | 4 | **免费接口** (Google en→ja, 只接受纯片假名) | `tick` → ティック (它回的 カチカチ 会被首音校验丢掉) | 同上 |
@@ -129,13 +129,13 @@
 | `I'll` → イル | 缩写拆出词干 `I` 走规则层 | 词典 アイ + ル = アイル |
 | 读数全都没矫正 | 规则先答了, 大模型不再被咨询 | 词典外的词才该问模型 |
 
-所以设置面板的 ↑↓ **不让这么换** (那一对直接禁用, 悬停有原因); 手改配置 (`LK.layers([...])`) 绕过去的话, 层序区和「大模型校正」区都会报警告。真要"只用规则"也行, 那是有意的选择 —— 只是别以为词典还在工作
+所以设置面板的 ↑↓ **不让这么换** (那一对直接禁用, 悬停有原因); 手改配置 (`WK.layers([...])`) 绕过去的话, 层序区和「大模型校正」区都会报警告。真要"只用规则"也行, 那是有意的选择 —— 只是别以为词典还在工作
 
-**等待期间不空着**: 高优先的在线层还在问时, 先用现成答案当**暂定值** (注音加 `lt-pending` 类、按不透明度设置再乘 0.6), 结果回来由 `annotate.relabel()` **就地改写** (DOM 节点一个都不动)。早期版本是"先不标", 结果一行里只要有一个词在等就整行空着, 而且首个词所在节点已有记录、后面拿到结果也补不上
+**等待期间不空着**: 高优先的在线层还在问时, 先用现成答案当**暂定值** (注音加 `wk-pending` 类、按不透明度设置再乘 0.6), 结果回来由 `annotate.relabel()` **就地改写** (DOM 节点一个都不动)。早期版本是"先不标", 结果一行里只要有一个词在等就整行空着, 而且首个词所在节点已有记录、后面拿到结果也补不上
 
 **失败也要叫一次重扫**: 请求失败后进入退避、`isWaiting` 变成 false, 如果没人通知注音层重新判定, 那行就一直淡着 (实测能淡一整个退避周期)。所以大模型层的失败路径和免费接口一样会调 `onUpdate()`
 
-**不透明度这个设置以前是失效的**: 样式里有一条 `rt.lt-rt { opacity: 1 !important }` (本意是挡住别的插件给注音节点打的 opacity), 它把「注音不透明度」整个压掉了。现在分开处理: `ruby.lt-ruby` (底字) 锁死 1, `rt.lt-rt` (注音) 用用户的设置, 暂定再乘 0.6
+**不透明度这个设置以前是失效的**: 样式里有一条 `rt.wk-rt { opacity: 1 !important }` (本意是挡住别的插件给注音节点打的 opacity), 它把「注音不透明度」整个压掉了。现在分开处理: `ruby.wk-ruby` (底字) 锁死 1, `rt.wk-rt` (注音) 用用户的设置, 暂定再乘 0.6
 
 **底线**: 在线层没配 key / 正在退避 / 请求失败时, 暂定值就是最终值 (标记去掉), 规则层立刻兜底 —— 断网不会变成一个词都不标
 
@@ -198,7 +198,7 @@ npm run build:dict                              # 合并进 src/core/dict.js
 运行期写不进仓库里的 `src/core/dict.js` (构建产物), 所以分三步:
 
 ```
-面板「操作 → 导出词库素材」   (或 LK.exportWordsJson())
+面板「操作 → 导出词库素材」   (或 WK.exportWordsJson())
    ↓ 导出 JSON: 已学会的词 + 大模型缓存命中 + 免费接口缓存命中
 存成 data/learned.json        (data/ 已在 .gitignore 里)
    ↓
@@ -218,7 +218,7 @@ npm run build:dict            合并进 src/core/dict.js (人工 > 沉淀 > 大�
 | 人工词表里没有 | 人工优先, 谁都不许覆盖 |
 | 不是"两可"短音节 (do / re / mi / me / mo / pi…) | 读音取决于语境, 交给大模型每句判 |
 
-大模型词表里已有、但写法不同的: 以这次沉淀的为准, 并在生成物里留一行 `// 原 xxx`。`LK.exportWords()` 返回对象、`LK.exportWordsJson()` 返回带缩进的 JSON (面板那颗按钮会尽量复制到剪贴板, 复制不了就打到控制台)
+大模型词表里已有、但写法不同的: 以这次沉淀的为准, 并在生成物里留一行 `// 原 xxx`。`WK.exportWords()` 返回对象、`WK.exportWordsJson()` 返回带缩进的 JSON (面板那颗按钮会尽量复制到剪贴板, 复制不了就打到控制台)
 
 ### 模型答案自动沉淀成离线词条 (「学会的词」)
 
@@ -235,7 +235,7 @@ npm run build:dict            合并进 src/core/dict.js (人工 > 沉淀 > 大�
 
 - 存在 `localStorage['western-katakana.learned.v1']` (上限 3000 条, 超了丢最久没用过的)
 - 面板「大模型校正」那块有一行 `学会的词: N 个 …` 和「清空已学会的词」按钮, 用上的词数 (= 省下的提问次数) 也在那行里
-- 控制台: `LK.learn.list()` / `LK.learn.stats()` / `LK.learn.forget('xxx')` / `LK.learn.clear()`
+- 控制台: `WK.learn.list()` / `WK.learn.stats()` / `WK.learn.forget('xxx')` / `WK.learn.clear()`
 - 按来源上色时它是**深绿**
 
 **已知取舍**: 学会的词是**词级**的 (和词典一样不带语境), 所以对"靠语境"的词 (`read` / `live`) 宁可永远不收 —— 上表第 2、4 条就是为它们设的闸门
@@ -281,19 +281,30 @@ npm run install:plugin   # 顺便复制到 C:\betterncm\plugins
 | [片假名终结者](https://github.com/YXLEI0/katakana-terminator-betterncm) | 片假名 → 英文 |
 | **本插件** | 西文字母 → 片假名读音 |
 
-三者都会往同一行插节点, 所以 jp-furigana 需要打共存补丁 (同一份补丁三个插件共用)。另外片假名终结者要 **2.1.1 或更新**: 那一版起它才认得本插件插的 `lt-ruby` / `lt-rt`
+三者都会往同一行插节点, 所以 jp-furigana 需要打共存补丁 (同一份补丁三个插件共用)
+
+**补丁有两个版本**, 我们注入的节点类名前缀跟着插件改名走过一轮:
+
+| 版本 | 认哪些前缀 | 什么时候用 |
+| --- | --- | --- |
+| v1 | `kt-*` / `lt-*` | 插件还叫 latin-katakana 时的补丁 |
+| **v2** | `kt-*` / `lt-*` / `wk-*` | 现在这一版。`wk-*` 是本插件改名后的前缀 |
+
+装上的是 v1 时**直接重跑** `npm run patch:furigana` 就会就地升级成 v2 (只改类名枚举和标记位), `--check` 会告诉你打的是哪一版
+
+> **片假名终结者那边也要跟着改**: 它认识本插件的 `lt-ruby` / `lt-rt` (所以文档里写着要 2.1.1 或更新)。插件的 DOM 前缀改成 `wk-` 之后, 它那一侧也得把 `wk-ruby` / `wk-rt` 加进识别表, 否则我们的注音会被它当成外人改的、把行重建 —— 症状和我们当年踩的"一直闪"一模一样。那是另一个仓库 ([katakana-terminator-betterncm](https://github.com/YXLEI0/katakana-terminator-betterncm)), 本仓库没有它的代码
 
 ```bash
 npm run patch:furigana            # 自动找 C:\betterncm\plugins 里的 jp-furigana*.plugin
-npm run patch:furigana -- --check # 已打补丁? 打的还是当前这一版补丁吗?
+npm run patch:furigana -- --check # 已打补丁? 打的是 v1 还是 v2?
 npm run patch:furigana -- --force # 以备份为基准重打
 ```
 
 补丁做五件事 (细节见 `tools/patch-jp-furigana.js` 的注释):
 
-1. `isClean()` 的子节点计数忽略**两家注音插件**的节点 (`kt-*` 与 `lt-*`)
+1. `isClean()` 的子节点计数忽略**两家注音插件**的节点 (`kt-*` 与本插件的 `wk-*`, 老版本的 `lt-*` 也认)
 2. `restore()` 拆 wrap 前把外来注音暂存, 别一起丢掉
-3. observer 忽略注音插件引起的变更 (**闪烁的真正来源**) —— `__ktOwned` 与 `__ltOwned` 两种标记都认
+3. observer 忽略注音插件引起的变更 (**闪烁的真正来源**) —— `__ktOwned` / `__ltOwned` / `__wkOwned` 三种标记都认
 4. `hostsText()` 的"看得见的原文"排除外来注音的 `rt`
 5. `processLine()` 重建完一行后回调 `window.__ktRepairLine(line)`, 让注音**同步**补回去 (第 5 条是"不闪"的关键: 靠 MutationObserver 等下一帧补, 中间那一帧就是可见的一闪; 两个插件都会挂这个钩子, 所以**后加载的那个必须链上去而不是覆盖**)
 
@@ -334,61 +345,61 @@ npm run patch:furigana -- --force # 以备份为基准重打
 - **免费接口没有 token 概念**, 用请求数 + 字符数衡量
 - **花费是估算**: 填了单价才会显示, 公式就是 `输入 token × 输入单价 + 输出 token × 输出单价`, 单位统一成 元 / 百万 token
 - 账本存在 `localStorage['western-katakana.usage']`; 坏了 / 被手改坏都不影响使用 (坏数据一律忽略)
-- 控制台: `LK.usage()` 看账本, `LK.usageReset('session'|'today'|'all')` 清零
+- 控制台: `WK.usage()` 看账本, `WK.usageReset('session'|'today'|'all')` 清零
 
 ## 排障
 
-控制台里有一个 `LK` 对象 (`window.WesternKatakana` 的短别名, 两个名字都行; 改名前的 `window.LatinKatakana` 也仍然挂着):
+控制台里有一个 `WK` 对象 (`window.WesternKatakana` 的短别名, 两个名字都行; 改名前的 `window.LK` / `window.LatinKatakana` 也仍然挂着, 老脚本不至于失效):
 
 ```js
-LK.stats()             // 读音 + 大模型 + 在线校正三份统计
-LK.read('light')       // 本地那几层的读音: { kana, source, confident }
-LK.display('light')    // 页面上实际用的读音 (可能是大模型 / 联网换过的)
-LK.dict()['light']     // 词典里有没有这个词 (undefined = 会送到大模型)
-LK.scan('light と clover')  // 分词结果
-LK.pass()              // 立刻重扫一次
-LK.layers()            // 当前读音来源顺序; LK.layers(['rule','dict',...]) 可以直接改
-LK.colorize(true)      // 按来源给注音上色; 不带参数 = 看当前状态
-LK.lang('Novum mundum omnibus aequum condemus')  // 这一行被判成什么语言: { id: 'la', label: '拉丁语' }
-LK.loan()              // 借词表: 条数 + 有哪些语种; LK.loan('de') 看德语那张
-LK.stats().lastPass    // 上一轮扫描: 计数 + skips (为什么有行没注音) + retryInMs
-LK.llm.check()         // 「大模型到底生效了没有」—— 一句话回答
-LK.llm.stats()         // 命中 / 缓存条数 / 待问 / 请求 / 失败 / 退避剩余
-LK.llm.test()          // 用当前配置打一次真请求, 返回 { ok, message }
-LK.llm.flush()         // 立刻把队列里的词发出去
-LK.llm.clearCache()    // 清掉大模型缓存
-LK.llm.rejects()       // 最近被拒的模型答案: 哪个词、模型原话、被哪条判据拒的
-LK.llm.retryMisses()   // 清掉"问过但没收下"的记录 (= 面板那个按钮)
-LK.learn.list()        // 「学会的词」列表
-LK.learn.stats()       // 数量 / 待定数量 / 本次用上几个
-LK.learn.forget('x')   // 忘掉一个词
-LK.learn.clear()       // 全清
-LK.exportWordsJson()   // 导出词库素材 (给 npm run promote:learned 用)
-LK.usage()             // API 用量账本
-LK.usageReset('today') // 清零 (session | today | all)
+WK.stats()             // 读音 + 大模型 + 在线校正三份统计
+WK.read('light')       // 本地那几层的读音: { kana, source, confident }
+WK.display('light')    // 页面上实际用的读音 (可能是大模型 / 联网换过的)
+WK.dict()['light']     // 词典里有没有这个词 (undefined = 会送到大模型)
+WK.scan('light と clover')  // 分词结果
+WK.pass()              // 立刻重扫一次
+WK.layers()            // 当前读音来源顺序; WK.layers(['rule','dict',...]) 可以直接改
+WK.colorize(true)      // 按来源给注音上色; 不带参数 = 看当前状态
+WK.lang('Novum mundum omnibus aequum condemus')  // 这一行被判成什么语言: { id: 'la', label: '拉丁语' }
+WK.loan()              // 借词表: 条数 + 有哪些语种; WK.loan('de') 看德语那张
+WK.stats().lastPass    // 上一轮扫描: 计数 + skips (为什么有行没注音) + retryInMs
+WK.llm.check()         // 「大模型到底生效了没有」—— 一句话回答
+WK.llm.stats()         // 命中 / 缓存条数 / 待问 / 请求 / 失败 / 退避剩余
+WK.llm.test()          // 用当前配置打一次真请求, 返回 { ok, message }
+WK.llm.flush()         // 立刻把队列里的词发出去
+WK.llm.clearCache()    // 清掉大模型缓存
+WK.llm.rejects()       // 最近被拒的模型答案: 哪个词、模型原话、被哪条判据拒的
+WK.llm.retryMisses()   // 清掉"问过但没收下"的记录 (= 面板那个按钮)
+WK.learn.list()        // 「学会的词」列表
+WK.learn.stats()       // 数量 / 待定数量 / 本次用上几个
+WK.learn.forget('x')   // 忘掉一个词
+WK.learn.clear()       // 全清
+WK.exportWordsJson()   // 导出词库素材 (给 npm run promote:learned 用)
+WK.usage()             // API 用量账本
+WK.usageReset('today') // 清零 (session | today | all)
 ```
 
 ### 按来源着色 (排障)
 
-面板「外观」里的「**按读音来源给注音上色**」(`LK.colorize(true)`), 打开后每个注音按**最终给出这个读音的层**上色:
+面板「外观」里的「**按读音来源给注音上色**」(`WK.colorize(true)`), 打开后每个注音按**最终给出这个读音的层**上色:
 
 | 颜色 | 来源 | 含义 |
 | --- | --- | --- |
-| 绿 | `lt-src-dict` | 离线词典 (人工核过, 最可信) |
-| 深绿 | `lt-src-learned` | **学会的词**: 模型答过两次、被沉淀成离线词条 |
-| 青 | `lt-src-letters` | 记号 / 字母名 (`D/N/A`、`LDK`) |
-| 蓝 | `lt-src-romaji` | 日式罗马音切分 |
-| 橙 | `lt-src-rule` | 英文音译规则 (**拼写猜的**, 最该怀疑的一类) |
-| 紫 | `lt-src-llm` | 大模型 |
-| 品红 | `lt-src-google` | 免费接口 (Google) |
+| 绿 | `wk-src-dict` | 离线词典 (人工核过, 最可信) |
+| 深绿 | `wk-src-learned` | **学会的词**: 模型答过两次、被沉淀成离线词条 |
+| 青 | `wk-src-letters` | 记号 / 字母名 (`D/N/A`、`LDK`) |
+| 蓝 | `wk-src-romaji` | 日式罗马音切分 |
+| 橙 | `wk-src-rule` | 英文音译规则 (**拼写猜的**, 最该怀疑的一类) |
+| 紫 | `wk-src-llm` | 大模型 |
+| 品红 | `wk-src-google` | 免费接口 (Google) |
 
 - **淡显** (不透明度按设置再乘 0.6) 的是**暂定值**: 更高优先的在线层还在问, 先拿低优先层的读音顶着
-- 类名 (`lt-src-*`) 一直挂在注音节点上, 开关只决定要不要注入颜色 CSS —— 打开 / 关闭是瞬时的
-- 只给 `ruby.lt-ruby > .lt-rt` 上色, 不动任何既有元素的样式
+- 类名 (`wk-src-*`) 一直挂在注音节点上, 开关只决定要不要注入颜色 CSS —— 打开 / 关闭是瞬时的
+- 只给 `ruby.wk-ruby > .wk-rt` 上色, 不动任何既有元素的样式
 
 ### 大模型「请求全失败」怎么查
 
-先敲 `LK.llm.check()` (或看面板「测试连接」), 它会告诉你 Key 体检结果、最后一条错误、以及下一步该做什么:
+先敲 `WK.llm.check()` (或看面板「测试连接」), 它会告诉你 Key 体检结果、最后一条错误、以及下一步该做什么:
 
 | 错误里出现 | 真正的原因 | 怎么办 |
 | --- | --- | --- |
@@ -404,10 +415,10 @@ LK.usageReset('today') // 清零 (session | today | all)
 
 按顺序对四件事 (全是只读的控制台命令):
 
-1. **离线词典里有没有** (`LK.dict()['那个词']`) → 有的话按默认层序就**不问模型** (这是设计)。想让模型也过一遍: 把「大模型」拖到词典上面
-2. **本地那几层给的是什么** (`LK.read('那个词')`) → 看 `confident`: 是 `false` 才轮得到在线层覆盖; 是 `true` 而且命中了词典, 那就按上面那条走
-3. **模型缓存里是什么** (`LK.llm.stats()`) → 有读音就是命中过; 没有则可能是"问过但没收下" (miss)
-4. **被拒的记录** (`LK.llm.rejects()`) → 列出「哪个词 / 模型原话 / 被哪条判据拒的」
+1. **离线词典里有没有** (`WK.dict()['那个词']`) → 有的话按默认层序就**不问模型** (这是设计)。想让模型也过一遍: 把「大模型」拖到词典上面
+2. **本地那几层给的是什么** (`WK.read('那个词')`) → 看 `confident`: 是 `false` 才轮得到在线层覆盖; 是 `true` 而且命中了词典, 那就按上面那条走
+3. **模型缓存里是什么** (`WK.llm.stats()`) → 有读音就是命中过; 没有则可能是"问过但没收下" (miss)
+4. **被拒的记录** (`WK.llm.rejects()`) → 列出「哪个词 / 模型原话 / 被哪条判据拒的」
 
 一条 miss 是**永久**的, 还会落 localStorage —— 模型当时给的答案被判掉了 (判据误伤、响应格式不对), 那个词就会一直用本地读音, 重启也不重问。所以面板里有**「重试没结果的词」**: 只清"问过但没收下"的记录 (保留命中), 比「清除校正缓存」温和
 
@@ -431,15 +442,15 @@ LK.usageReset('today') // 清零 (session | today | all)
 
 先分清是**哪一类**:
 
-- **一个词读音不对** → `LK.read('那个词')` 是本地层的答案, `LK.display('那个词')` 是页面实际用的。不一样就说明被大模型 / 联网换过; 一样就用 `LK.llm.rejects()` 看模型当时说了什么
-- **一个词没标** → 先看它该不该标: 单个小写字母、打码的重复字母串 (`“XX”してる` 里的 XX) 是**故意留白**。`LK.scan('那一行')` 能看分词结果
-- **外语行读得不对** → `LK.lang('那一行')` 先确认判成了哪种语言。判错了 (比如英文行被判成拉丁语) 就把那一行发来补词表; 判对了但读音不对, 优先按「读法唯一就写进词典」加词
-- **整行一个字都没标** → 看 `LK.stats().lastPass`:
+- **一个词读音不对** → `WK.read('那个词')` 是本地层的答案, `WK.display('那个词')` 是页面实际用的。不一样就说明被大模型 / 联网换过; 一样就用 `WK.llm.rejects()` 看模型当时说了什么
+- **一个词没标** → 先看它该不该标: 单个小写字母、打码的重复字母串 (`“XX”してる` 里的 XX) 是**故意留白**。`WK.scan('那一行')` 能看分词结果
+- **外语行读得不对** → `WK.lang('那一行')` 先确认判成了哪种语言。判错了 (比如英文行被判成拉丁语) 就把那一行发来补词表; 判对了但读音不对, 优先按「读法唯一就写进词典」加词
+- **整行一个字都没标** → 看 `WK.stats().lastPass`:
 
 ```
-LK.stats().lastPass.skips     // 这一轮被跳过的原因 (文本在动 / 认输期 / 无译文 / 不在区域里…)
-LK.stats().lastPass.errors    // 注音时抛异常的那几行
-LK.stats().lastPass.retryInMs // 已经安排了多久之后再扫一轮
+WK.stats().lastPass.skips     // 这一轮被跳过的原因 (文本在动 / 认输期 / 无译文 / 不在区域里…)
+WK.stats().lastPass.errors    // 注音时抛异常的那几行
+WK.stats().lastPass.retryInMs // 已经安排了多久之后再扫一轮
 ```
 
 跳过原因是**分层的**, 常见的几种:
@@ -479,9 +490,9 @@ LK.stats().lastPass.retryInMs // 已经安排了多久之后再扫一轮
 ### 怎么判断大模型有没有生效
 
 1. **面板 →「测试连接」**: 真的打一次请求, 成功回 `✅ 接口正常 (…，clover -> クローバー)`, 失败会把**实际请求的地址 + 服务端原话**一起显示
-2. **`LK.llm.check()`** 把数字翻译成结论: `API Key: 没填` (正常默认状态) / `请求 0 次 + 全在离线词典里` (没坏, 只是没活干) / `请求 N 次, 命中 >0` (正常) / `失败 >0` (按错误排查) / `退避中` (刚失败过)
-3. **对照某个具体词**: `LK.read('zephyr')` 是本地读音, `LK.display('zephyr')` 是页面实际用的 —— 不一样就说明被大模型换过了。先用 `LK.dict()['zephyr']` 确认它不在词典里
-4. **看轨迹**: `[llm] 大模型校正回来 16 个词：命中 16` 这类行 (面板上不再有调试转储, 要数字就用 `LK.stats()`)
+2. **`WK.llm.check()`** 把数字翻译成结论: `API Key: 没填` (正常默认状态) / `请求 0 次 + 全在离线词典里` (没坏, 只是没活干) / `请求 N 次, 命中 >0` (正常) / `失败 >0` (按错误排查) / `退避中` (刚失败过)
+3. **对照某个具体词**: `WK.read('zephyr')` 是本地读音, `WK.display('zephyr')` 是页面实际用的 —— 不一样就说明被大模型换过了。先用 `WK.dict()['zephyr']` 确认它不在词典里
+4. **看轨迹**: `[llm] 大模型校正回来 16 个词：命中 16` 这类行 (面板上不再有调试转储, 要数字就用 `WK.stats()`)
 
 > 最常见的误会: **大多数歌一个请求都不会发**。6470 条的词典覆盖了英文词频前 6000, 大模型只在遇到词典外的词 (生僻词、人名、乐队名) 时才动
 
@@ -496,7 +507,7 @@ node tools/read-trace.js
 ## 实现要点
 
 - **只改文本节点, 不改整行**: React 持有的原文本节点尽量保留 (只切短), 否则它的引用失效可能把页面搞崩; 底字逐字节保持原文
-- **不改任何既有元素的 class**: 标记一律用 `data-lt-*`。改别人的 class 会让对方插件判定"这行变了"并重建整行, 我们的注音跟着被丢掉
+- **不改任何既有元素的 class**: 标记一律用 `data-wk-*`。改别人的 class 会让对方插件判定"这行变了"并重建整行, 我们的注音跟着被丢掉
 - **补注音赶在下一帧之前**: 观测到 DOM 变更后用 `requestAnimationFrame` 立刻补, 而不是防抖
 - **靠"活了多久 + 窗口内几次"分辨打架与正常重绘**: 注音被重建掉时 `age` 小于 **50ms** **且** 1.5s 窗口里凑够 3 次, 才算对方在无条件重建, 此时才认输退避 (1s 起翻倍、1 分钟封顶)。RNP 的逐字行大约每 100ms 重写一次内容 —— 旧门槛 (150ms) 会把它判成打架, 三轮就进认输期, 那一行在退避窗口里完全没有注音; 而补注在 MutationObserver 回调里完成, 100ms 的空窗根本到不了屏幕
 - **"文本一直在变"的判定是滑动窗口, 不是黑名单**: 同一个宿主的可见文本在 3 秒内变了 3 次以上才在这一轮放弃它; 窗口一过自动重试, 而且**每次扫描都判窗口是否过期** (老版本只加不减, 而网易云换歌 / 滚动会复用同一批 `<li>` / `<p>` 只换文本, 于是同一行复用 3 次后永远不注音)
@@ -540,7 +551,7 @@ npm run promote:learned # 运行期素材 → tools/seed-words-learned.js
 src/
   manifest.json       插件描述 (injects 顺序即依赖顺序)
   main.js             入口: 生命周期、观察循环、设置面板、修复钩子
-  core/latin.js       西文词识别 (拉丁 + 西里尔 + 希腊: 词边界、撇号连字符波浪号、单字母过滤、打码占位)
+  core/letters.js       西文词识别 (拉丁 + 西里尔 + 希腊: 词边界、撇号连字符波浪号、单字母过滤、打码占位)
   core/dict.js        离线读音词典 (自动生成, 勿手改)
   core/enwords.js     英文常用词表 (自动生成)
   core/reading.js     读音引擎: 词典 -> 罗马音 -> 英文/法语规则

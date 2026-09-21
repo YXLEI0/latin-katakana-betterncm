@@ -18,7 +18,7 @@
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
-  else root.LKCorrect = factory();
+  else root.WKCorrect = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 

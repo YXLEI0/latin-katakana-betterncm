@@ -23,14 +23,15 @@
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
-  else root.LKAnnotate = factory();
+  else root.WKAnnotate = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
   // 同 translate.js：factory 里没有 UMD 壳的 root，统一用 globalThis
   var G = typeof globalThis !== "undefined" ? globalThis : {};
 
-  var matcher = G.LKMatcher || (typeof require === "function" && safeRequire("./matcher.js"));
+  // 注入时是全局（manifest 的 injects 顺序保证它在前面）；Node 里 require 时按文件找
+  var matcher = G.WKMatcher || (typeof require === "function" && (safeRequire("./letters.js") || safeRequire("./matcher.js")));
   function safeRequire(p) {
     try {
       return require(p);
@@ -41,7 +42,7 @@
 
   if (!matcher) {
     // 没有匹配器就什么都做不了；返回一个空壳，让上层能优雅降级
-    return { createAnnotator: function () { throw new Error("LKMatcher 未加载"); } };
+    return { createAnnotator: function () { throw new Error("WKMatcher 未加载"); } };
   }
 
   /*
@@ -105,7 +106,7 @@
   /** 实测内核认不认 ruby 排版（探针只在第一次跑） */
   function hasRubyLayout(doc) {
     // 测试用开关：jsdom 没有布局引擎，量不出宽度，只能打桩
-    if (typeof G.__LK_FORCE_RUBY__ === "boolean") return G.__LK_FORCE_RUBY__;
+    if (typeof G.__WK_FORCE_RUBY__ === "boolean") return G.__WK_FORCE_RUBY__;
     if (styleCache !== null) return styleCache;
     try {
       if (!doc.body) return true; // 还没到能量的时候，先当支持
@@ -133,7 +134,7 @@
     if (typeof lookup !== "function") throw new Error("createAnnotator 需要 lookup(word) 函数");
     /*
      * 可选：pending(word, line) -> 这个词的读音是不是"暂定"的
-     * （在线那层还在问，先用规则结果顶上）。暂定的注音加 `lt-pending` 类，
+     * （在线那层还在问，先用规则结果顶上）。暂定的注音加 `wk-pending` 类，
      * 样式上淡一点，等真结果回来由 relabel() 改写并去掉类。
      */
     var pending = typeof options.pending === "function" ? options.pending : null;
@@ -320,8 +321,11 @@
 
     /** 注音插上去多久了（毫秒）；没记过就返回 undefined */
     function ageOf(host) {
-      if (!host || typeof host.__ltAt !== "number") return undefined;
-      return Date.now() - host.__ltAt;
+      // __wkAt 是现在的标记；__ltAt 是改名前的（同一台机器上可能还留着上一版插的节点）
+      if (!host) return undefined;
+      var at = typeof host.__wkAt === "number" ? host.__wkAt : host.__ltAt;
+      if (typeof at !== "number") return undefined;
+      return Date.now() - at;
     }
 
     /**
@@ -463,10 +467,10 @@
           // 口径必须和 jp-furigana 被打上的 __ktOwnChildCount() 完全一致：
           // 排除"别家插的注音"，但**不排除**它自己的 wrap（正常情况下恰好数到 1）。
           var cls = typeof c.className === "string" ? c.className : "";
-          if (/(^|\s)(lt-ruby|kt-ruby|lt-rt|kt-rt|lt-ov-label|kt-ov-label)(\s|$)/.test(cls)) continue;
+          if (/(^|\s)(wk-ruby|kt-ruby|wk-rt|kt-rt|wk-ov-label|kt-ov-label)(\s|$)/.test(cls)) continue;
           if (c.tagName === "RT" && c.parentNode) {
             var pc = typeof c.parentNode.className === "string" ? c.parentNode.className : "";
-            if (/(^|\s)(lt-ruby|kt-ruby)(\s|$)/.test(pc)) continue;
+            if (/(^|\s)(wk-ruby|kt-ruby)(\s|$)/.test(pc)) continue;
           }
         }
         n++;
@@ -577,7 +581,7 @@
       /*
        * 别进任何一家的注音节点内部。
        *
-       * 自家的 lt-ruby 要跳过是显然的；kt-rt / fg-rt 也**必须**跳过，因为那里面
+       * 自家的 wk-ruby 要跳过是显然的；kt-rt / fg-rt 也**必须**跳过，因为那里面
        * 装的是别家的注音文字：
        *   - katakana-terminator 的 <rt class="kt-rt"> 里是英文原词（hello、dreamer…），
        *     全是拉丁字母，正是我们要标的对象 —— 不跳就会给英文注释再注一层片假名；
@@ -586,8 +590,8 @@
        *   降级成 span"的情况兜底，三家的降级节点都用各自的前缀。）
        */
       var cls = typeof el.className === "string" ? el.className : "";
-      if (/(^|\s)(lt-ruby|kt-ruby|fg-ruby)(\s|$)/.test(cls)) return true;
-      if (el.tagName === "RT" || /(^|\s)(lt-rt|kt-rt|fg-rt|lt-ov-label|kt-ov-label)(\s|$)/.test(cls)) {
+      if (/(^|\s)(wk-ruby|kt-ruby|fg-ruby)(\s|$)/.test(cls)) return true;
+      if (el.tagName === "RT" || /(^|\s)(wk-rt|kt-rt|fg-rt|wk-ov-label|kt-ov-label)(\s|$)/.test(cls)) {
         return true;
       }
       return false;
@@ -860,17 +864,18 @@
         var childNode = piece.ruby || doc.createTextNode(piece.text);
         // 给"我们自己造出来的"节点打标记：别的插件（jp-furigana）的
         // MutationObserver 靠它区分"这是注音插件插的"从而不把行标脏。
-        // 见 tools/patch-jp-furigana.js 的 __ktRecordIsOurs。
-        if (childNode.nodeType === 3) childNode.__ltOwned = true;
+        // 见 tools/patch-jp-furigana.js 的 __ktRecordIsOurs（它认 __wkOwned，
+        // 也认改名前的 __ltOwned）。
+        if (childNode.nodeType === 3) childNode.__wkOwned = true;
         tail.appendChild(childNode);
         inserted.push(childNode);
       }
       host.insertBefore(tail, refNode);
       // 原文本节点（保留下来那条）的值也被我们改写过，同样算我们的
-      if (!leadIsRuby) node.__ltOwned = true;
+      if (!leadIsRuby) node.__wkOwned = true;
       // 记下注音时刻：出问题时 age 能直接区分"我们的注音活了多久"，
       // 从而分辨"死循环"（几十毫秒就没）和"正常重绘"（活了一两秒）
-      host.__ltAt = Date.now();
+      host.__wkAt = Date.now();
 
       // 记录：原节点是否还留在 host 里、注音节点清单，以及它原来插在哪个位置
       // （host 的子节点下标）。
@@ -922,7 +927,8 @@
       /*
        * 消费 jp-furigana 的「暂存」交接（见 tools/patch-jp-furigana.js）。
        *
-       * 它 restore() 时会把我们上一轮插进它 wrap 里的注音节点挂到 host.__ltForeign。
+       * 它 restore() 时会把我们上一轮插进它 wrap 里的注音节点挂到 host.__wkForeign
+       * （改名前的名字是 __ltForeign，两个都认）。
        * 这些节点**只取走、不再挂回去**，两个原因：
        *
        *   1. 位置信息已经没了。它们属于一个刚被拆掉的 wrap，原来的邻居节点
@@ -935,10 +941,13 @@
        *
        * 清空是为了别把已经脱离文档的节点一直挂在 expando 上。
        */
-      if (host.__ltForeign) host.__ltForeign = null;
+      if (host.__wkForeign || host.__ltForeign) {
+        host.__wkForeign = null;
+        host.__ltForeign = null;
+      }
 
-      if (!hasRubyLayout(doc) && host.setAttribute && !host.hasAttribute("data-lt-fallback")) {
-        host.setAttribute("data-lt-fallback", "1");
+      if (!hasRubyLayout(doc) && host.setAttribute && !host.hasAttribute("data-wk-fallback")) {
+        host.setAttribute("data-wk-fallback", "1");
       }
 
       return true;
@@ -947,27 +956,27 @@
     /**
      * 建 <ruby>カナ<rt>Kana</rt></ruby>；内核不支持时用 span 绝对定位。
      *
-     * provisional=true 时加一个 `lt-pending` 类：这个读音还是"暂定"的
+     * provisional=true 时加一个 `wk-pending` 类：这个读音还是"暂定"的
      * （在线那层还在问，先拿规则结果顶上），样式上会淡一点，
      * 等真结果回来由 relabel() 改写并把类去掉。
      *
      * source 是"这个读音是谁给的"（dict / romaji / rule / letters / llm / google），
-     * 只用来打一个 `lt-src-*` 类 —— 排障时打开「按来源着色」就能一眼看出
+     * 只用来打一个 `wk-src-*` 类 —— 排障时打开「按来源着色」就能一眼看出
      * 哪个词是词典给的、哪个是规则猜的、哪个是模型换过的。类名一直在，
      * 不给它上色而已（这样开关一开立刻生效，不用重扫）。
      */
     function buildRuby(base, gloss, provisional, source) {
       var ruby = doc.createElement("ruby");
-      ruby.className = "lt-ruby" + (provisional ? " lt-pending" : "") + (source ? " lt-src-" + source : "");
+      ruby.className = "wk-ruby" + (provisional ? " wk-pending" : "") + (source ? " wk-src-" + source : "");
       ruby.appendChild(doc.createTextNode(base));
       if (hasRubyLayout(doc)) {
         var rt = doc.createElement("rt");
-        rt.className = "lt-rt";
+        rt.className = "wk-rt";
         rt.textContent = gloss;
         ruby.appendChild(rt);
       } else {
         var span = doc.createElement("span");
-        span.className = "lt-rt";
+        span.className = "wk-rt";
         span.textContent = gloss;
         ruby.appendChild(span);
       }
@@ -975,7 +984,7 @@
     }
 
     /**
-     * 换掉 ruby 上的 `lt-src-*` 类（读音换来源时用：规则 -> 大模型就是这么变的）。
+     * 换掉 ruby 上的 `wk-src-*` 类（读音换来源时用：规则 -> 大模型就是这么变的）。
      * 只动我们自己的节点，而且**只动这一类**，不碰别人给这行加的任何 class。
      */
     function setSourceClass(el, source) {
@@ -983,10 +992,10 @@
       var drop = [];
       for (var i = 0; i < el.classList.length; i++) {
         var cn = el.classList[i];
-        if (cn.indexOf("lt-src-") === 0 && cn !== "lt-src-" + source) drop.push(cn);
+        if (cn.indexOf("wk-src-") === 0 && cn !== "wk-src-" + source) drop.push(cn);
       }
       for (var j = 0; j < drop.length; j++) el.classList.remove(drop[j]);
-      if (source && !el.classList.contains("lt-src-" + source)) el.classList.add("lt-src-" + source);
+      if (source && !el.classList.contains("wk-src-" + source)) el.classList.add("wk-src-" + source);
     }
 
     /**
@@ -1067,7 +1076,7 @@
      * 这个宿主里还有没有我们的注音。
      *
      * 和 annotationsIntact(rec) 的区别：那个查的是"某条记录里的节点还在不在"，
-     * 这里查的是"DOM 里到底还有没有 lt-ruby"。后者才回答得了
+     * 这里查的是"DOM 里到底还有没有 wk-ruby"。后者才回答得了
      * 「底字没变，但注音是不是被对方抹掉了」—— 见 pass() 里 prior 那一段。
      *
      * 刻意**不做缓存**：对方随时可能把我们的节点抹掉，缓存成 true 就会让上面
@@ -1076,7 +1085,7 @@
      */
     function hostHasOurRuby(host) {
       if (!host || host.nodeType !== 1 || !host.querySelector) return false;
-      return !!host.querySelector("ruby.lt-ruby");
+      return !!host.querySelector("ruby.wk-ruby");
     }
 
     /**
@@ -1107,11 +1116,11 @@
 
     /** 宿主/区域里已经没有我们的注音了，就把标记摘干净 */
     function untagIfClean(host, region) {
-      if (region && region.isConnected && !region.querySelector("ruby.lt-ruby")) {
-        untagData(region, "data-lt-region");
+      if (region && region.isConnected && !region.querySelector("ruby.wk-ruby")) {
+        untagData(region, "data-wk-region");
       }
-      if (host && host.isConnected && !host.querySelector("ruby.lt-ruby")) {
-        untagData(host, "data-lt-fallback");
+      if (host && host.isConnected && !host.querySelector("ruby.wk-ruby")) {
+        untagData(host, "data-wk-fallback");
       }
     }
 
@@ -1135,14 +1144,14 @@
      * 会让对方的渲染检查失效、重建整行，两边互相触发就会一直抽搐。
      */
     function cleanup() {
-      var regions = doc.querySelectorAll("[data-lt-region]");
+      var regions = doc.querySelectorAll("[data-wk-region]");
       for (var i = 0; i < regions.length; i++) {
-        if (!regions[i].querySelector("ruby.lt-ruby")) untagData(regions[i], "data-lt-region");
+        if (!regions[i].querySelector("ruby.wk-ruby")) untagData(regions[i], "data-wk-region");
       }
-      var fallbacks = doc.querySelectorAll("[data-lt-fallback]");
+      var fallbacks = doc.querySelectorAll("[data-wk-fallback]");
       for (var j = 0; j < fallbacks.length; j++) {
         var el = fallbacks[j];
-        if (!el.querySelector("ruby.lt-ruby")) untagData(el, "data-lt-fallback");
+        if (!el.querySelector("ruby.wk-ruby")) untagData(el, "data-wk-fallback");
       }
     }
 
@@ -1167,7 +1176,7 @@
         if (!host || !host.isConnected) return;
         for (var i = 0; i < rec.nodes.length; i++) {
           var el = rec.nodes[i];
-          if (!el || el.nodeType !== 1 || !el.classList || !el.classList.contains("lt-ruby")) continue;
+          if (!el || el.nodeType !== 1 || !el.classList || !el.classList.contains("wk-ruby")) continue;
           // ruby 的第一个子节点就是底字（原文），拿它当查读音的词
           var baseNode = el.firstChild;
           if (!baseNode || baseNode.nodeType !== 3) continue;
@@ -1191,7 +1200,7 @@
             gloss = null;
           }
           if (!gloss) continue; // 还没结果：保持原样（这一条就是"不消失"的关键）
-          var rt = el.querySelector(".lt-rt");
+          var rt = el.querySelector(".wk-rt");
           if (rt && rt.textContent !== gloss) {
             rt.textContent = gloss;
             updated++;
@@ -1202,7 +1211,7 @@
            * 真结果回来了就把"暂定"标记去掉（样式上不再淡）。
            * 判断依据交给上层：pending() 为假 = 这个词已经有确定结论。
            */
-          if (el.classList.contains("lt-pending")) {
+          if (el.classList.contains("wk-pending")) {
             var stillPending = false;
             if (pending) {
               try {
@@ -1211,7 +1220,7 @@
                 stillPending = false;
               }
             }
-            if (!stillPending) el.classList.remove("lt-pending");
+            if (!stillPending) el.classList.remove("wk-pending");
           }
         }
       });
@@ -1269,14 +1278,14 @@
     /*
      * 注音节点的判据集合。
      *
-     * 这里**必须认识另外两个插件的注音**，不能只认自己的 `<rt class="lt-rt">`：
-     *   - lt-rt  本插件（拉丁词 -> 片假名读音）
+     * 这里**必须认识另外两个插件的注音**，不能只认自己的 `<rt class="wk-rt">`：
+     *   - wk-rt  本插件（拉丁词 -> 片假名读音）
      *   - kt-rt  katakana-terminator（片假名 -> 英文）
      *   - fg-rt  jp-furigana（汉字 -> 振假名）
      * 少认一个的后果是实打实的：visibleText() 会把别人的注音算成"底字"，
      * 于是底字一直在变、我们每轮都判定"馊了"并重注 —— 就是那种一直闪。
      */
-    var ANNOTATION_CLASS = /(^|\s)(lt-rt|kt-rt|fg-rt|lt-ov-label|kt-ov-label)(\s|$)/;
+    var ANNOTATION_CLASS = /(^|\s)(wk-rt|kt-rt|fg-rt|wk-ov-label|kt-ov-label)(\s|$)/;
 
     function isAnnotationNode(el) {
       if (!el || el.nodeType !== 1) return false;
@@ -1739,8 +1748,8 @@
             // 用 data-* 属性而不是 class：区域元素常和别的歌词插件共用，
             // 改它的 className 会让对方判定"这行变了"并重建整行，
             // 我们的注音跟着被丢掉、下一轮再标 —— 来回就是抽搐。
-            if (region.setAttribute && !region.hasAttribute("data-lt-region")) {
-              region.setAttribute("data-lt-region", "1");
+            if (region.setAttribute && !region.hasAttribute("data-wk-region")) {
+              region.setAttribute("data-wk-region", "1");
               // 记录改了哪个元素：同一行反复出现在这里就说明没收敛
               if (options.log) {
                 options.log(
@@ -1779,7 +1788,7 @@
         restored: restored,
         skipped: skipped,
         unstable: unstable,
-        // 跳过原因（上层会写进 LK.stats()，排障时一眼看到"为什么这行没注音"）
+        // 跳过原因（上层会写进 WK.stats()，排障时一眼看到"为什么这行没注音"）
         skips: notes,
         errors: errorNotes, // 单个节点注音时抛的异常（以前只在轨迹里，现在也会回到上层）
         /*
@@ -1850,12 +1859,12 @@
     var opacity = (opts.rtOpacity == null ? 80 : opts.rtOpacity) / 100;
     var colorBySource = !!opts.colorBySource;
     return [
-      "ruby.lt-ruby {",
+      "ruby.wk-ruby {",
       "  ruby-position: over;",
       "  -webkit-ruby-position: before;",
       "  ruby-align: center;",
       "}",
-      "rt.lt-rt, .lt-rt {",
+      "rt.wk-rt, .wk-rt {",
       "  font-size: " + size + "%;",
       "  opacity: " + opacity + ";",
       "  font-weight: normal;",
@@ -1869,9 +1878,9 @@
       "  -webkit-user-select: none;",
       "}",
       // 内核不支持 ruby 排版：注音脱离文档流，免得 <rt> 退化成 block 撑坏行高
-      '[data-lt-fallback] { position: relative; }',
-      '[data-lt-fallback] > ruby.lt-ruby { position: relative; display: inline-block; }',
-      '[data-lt-fallback] > ruby.lt-ruby > .lt-rt {',
+      '[data-wk-fallback] { position: relative; }',
+      '[data-wk-fallback] > ruby.wk-ruby { position: relative; display: inline-block; }',
+      '[data-wk-fallback] > ruby.wk-ruby > .wk-rt {',
       "  position: absolute;",
       "  left: 50%;",
       "  bottom: 100%;",
@@ -1884,19 +1893,19 @@
       // 节点**打 opacity，嵌套相乘会把注音压得几乎看不见，所以对注音强制不透明。
       //
       // 但底字和注音要分开对待（用户报的「这句不透明度怎么这么低」就是这么来的）：
-      //   - ruby.lt-ruby 是**底字**在外面那层，锁死 1，永远不许别人把它压淡；
-      //   - rt.lt-rt 是**注音**，它要用用户设的那个不透明度 ——
-      //     老版本这里写死 `rt.lt-rt { opacity: 1 !important }`，把设置面板里的
+      //   - ruby.wk-ruby 是**底字**在外面那层，锁死 1，永远不许别人把它压淡；
+      //   - rt.wk-rt 是**注音**，它要用用户设的那个不透明度 ——
+      //     老版本这里写死 `rt.wk-rt { opacity: 1 !important }`，把设置面板里的
       //     「注音不透明度」整个压掉了（拖了没反应，页面上只有"暂定"那 45% 看得见，
       //     于是所有待判定的行都显得特别淡）。
-      "ruby.lt-ruby { opacity: 1 !important; }",
-      "rt.lt-rt, .lt-rt { opacity: " + opacity + " !important; }",
+      "ruby.wk-ruby { opacity: 1 !important; }",
+      "rt.wk-rt, .wk-rt { opacity: " + opacity + " !important; }",
       /*
        * 「暂定读音」：在线那层还在问，先用规则结果顶上。
        * 比上面的值再淡一档（跟着用户的设置走，不然把不透明度调到 30% 时
        * "暂定"反而比正常还清楚），真结果回来后 relabel() 会去掉这个类。
        */
-      "ruby.lt-ruby.lt-pending .lt-rt { opacity: " + Math.max(0.2, opacity * 0.6).toFixed(2) + " !important; }",
+      "ruby.wk-ruby.wk-pending .wk-rt { opacity: " + Math.max(0.2, opacity * 0.6).toFixed(2) + " !important; }",
       /*
        * 排障用：把每一层的读音染成不同颜色，一眼看出"这个音到底是谁给的"。
        * 颜色只用在这两类节点上（都是我们自己的），不改任何既有元素的样式；
@@ -1904,14 +1913,14 @@
        */
       colorBySource
         ? [
-            "ruby.lt-src-dict > .lt-rt { color: #46d17e !important; }", // 离线词典：最可信，绿
-            "ruby.lt-src-learned > .lt-rt { color: #2fae7a !important; }", // 模型答案沉淀成的词条：深绿（同属"离线词条"）
-            "ruby.lt-src-letters > .lt-rt { color: #3fb6d8 !important; }", // 记号 / 字母名：青
-            "ruby.lt-src-romaji > .lt-rt { color: #6f8ff0 !important; }", // 罗马音：蓝
-            "ruby.lt-src-rule > .lt-rt { color: #e8a33d !important; }", // 英文音译规则：橙
-            "ruby.lt-src-llm > .lt-rt { color: #c07ce8 !important; }", // 大模型：紫
-            "ruby.lt-src-google > .lt-rt { color: #e0629a !important; }", // 免费接口：品红
-            "ruby.lt-src-online > .lt-rt { color: #e0629a !important; }", // 老名字，同上
+            "ruby.wk-src-dict > .wk-rt { color: #46d17e !important; }", // 离线词典：最可信，绿
+            "ruby.wk-src-learned > .wk-rt { color: #2fae7a !important; }", // 模型答案沉淀成的词条：深绿（同属"离线词条"）
+            "ruby.wk-src-letters > .wk-rt { color: #3fb6d8 !important; }", // 记号 / 字母名：青
+            "ruby.wk-src-romaji > .wk-rt { color: #6f8ff0 !important; }", // 罗马音：蓝
+            "ruby.wk-src-rule > .wk-rt { color: #e8a33d !important; }", // 英文音译规则：橙
+            "ruby.wk-src-llm > .wk-rt { color: #c07ce8 !important; }", // 大模型：紫
+            "ruby.wk-src-google > .wk-rt { color: #e0629a !important; }", // 免费接口：品红
+            "ruby.wk-src-online > .wk-rt { color: #e0629a !important; }", // 老名字，同上
           ].join("\n")
         : "",
     ]

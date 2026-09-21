@@ -178,7 +178,7 @@ function selfCheck(entries) {
     if (!entries.some((e) => e.name === f)) throw new Error(`manifest 注入的 ${f} 不在包里`);
   }
   // core 必须按依赖顺序注入：latin -> dict -> reading -> correct -> annotate -> main
-  const wantOrder = ["core/latin.js", "core/dict.js", "core/reading.js", "core/correct.js", "core/annotate.js", "main.js"];
+  const wantOrder = ["core/letters.js", "core/dict.js", "core/reading.js", "core/correct.js", "core/annotate.js", "main.js"];
   const order = injectedFiles.filter((f) => wantOrder.includes(f));
   if (order.join(",") !== wantOrder.join(","))
     throw new Error(`injects 顺序不对，应为 ${wantOrder.join(" -> ")}，实际 ${injectedFiles.join(" -> ")}`);

@@ -48,7 +48,7 @@ function makeCorrector(ctx, opts) {
   };
   const updates = [];
   const usages = [];
-  const corrector = ctx.LKCorrect.createCorrector({
+  const corrector = ctx.WKCorrect.createCorrector({
     online: true,
     validate: opts.validate,
     log: function () {},
@@ -107,7 +107,7 @@ test("isWaiting：排队/请求中为 true，回来或失败后为 false", async
 test("拦住意译/拟声词：Google 把 tick 回成 カチカチ 时不许用", async () => {
   // 用户报的 tick -> カチカチ：Google 的 en→ja 会回拟声词，纯片假名，字符集拦不住
   const ctx = loadCore();
-  const V = ctx.LKReading.looksLikeTransliteration;
+  const V = ctx.WKReading.looksLikeTransliteration;
   const { corrector } = makeCorrector(ctx, { validate: V, reply: () => dictResponse(["カチカチ"]) });
   corrector.lookup("tick");
   await sleep(1600);
@@ -182,7 +182,7 @@ test("成功的结果会写进缓存，新实例能直接读到", async () => {
   await sleep(2200);
 
   // 同一个 window（同一份 localStorage）里再造一个实例
-  const again = ctx.LKCorrect.createCorrector({ online: true, log: function () {} });
+  const again = ctx.WKCorrect.createCorrector({ online: true, log: function () {} });
   assert.strictEqual(again.lookup("clover"), "クローバー", "缓存要跨实例生效");
 });
 

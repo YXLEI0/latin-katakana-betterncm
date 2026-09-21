@@ -12,7 +12,7 @@
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
-  else root.LKLoan = factory();
+  else root.WKLoan = factory();
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 

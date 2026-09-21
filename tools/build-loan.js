@@ -90,7 +90,7 @@ function main() {
   lines.push(" */");
   lines.push("(function (root, factory) {");
   lines.push('  if (typeof module === "object" && module.exports) module.exports = factory();');
-  lines.push("  else root.LKLoan = factory();");
+  lines.push("  else root.WKLoan = factory();");
   lines.push('})(typeof globalThis !== "undefined" ? globalThis : this, function () {');
   lines.push('  "use strict";');
   lines.push("");
