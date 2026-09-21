@@ -2172,7 +2172,10 @@ test("德语歌词（用例 1）：整行走德语拼读，英文行不受影响
   const l2 = linePairs(ps, 2);
   assert.strictEqual(l2.get("der"), "デア");
   assert.strictEqual(l2.get("Hand"), "ハント");
-  assert.strictEqual(l2.get("Vergissmeinnicht"), "フェアギスマイニッヒト");
+  // フェアギスマインニヒト（不是引擎拼的 フェアギスマイニッヒト）：这句是
+  // Vergiss-mein-nicht，"mein" 的 n 要跟后面的 "nicht" 合成 ンニ —— 真机素材
+  // 沉淀进词典的就是这个写法（见 tools/seed-words-learned.js）
+  assert.strictEqual(l2.get("Vergissmeinnicht"), "フェアギスマインニヒト");
 
   // 英文行照旧走词典/英文规则（没被德语带歪）
   const en = linePairs(ps, 3);

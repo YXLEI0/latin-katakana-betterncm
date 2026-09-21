@@ -128,6 +128,38 @@ test("同一个词在多个来源里出现：一致就合并计数，不一致�
   assert.match(whyOf(bad, "muze"), /不一致/);
 });
 
+test("外语自己的词一律不收：读音取决于那一行（tag / vacuum / mich 都不进词典）", () => {
+  // 真机素材里就有这些：der ダー→デア、ex エックス→エクス、tag タグ→ターク、
+  // vacuum バキューム→ヴァクウム、dich ディッヒ→ディヒ、immer イマー→インマー。
+  // 词典是**不分语言**的、还排在语言引擎前面 —— 收下就在所有行上生效：
+  // 英文行的 tag 会变成 ターク，德语行反而不如引擎（er- / ch / 双辅音那些规则是按德语定的）。
+  // 外语行本来就有引擎和 HOMOGRAPH 兜着。
+  const res = filterPromotions(
+    {
+      learned: [
+        { word: "tag", kana: "ターク" },
+        { word: "vacuum", kana: "ヴァクウム" },
+        { word: "dich", kana: "ディヒ" },
+        { word: "sprach", kana: "シュプレーヒ" },
+      ],
+      llm: [{ word: "tag", kana: "ターク", lines: 3, consistent: true }],
+    },
+    {
+      hand: {},
+      llm: { tag: "タグ", vacuum: "バキューム", dich: "ディッヒ" },
+      blocklist: {},
+      foreign: { tag: "德语", vacuum: "拉丁语", dich: "德语" },
+    }
+  );
+  assert.strictEqual(res.accepted.length, 1, JSON.stringify(res.accepted));
+  assert.strictEqual(kanaOf(res, "tag"), null);
+  assert.match(whyOf(res, "tag"), /德语自己的词/);
+  assert.strictEqual(kanaOf(res, "vacuum"), null);
+  assert.match(whyOf(res, "vacuum"), /拉丁语自己的词/);
+  assert.strictEqual(kanaOf(res, "dich"), null, "已有的 ディッヒ 不许被 ディヒ 盖掉");
+  assert.strictEqual(kanaOf(res, "sprach"), "シュプレーヒ", "不在外语词表里的（生词）照收");
+});
+
 test("输出按词排序（生成物 diff 才稳定）", () => {
   const res = filterPromotions(
     {

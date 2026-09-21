@@ -15,7 +15,10 @@
  *   - 已在人工词表（tools/seed-words.js）里的：**一律不动**（人工优先）；
  *   - 已在黑名单（tools/dict-blocklist.js）里的：丢掉；
  *   - 已有大模型词表（tools/seed-words-llm.js）的：读音相同就跳过（没必要重复），
- *     不同则以这次的为准（记一笔"已更新"）—— 因为它来自真机听歌的上下文；
+ *     不同则以这次的为准（记一笔"已更新"）—— 因为它来自真机听歌的上下文。
+ *   - **某种外语自己的词一律不收**（德语 tag / dich / immer、拉丁语 vacuum / ex…）：
+ *     词典不分语言、还排在语言引擎前面，收下就在所有行上生效（英文行的 tag 会变成
+ *     ターク、德语行反而不如引擎）。外语行有引擎和 HOMOGRAPH 兜着。
  *   - 两可的短音节（do/re/mi/me/mo/pi…）不收：读音取决于语境，交给大模型每句判。
  *
  * 目标宿主是网易云内置的老 CEF，所以 src/** 只用 ES5；
@@ -72,15 +75,17 @@ function collect(input) {
  * 这一步是纯函数（喂进来素材和几张表），所以能直接写单元测试。
  *
  * @param {Object} input   导出的素材（{learned, llm, google}）
- * @param {Object} tables  { hand, llm, blocklist, ambiguous }
+ * @param {Object} tables  { hand, llm, blocklist, ambiguous, foreign }
  *                         hand/llm：词 -> 读音（现有词表）
  *                         blocklist：Set 或对象，命中的词丢掉
  *                         ambiguous(word) -> true 表示"两可"，不收
+ *                         foreign：词 -> 语种名，命中的词"只加不改"（见上）
  */
 function filterPromotions(input, tables) {
   const hand = tables.hand || {};
   const llmDict = tables.llm || {};
   const blocklist = tables.blocklist || {};
+  const foreign = tables.foreign || {};
   const ambiguous = typeof tables.ambiguous === "function" ? tables.ambiguous : () => false;
   const accepted = [];
   const skipped = [];
@@ -119,6 +124,20 @@ function filterPromotions(input, tables) {
       push("人工词表里已有 " + hand[word] + "（人工优先）");
       continue;
     }
+    /*
+     * 某种外语**自己的词**（德语 tag / dich / immer、拉丁语 vacuum / ex …）：**一律不收**。
+     *
+     * 为什么：词典是**不分语言**的，而且排在语言引擎前面 —— 一旦收下就在所有行上生效。
+     * 真机素材里这几个就是这么坏的：tag タグ→ターク、vacuum バキューム→ヴァクウム、
+     * dich ディッヒ→ディヒ、immer イマー→インマー、Rückkehr リュックケーア→リュックケール ——
+     * 英文行跟着错，德语行反而不如引擎（词首 er-、ch、双辅音的规则都是按德语定的）。
+     * 外语行本来就有引擎和 HOMOGRAPH 兜着，不需要词典管；词典该管的是
+     * "引擎拼不出来的那些词"（人名、外来语、歌里的生词）。
+     */
+    if (foreign[word]) {
+      push("是" + (foreign[word] || "外语") + "自己的词（读音取决于那一行，不入词典）");
+      continue;
+    }
     if (llmDict[word] === kana) {
       push("大模型词表里已有同样写法");
       continue;
@@ -154,9 +173,26 @@ function writeSeed(accepted) {
 function loadTables() {
   const hand = require(path.join(__dirname, "seed-words.js"));
   const llm = require(path.join(__dirname, "seed-words-llm.js"));
-  const toMap = (rows) => {
+  /*
+   * 两张表的形状**不一样**，两种都要认（这个坑真踩过：seed-words.js 是
+   * `[{en, kana}]`，而 seed-words-llm.js 是 `{words: {词: 读音}, stats}`）——
+   * 只按数组那种写法读，`for (const r of rows)` 会直接 TypeError，
+   * 于是 `npm run promote:learned` 一次都没跑成过（seed-words-learned.js 一直是空的）。
+   */
+  const toMap = (table) => {
     const out = {};
-    for (const r of rows) if (r && r.en) out[String(r.en).toLowerCase()] = r.kana;
+    if (Array.isArray(table)) {
+      // tools/seed-words.js：`[{ en, kana }]`
+      for (const r of table) if (r && r.en) out[String(r.en).toLowerCase()] = r.kana;
+      return out;
+    }
+    // tools/seed-words-llm.js：`{ words: { 词: 读音 }, stats }`
+    const map = (table && table.words) || table || {};
+    for (const w of Object.keys(map)) {
+      const v = map[w];
+      if (typeof v === "string") out[String(w).toLowerCase()] = v;
+      else if (v && typeof v.kana === "string") out[String(w).toLowerCase()] = v.kana;
+    }
     return out;
   };
   let blocklist = {};
@@ -183,7 +219,24 @@ function loadTables() {
       return false;
     }
   };
-  return { hand: toMap(hand), llm: toMap(llm), blocklist, ambiguous };
+  /*
+   * 某种外语**自己的词**：词 -> 语种名。取自 src/core/langs.js 的 SIGNALS（每种语言的
+   * 词表）和 HOMOGRAPH（英外同形异音）。这些词"只加不改"，理由见 filterPromotions。
+   */
+  const foreign = {};
+  try {
+    const langs = require(path.join(ROOT, "src", "core", "langs.js"));
+    for (const id of langs.ids || []) {
+      const sig = langs.SIGNALS && langs.SIGNALS[id];
+      const words = (sig && sig.words) || {};
+      for (const w of Object.keys(words)) if (!foreign[w]) foreign[w] = langs.label ? langs.label(id) : id;
+      const homo = (langs.HOMOGRAPH && langs.HOMOGRAPH[id]) || {};
+      for (const w of Object.keys(homo)) if (!foreign[w]) foreign[w] = langs.label ? langs.label(id) : id;
+    }
+  } catch (e) {
+    /* 拿不到就退化成"没有外语词表"（老行为） */
+  }
+  return { hand: toMap(hand), llm: toMap(llm), blocklist, ambiguous, foreign };
 }
 
 function main() {
