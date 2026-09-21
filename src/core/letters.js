@@ -17,11 +17,13 @@
 
   /*
    * 拉丁字母的字符集：ASCII + Latin-1 Supplement + Latin Extended-A/B +
-   * Latin Extended Additional。**必须带变音符号那一堆** —— 用户报的
-   * `Ō` 就是被 ASCII 正则漏掉的：`Tōkyō` 会被切成 `T` + `ky`，
-   * 于是 `ky` 单独命中词典读成 ケーワイ，比不标还糟。
+   * Latin Extended Additional + **全角拉丁**（`ＮＯ` / `ＤＲＥＡＭ`）。
+   * **必须带变音符号那一堆** —— 用户报的 `Ō` 就是被 ASCII 正则漏掉的：
+   * `Tōkyō` 会被切成 `T` + `ky`，于是 `ky` 单独命中词典读成 ケーワイ，比不标还糟。
+   * 全角那一段是另一张截图教的：`こんなんじゃ（ＮＯ!）` 的 `ＮＯ` 是排版用的全角写法，
+   * 原来压根没被当成词（一个注音都没有）。读音层会先把它折成半角再查（见 main.js）。
    */
-  var LAT_CLS = "A-Za-z\\u00C0-\\u024F\\u1E00-\\u1EFF";
+  var LAT_CLS = "A-Za-z\\u00C0-\\u024F\\u1E00-\\u1EFF\\uFF21-\\uFF3A\\uFF41-\\uFF5A";
   /** 西里尔字母（基本块 + 补充块） */
   var CYR_CLS = "\\u0400-\\u04FF\\u0500-\\u052F";
   /** 希腊字母（基本块 + 多音调扩展） */
@@ -293,12 +295,22 @@
     return m && m.index === 0 ? m[0] : null;
   }
 
-  /** 查表/音译用的规范形式：小写、去掉撇号与连字符（波浪号同理，见 WORD_JOIN） */
+  /**
+   * 查表/音译用的规范形式：小写、去掉撇号与连字符（波浪号同理，见 WORD_JOIN）。
+   * **全角拉丁折成半角**（`ＮＯ` -> `no`）：词表的键都是半角。
+   */
   function normalize(text) {
     if (!text) return "";
-    return String(text)
+    return foldFullwidth(String(text))
       .toLowerCase()
       .replace(/['\u2019~\uFF5E\u301C\-\u2010\u2011\u2013\u2014]/g, "");
+  }
+
+  /** 全角拉丁字母 -> 半角（其余字符不动） */
+  function foldFullwidth(s) {
+    return String(s).replace(/[\uFF21-\uFF3A\uFF41-\uFF5A]/g, function (ch) {
+      return String.fromCharCode(ch.charCodeAt(0) - 0xfee0);
+    });
   }
 
   /*

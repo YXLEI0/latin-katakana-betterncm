@@ -394,12 +394,15 @@ test("用户截图的四张图：颜文字不标、ATフィールド エーテ�
   // ② `対バンにはATフィールド` —— `AT` 命中词典的 at アット（该 エーティー）
   // ③ `I-I-I-I-I-I-I'm mine` —— 记号在 `'` 前就断了，最后只注到 `I`，`'m` 整个丢了
   // ④ `無限増幅回路（Ω）` —— Ω 是电阻单位（读 オーム），原来整行被判成希腊语、走引擎读 オ
+  // ⑤ `（V, W, A）` 是**单位符号**（ボルト・ワット・アンペア），而 `(A, B)` 仍是字母名
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>勝算なくても行っちゃえ！とか(#^ω^)</p></li>
   <li class="line"><p>対バンにはATフィールド</p></li>
   <li class="line"><p>I-I-I-I-I-I-I'm mine</p></li>
   <li class="line"><p>〈想い〉の無限増幅回路（Ω）</p></li>
+  <li class="line"><p>誰にも邪魔されないような（V, W, A）</p></li>
+  <li class="line"><p>(A, B) 退屈に打つ QTE</p></li>
   <li class="line"><p>GOしろ！ NOと言えない YOUと一緒に</p></li>
   <li class="line"><p>Θάλασσα και ουρανός</p></li>
 </ul></div></div></body></html>`;
@@ -424,15 +427,24 @@ test("用户截图的四张图：颜文字不标、ATフィールド エーテ�
   assert.strictEqual([...ps[2].querySelectorAll("ruby.wk-ruby")].filter((r) => r.childNodes[0].nodeValue === "I").length, 6);
   // ④ 单字母希腊字母：Ω 是电阻单位（大写按单位，小写 ω 才是字母名）
   assert.strictEqual(pairsOf(ps[3]).get("Ω"), "オーム", "Ω 该读 オーム：" + ps[3].innerHTML);
-  // 反面：全大写的**英文词**照旧按词读（别被缩写表带跑）
+  // ⑤ 单位符号：`（V, W, A）` 整串都是单位 -> 读单位名（用户指名要的）
   const l4 = pairsOf(ps[4]);
-  assert.strictEqual(l4.get("GO"), "ゴー", JSON.stringify([...l4]));
-  assert.strictEqual(l4.get("NO"), "ノー");
-  assert.strictEqual(l4.get("YOU"), "ユー");
+  assert.strictEqual(l4.get("V"), "ボルト", "V 该读 ボルト：" + ps[4].innerHTML);
+  assert.strictEqual(l4.get("W"), "ワット");
+  assert.strictEqual(l4.get("A"), "アンペア");
+  // 反面：串里有非单位字母的（`(A, B)`）仍读字母名
+  const l4b = pairsOf(ps[5]);
+  assert.strictEqual(l4b.get("A"), "エー", "`(A, B)` 的 A 是字母名：" + ps[5].innerHTML);
+  assert.strictEqual(l4b.get("B"), "ビー");
+  // 反面：全大写的**英文词**照旧按词读（别被缩写表带跑）
+  const l6 = pairsOf(ps[6]);
+  assert.strictEqual(l6.get("GO"), "ゴー", JSON.stringify([...l6]));
+  assert.strictEqual(l6.get("NO"), "ノー");
+  assert.strictEqual(l6.get("YOU"), "ユー");
   // 反面：真希腊语行上的单字母照旧走引擎（`ουρανός` ウラノス），不是字母名
-  const l5 = pairsOf(ps[5]);
-  assert.strictEqual(l5.get("ουρανός"), "ウラノス", JSON.stringify([...l5]));
-  assert.strictEqual(l5.get("και"), "カイ");
+  const l7 = pairsOf(ps[7]);
+  assert.strictEqual(l7.get("ουρανός"), "ウラノス", JSON.stringify([...l7]));
+  assert.strictEqual(l7.get("και"), "カイ");
 });
 
 test("英文词不许被罗马音层抢读：daze デイズ / Shone ショーン / rime ライム / boon ブーン / Hoo~ フー", async () => {
@@ -476,6 +488,32 @@ test("英文词不许被罗马音层抢读：daze デイズ / Shone ショーン
   assert.strictEqual(env.api.read("daze").source, "dict");
   assert.strictEqual(env.api.read("daze").confident, true);
   assert.strictEqual(env.api.read("boon").kana, "ブーン");
+});
+
+test("全角西文字母也注音（`こんなんじゃ（ＮＯ!）` → ＮＯ ノー）", async () => {
+  // 用户截图：歌词里的 `ＮＯ` 是**全角**的（排版写法），原来一个注音都没有 ——
+  // matcher 只认半角字母。现在全角折半角再查，底字仍旧是原文（一个字符不改）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>こんなんじゃ（ＮＯ!）</p></li>
+  <li class="line"><p>光こうならＤＲＥＡＭ</p></li>
+  <li class="line"><p>no と NO と ＮＯ</p></li>
+</ul></div></div></body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(500);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  assert.deepStrictEqual(PAIRS(ps[0]), [["\uFF2E\uFF2F", "ノー"]], ps[0].innerHTML);
+  assert.strictEqual(baseText(ps[0]), "こんなんじゃ（ＮＯ!）", "原文一字不改（还是全角）");
+  assert.deepStrictEqual(PAIRS(ps[1]), [["\uFF24\uFF32\uFF25\uFF21\uFF2D", "ドリーム"]], ps[1].innerHTML);
+  // 半角和全角读同一个音
+  const l2 = new Map(
+    [...ps[2].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+  );
+  assert.strictEqual(l2.get("no"), "ノー", JSON.stringify([...l2]));
+  assert.strictEqual(l2.get("NO"), "ノー");
+  assert.strictEqual(l2.get("\uFF2E\uFF2F"), "ノー");
+  assert.strictEqual(env.api.display("\uFF2E\uFF2F"), "ノー", "控制台 WK.display 也认全角");
 });
 
 test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 ア", async () => {

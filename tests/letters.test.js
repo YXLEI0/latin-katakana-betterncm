@@ -230,6 +230,28 @@ test("记号尾巴上的缩写要连成一词（`I-I-I-I-I-I-I'm` 的 `I'm`）",
   }
 });
 
+test("全角拉丁字母也算词（`ＮＯ` / `ＤＲＥＡＭ`），norm 折成半角", () => {
+  // 用户截图：`こんなんじゃ（ＮＯ!）` 的 `ＮＯ` 是排版用的全角写法，原来压根没被
+  // 当成词（一个注音都没有）。读音层会把它折成半角再查（main.js 的
+  // foldFullwidthLetters），词典里 `no` 是 ノー。
+  const toks = letters.scan("こんなんじゃ（ＮＯ!）");
+  assert.deepStrictEqual(
+    toks.map((t) => t.text),
+    ["\uFF2E\uFF2F"],
+    "全角 `ＮＯ` 要切出一个词"
+  );
+  assert.strictEqual(toks[0].norm, "no", "norm 折成半角小写");
+  assert.strictEqual(toks[0].script, "latin");
+  assert.strictEqual(letters.looksReadable(toks[0]), true);
+  assert.strictEqual(letters.normalize("\uFF2E\uFF2F\uFF01"), "no\uFF01", "normalize 只折字母，标点不动");
+  assert.strictEqual(letters.normalize("\uFF24\uFF32\uFF25\uFF21\uFF2D"), "dream");
+  // 半角照旧
+  assert.deepStrictEqual(
+    letters.scan("NO").map((t) => t.norm),
+    ["no"]
+  );
+});
+
 test("带变音符号的拉丁字母要能扫到，不能把词切成两半", () => {
   // 用户报的：`Ō` 等没注音上。ASCII 正则的后果不只是漏标 —— `Tōkyō` 会被切成
   // `T` + `ky`，而 `ky` 单独命中词典读成 ケーワイ，比不标还糟。

@@ -555,6 +555,53 @@
     return songLangCache.value;
   }
 
+  /*
+   * 单字母**单位符号**：整串字母**全是单位**时才按单位名读。
+   *
+   * 用户截图：`誰にも邪魔されないような（V, W, A）` —— 这三个是物理单位
+   * （ボルト / ワット / アンペア），要读单位名而不是字母名。
+   * 而 `(A, B) 退屈に打つ QTE` 里的 A / B 要读**字母名**（エー / ビー）——
+   * 两者都是括号里的字母串，区别是**这一串里有没有非单位的字母**：
+   * `B` 不是单位，所以那一串按字母名；`V / W / A` 全是单位，就按单位名。
+   * 判据见 lineAllUnitSymbols。`Ω` 是希腊字母，另有单位读法（オーム，见 localReading）。
+   * 想再加单位（`J` ジュール、`N` ニュートン…）就往这张表里补一行 ——
+   * 但每加一个都会让"全是单位"更容易成立（`N/A` 就是这么会中的），所以只收常用、低歧义的。
+   */
+  var UNIT_SYMBOL = {
+    V: "\u30DC\u30EB\u30C8", // ボルト
+    W: "\u30EF\u30C3\u30C8", // ワット
+    A: "\u30A2\u30F3\u30DA\u30A2", // アンペア
+  };
+
+  /** 这一行里的单字母**全是单位符号**（`（V, W, A）` ✓、`(A, B)` ✗ —— B 不是单位） */
+  var unitLineCache = new Map();
+  function lineAllUnitSymbols(line) {
+    var s = String(line == null ? "" : line);
+    if (!s || typeof WKMatcher === "undefined") return false;
+    if (unitLineCache.has(s)) return unitLineCache.get(s);
+    var ok = false;
+    var n = 0;
+    try {
+      var toks = WKMatcher.scan(s);
+      ok = true;
+      for (var i = 0; i < toks.length; i++) {
+        var t = String(toks[i].text);
+        if (t.length !== 1) continue;
+        if (!UNIT_SYMBOL[t]) {
+          ok = false;
+          break;
+        }
+        n++;
+      }
+    } catch (e) {
+      ok = false;
+    }
+    var out = ok && n >= 2; // 孤零零一个字母不算（那多半是冠词/字母，不是单位表）
+    if (unitLineCache.size > 500) unitLineCache.clear();
+    unitLineCache.set(s, out);
+    return out;
+  }
+
   function gluedUpperCase(word, line) {
     var w = String(word == null ? "" : word);
     if (!/^[A-Z]{2,3}$/.test(w)) return false;
@@ -718,7 +765,27 @@
     return false;
   }
 
+  /**
+   * 全角西文字母折成半角（`ＮＯ` -> `NO`、`ｄｒｅａｍ` -> `dream`）。
+   *
+   * 用户截图：`こんなんじゃ（ＮＯ!）` 里的 `ＮＯ` 是**全角**的（歌词排版常这么写），
+   * 而 matcher 之前只认半角字母，于是整个词压根没被当成词，一个注音都没有。
+   * 折的是**判断用的副本** —— 注音层写回 DOM 的底字用的是 token.text（原文），
+   * 所以页面上一个字符都不会变。
+   */
+  function foldFullwidthLetters(s) {
+    return String(s == null ? "" : s).replace(/[\uFF21-\uFF3A\uFF41-\uFF5A]/g, function (ch) {
+      return String.fromCharCode(ch.charCodeAt(0) - 0xfee0);
+    });
+  }
+
   function localReading(word, line) {
+    /*
+     * 全角字母先折半角（见 foldFullwidthLetters）：词和它所在的那一行都折，
+     * 后面查词典 / 沉淀 / 模型 / 语种判定 / 打码与段标那几判就都按折过的看。
+     */
+    word = foldFullwidthLetters(word);
+    if (line != null) line = foldFullwidthLetters(line);
     /*
      * 段标（`(A:` / `B:`）**排在所有层前面**：它压根不该有读音，
      * 缓存里有没有都不该有 —— 用户机器上就攒过 `a → アー`（模型在 `(A:` 那种行里
@@ -748,6 +815,13 @@
        */
       if (String(word) === "O") return { kana: "オー", source: "letters", confident: true };
       if (line && lineLetterRun(line)) {
+        /*
+         * 整串字母都是单位符号（`（V, W, A）`）→ 读单位名（ボルト・ワット・アンペア）。
+         * 用户截图指名要这个；`(A, B)` 那种（串里有非单位字母）仍旧读字母名。
+         */
+        if (UNIT_SYMBOL[String(word)] && lineAllUnitSymbols(line)) {
+          return { kana: UNIT_SYMBOL[String(word)], source: "letters", confident: true };
+        }
         var letterKana =
           typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[String(word).toLowerCase()] : null;
         if (letterKana) return { kana: letterKana, source: "letters", confident: true };
@@ -897,6 +971,9 @@
 
   function resolveReading(word, line) {
     if (!state.reader) return null;
+    // 全角字母折半角（`ＮＯ` -> `NO`）：查表 / 模型键 / 层序都得用同一个形式
+    word = foldFullwidthLetters(word);
+    if (line != null) line = foldFullwidthLetters(line);
     var r = localReading(word, line);
     if (!r || !r.kana) return null;
 
@@ -957,6 +1034,8 @@
    */
   function isProvisional(word, line) {
     if (!word || !state.reader) return false;
+    word = foldFullwidthLetters(word);
+    if (line != null) line = foldFullwidthLetters(line);
     var r = localReading(word, line);
     if (!r) return false;
     var mine = effectiveRank(r);
