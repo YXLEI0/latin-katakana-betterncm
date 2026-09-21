@@ -619,6 +619,47 @@ test("单个大写字母贴日文/在英文句子里要标；数字后面的单�
   assert.strictEqual(pairsOf(ps[8]).get("Music"), "ミュージック", "正常歌词行不能被误杀");
 });
 
+test("`AH!!` 读 アー（不是字母名）、`B4` 的 B 读 ビー、`tofu` 读 トウフ", async () => {
+  // 用户三张截图：
+  //   ① `ゆらゆら (AH!!)` —— `AH` 被 spellOutAcronym 逐字母读成 エーエイチ（该 アー）
+  //   ② `B4の紙切れに収まる僕の人生を` —— `B` 一个注音都没有（该 ビー）
+  //   ③ `my tofu mentality` —— `tofu` 被罗马音层读成 トフ（该 トウフ）
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>ゆらゆら (AH!!)</p></li>
+  <li class="line"><p>B4の紙切れに収まる僕の人生を</p></li>
+  <li class="line"><p>I wanna change change change my tofu mentality</p></li>
+  <li class="line"><p>A4 と 2B と 30W と 100V</p></li>
+  <li class="line"><p>A story of love and I</p></li>
+</ul></div></div></body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+  // ① 感叹词：有元音的 2~3 字母缩写闸门靠"词典里有这个词"挡住（ah / oh / uh）
+  assert.strictEqual(pairsOf(ps[0]).get("AH"), "アー", "AH 该读 アー：" + ps[0].innerHTML);
+  // ② 紧挨数字的单字母 = 字母名
+  assert.strictEqual(pairsOf(ps[1]).get("B"), "ビー", "B4 该读 ビー：" + ps[1].innerHTML);
+  // ③ 罗马音层抢读的日式英语词
+  const l2 = pairsOf(ps[2]);
+  assert.strictEqual(l2.get("tofu"), "トウフ", JSON.stringify([...l2]));
+  assert.strictEqual(l2.get("mentality"), "メンタリティー");
+  // 反面：单位符号挨着数字的仍走单位（不是字母名）
+  const l3 = pairsOf(ps[3]);
+  assert.strictEqual(l3.get("A"), "エー", "A4 的 A 该读 エー：" + ps[3].innerHTML);
+  assert.strictEqual(l3.get("B"), "ビー");
+  assert.strictEqual(l3.get("W"), "ワット", "30W 仍是单位，不是 ダブリュー");
+  assert.strictEqual(l3.get("V"), "ボルト");
+  // 反面：冠词 A / 代词 I 不受影响
+  const l4 = pairsOf(ps[4]);
+  assert.strictEqual(l4.get("A"), "ア", JSON.stringify([...l4]));
+  assert.strictEqual(l4.get("I"), "アイ");
+});
+
 test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 ア", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">

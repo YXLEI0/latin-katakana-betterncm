@@ -633,6 +633,16 @@
     return new RegExp("[0-9\uFF10-\uFF19]\\s*" + esc + "(?![0-9\uFF10-\uFF19])").test(s);
   }
 
+  /** 字母**紧挨着数字**（`B4` / `A4` / `2B`）：型号 / 规格里的字母，读字母名 */
+  function digitAdjacent(word, line) {
+    var s = String(line == null ? "" : line);
+    var w = String(word == null ? "" : word);
+    if (!s || !w) return false;
+    var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    var D = "[0-9\uFF10-\uFF19]";
+    return new RegExp("(?:" + D + "\\s*" + esc + "|" + esc + "\\s*" + D + ")").test(s);
+  }
+
   /** 字母**紧贴着日文**（`T氏` / `B面` / `X線`：字母前后直接是汉字 / 假名，中间没空格） */
   function gluedToJapanese(word, line) {
     var s = String(line == null ? "" : line);
@@ -972,6 +982,16 @@
         var loneKana =
           typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[String(word).toLowerCase()] : null;
         if (loneKana) return { kana: loneKana, source: "letters", confident: true };
+      }
+      /*
+       * ③ **紧挨着数字**：`B4` ビー / `A4` エー / `2B` ビー —— 型号、规格里的字母。
+       * 用户截图 `B4の紙切れに収まる僕の人生を` 的 `B` 原来一个注音都没有。
+       * 单位符号挨着数字的走**上面**那条（`30W` 是 ワット，不是 ダブリュー）。
+       */
+      if (line && digitAdjacent(word, line)) {
+        var numKana =
+          typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[String(word).toLowerCase()] : null;
+        if (numKana) return { kana: numKana, source: "letters", confident: true };
       }
       if (String(word) !== "A" && String(word) !== "I") return null;
     }
