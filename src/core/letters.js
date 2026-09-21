@@ -185,12 +185,15 @@
   }
 
   /*
-   * 单字母词：默认不标，但英文里真实存在的两个词例外。
+   * 单字母词：默认不标，但真实存在于语言里的那几个例外。
    *
    * 「x」「b」这种一个字母的多半是首字母缩写或者排版噪声，标上去只是噪音，
-   * 所以默认跳过。但 `a` 和 `I` 是**真正的英文单词**，而且在 J-pop 歌词里满地都是
-   * （"Tell me a story"、"I love you"）—— 一行里其它词都标了、就它们空着，
-   * 比标错还显眼。它们的读音由词典给（`a` -> ア、`i` -> アイ，见 tools/seed-words.js）。
+   * 所以默认跳过。但下面这几个是**真词**，一行里其它词都标了、就它们空着，
+   * 比标错还显眼：
+   *   a / i  英文单词（"Tell me a story"、"I love you"），读音由词典给
+   *   o      拉丁语 / 意大利语里的连词 "o"（= 或）与呼语 o ——
+   *          用户截图的拉丁语歌词里 `tragedia o splendidae` / `fatalita o infaustae`
+   *          里的那个小 o 就是它（同一首歌里呼语用大写 `O`，读 オー，见 main.js）
    *
    * 已知取舍：罗马音歌词里孤零零一个 `i`（= い）会被读成 アイ。
    * 但 RNP 的罗马音层本来就被整层跳过，纯罗马音行里的单字母也极少，
@@ -203,7 +206,7 @@
    * 注意**不做**"常见词不标"的白名单：用户要的就是歌词里的拉丁词都标上读音，
    * the / and 这类也照标 —— 否则一行里漏一半，看着更奇怪。
    */
-  var SINGLE_LETTER_WORDS = { a: true, i: true };
+  var SINGLE_LETTER_WORDS = { a: true, i: true, o: true };
 
   function looksReadable(token) {
     if (!token || !token.norm) return false;

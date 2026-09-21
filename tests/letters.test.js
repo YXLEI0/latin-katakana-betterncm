@@ -81,7 +81,7 @@ test("scan：不会因为零宽匹配卡死（正则改坏时的保护）", () =
   assert.ok(toks.length >= 1);
 });
 
-test("looksReadable：单字母默认不标，但 a / I 是真词要标", () => {
+test("looksReadable：单字母默认不标，但 a / I / o 是真词要标", () => {
   // 用户报的：`Tell me a story` 里那个 a 不注音。
   // 单字母默认跳过（首字母缩写、排版噪声），可 `a` 和 `I` 是真正的英文单词，
   // 在 J-pop 歌词里满地都是，漏掉它们比标错更显眼。
@@ -97,6 +97,17 @@ test("looksReadable：单字母默认不标，但 a / I 是真词要标", () => 
   assert.strictEqual(by["story"], true);
   assert.strictEqual(by["love"], true);
   assert.strictEqual(by["you"], true);
+
+  /*
+   * 拉丁语 / 意大利语里的小 o（连词 "或"、呼语）：用户截图点名它漏标了 ——
+   * `tragedia o splendidae` / `fatalita o infaustae`。同一首歌里呼语用大写 `O`
+   * （读 オー，见 main.js），小写这个按引擎读 オ。
+   */
+  const lower = letters.scan("tragedia o splendidae");
+  const lo = {};
+  for (const t of lower) lo[t.text] = letters.looksReadable(t);
+  assert.strictEqual(lo["o"], true, "小写 o 是真词，要标");
+  assert.strictEqual(lo["tragedia"], true);
 });
 
 test("记号整体算一个词：D/N/A / N/A / A.B.C / R&B / X-Y", () => {

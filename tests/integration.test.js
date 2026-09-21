@@ -2446,6 +2446,36 @@ test("一次性清掉旧的「问过但没收下」记录：被误伤的答案�
   assert.ok(!raw["vacuum\u0000Vacuum, fatuus"] || raw["vacuum\u0000Vacuum, fatuus"].miss !== true, "老的 miss 要清掉：" + JSON.stringify(raw));
 });
 
+test("拉丁语行的呼语 O 与连词 o：大写读 オー、小写读 オ（截图里的 `(O … o …`）", async () => {
+  // 用户截图：`Lucis, lapsus (O tragedia o splendidae)` 一类行 —— 大写的 O
+  // （呼语，读 オー）标上了，小写的 o（拉丁语连词"或"，读 オ）全空着。
+  // 两个都补上：小写 o 进"单字母真词"白名单（letters.js），大写 O 那条在 main.js。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Lucis, lapsus (O tragedia o splendidae)</p></li>
+  <li class="line"><p>Fatua, caeca (O fatalita o infaustae)</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+
+  const l0 = linePairs(ps, 0);
+  assert.strictEqual(l0.get("O"), "オー", "呼语 O 读 オー：" + JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("o"), "オ", "连词 o 读 オ：" + JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("Lucis"), "ルキス");
+  assert.strictEqual(l0.get("lapsus"), "ラプスス");
+  assert.strictEqual(l0.get("tragedia"), "トラゲディア");
+  assert.strictEqual(l0.get("splendidae"), "スプレンディダエ");
+
+  const l1 = linePairs(ps, 1);
+  assert.strictEqual(l1.get("O"), "オー");
+  assert.strictEqual(l1.get("o"), "オ");
+  assert.strictEqual(l1.get("fatalita"), "ファタリタ", JSON.stringify([...l1]));
+  assert.strictEqual(l1.get("infaustae"), "インファウスタエ");
+});
+
 test("俄语歌词（用例 6）：西里尔字母也注音（词典和罗马音层都读不了它）", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
