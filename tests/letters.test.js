@@ -195,6 +195,41 @@ test("记号拆成一个字母一个词：D/N/A / N/A / A.B.C / R&B / X-Y / M・
   assert.strictEqual(xray.text, "X-ray");
 });
 
+test("颜文字/装饰符号夹着的字母不标（`(#^ω^)` 里的 ω）", () => {
+  // 用户截图：`勝算なくても行っちゃえ！とか(#^ω^)` 里的 ω 被标成 オメガ ——
+  // 那是画脸用的，不是词。`^` `` ` `` `´` `＾` `｀` `ﾟ` `゛` `゜` 这些在日文里
+  // 只出现在颜文字/装饰里，所以它们和别的分隔符一样算"粘住"。
+  for (const raw of ["(#^\u03C9^)", "(\uFF9F\u0414\uFF9F)", "(\u00B4\u25BD\uFF40)", "(\uFF3E\u03C9\uFF3E)"]) {
+    for (const tk of letters.scan(raw)) {
+      assert.strictEqual(letters.looksReadable(tk), false, JSON.stringify(raw) + " 里的 " + tk.text + " 不该标");
+    }
+  }
+  // 反面：只是括号里孤零零一个字母（`（Ω）`）照标 —— 那不是颜文字
+  const omega = letters.scan("\uFF08\u03A9\uFF09")[0];
+  assert.strictEqual(omega.text, "\u03A9");
+  assert.strictEqual(letters.looksReadable(omega), true, "括号里的 Ω 是符号/单位，要标");
+});
+
+test("记号尾巴上的缩写要连成一词（`I-I-I-I-I-I-I'm` 的 `I'm`）", () => {
+  // 用户截图：`I-I-I-I-I-I-I'm mine` 最后只注到 `I`，`'m` 整个丢了 ——
+  // 记号在 `'` 前面就断了，剩下一个孤零零的 `m` 没人管。
+  const toks = letters.scan("I-I-I-I-I-I-I'm mine");
+  assert.deepStrictEqual(
+    toks.map((t) => t.text),
+    ["I", "I", "I", "I", "I", "I", "I'm", "mine"]
+  );
+  const last = toks[6];
+  assert.strictEqual(last.notation, true, "还是记号零件");
+  assert.strictEqual(last.norm, "im", "norm 折成 im（缩写表按这个查）");
+  assert.strictEqual(letters.looksReadable(last), true);
+  assert.strictEqual("I-I-I-I-I-I-I'm mine".slice(last.start, last.end), "I'm", "位置要对得上");
+  // 六种缩写尾巴都认；不是缩写的（`'s` 后面还跟字母）不算
+  for (const tail of ["'m", "'s", "'re", "'ll", "'ve", "'d"]) {
+    const tk = letters.scan("I-I" + tail)[1];
+    assert.strictEqual(tk.text, "I" + tail, "I" + tail + " 要合成一个词");
+  }
+});
+
 test("带变音符号的拉丁字母要能扫到，不能把词切成两半", () => {
   // 用户报的：`Ō` 等没注音上。ASCII 正则的后果不只是漏标 —— `Tōkyō` 会被切成
   // `T` + `ky`，而 `ky` 单独命中词典读成 ケーワイ，比不标还糟。

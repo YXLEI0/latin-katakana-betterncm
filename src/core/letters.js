@@ -139,8 +139,12 @@
    * 全角斜杠/中点也认（歌词里经常混排），句尾的 `.` 同样算 —— 代价是
    * "A." 这种句首缩写不再注音，比把 `A.B.C` 里的 A 注成 ア 好得多。
    * 装饰性符号（`&A&`、`*A*`、`#A`）同样算粘住：那种 A 是排版效果，不是冠词。
+   *
+   * **颜文字符号也算粘住**（用户截图 `(#^ω^)` 里的 ω 被标成 オメガ）：`^` `` ` `` `´`
+   * `＾` `｀` `ﾟ` `゛` `゜` 这些在日文里只出现在颜文字/装饰里（`(ﾟДﾟ)`、`(´▽｀)`、
+   * `(#^ω^)`），夹在它们中间的那个字母是画脸用的，不是词。
    */
-  var GLUE_CHARS = "/\\|_.\u30FB\uFF0F\uFF3C-\u2010\u2011\u2013\u2014\u00B7\u2022&#*~+=\u301C\uFF5E";
+  var GLUE_CHARS = "/\\|_.\u30FB\uFF0F\uFF3C-\u2010\u2011\u2013\u2014\u00B7\u2022&#*~+=\u301C\uFF5E^`\u00B4\uFF3E\uFF40\uFF9F\u309B\u309C";
   function isGluedLetter(text, start, end) {
     var before = start > 0 ? text.charAt(start - 1) : "";
     var after = end < text.length ? text.charAt(end) : "";
@@ -196,17 +200,27 @@
        *
        * `&` 是唯一**有读音**的分隔符（アンド），所以它自己发一个"符号词"；
        * 别的分隔符（`/` `.` `・` `-` …）不发音，不当词。
+       *
+       * 尾巴上的缩写（`I-I-I-I-I-I-I'm` 里最后的 `I'm`）：`'m` / `'s` / `'re` / `'ll` /
+       * `'ve` / `'d` 要跟**最后一个字母**合成一个词（读 アイム，见 reading.js 的缩写表）。
+       * 用户截图：`I-I-I-I-I-I-I'm mine` 原来只注到 `I`、`'m` 整个丢了 ——
+       * 因为记号在 `'` 前面就切断了，剩下一个孤零零的 `m` 没人管。
        */
       if (RE_NOTATION_WHOLE.test(raw)) {
+        var tail = "";
+        var tm = /^['\u2019](?:m|s|re|ll|ve|d)(?![A-Za-z])/i.exec(text.slice(end));
+        if (tm) tail = tm[0];
+        var em = end + tail.length;
         for (var q = 0; q < raw.length; q++) {
           var chN = raw.charAt(q);
           var atN = start + q;
+          var last = q === raw.length - 1 && tail;
           if (RE_WEST_ONE.test(chN)) {
             out.push({
-              text: chN,
+              text: last ? chN + tail : chN,
               start: atN,
-              end: atN + 1,
-              norm: chN.toLowerCase(),
+              end: last ? em : atN + 1,
+              norm: last ? normalize(chN + tail) : chN.toLowerCase(),
               glued: true,
               notation: true,
               script: scriptOf(chN),
@@ -226,7 +240,7 @@
             });
           }
         }
-        i = end;
+        i = em;
         continue;
       }
       /*

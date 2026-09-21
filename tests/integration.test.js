@@ -389,6 +389,52 @@ test("用户报的那行：Tell me a story 里的 a 也要注音", async () => {
   assert.strictEqual(baseText(p), "Tell me a story tell me a story 叶うなら", "底字一字不改");
 });
 
+test("用户截图的四张图：颜文字不标、ATフィールド エーティー、Ω オーム、I'm 要连 `'m` 一起标", async () => {
+  // ① `勝算なくても行っちゃえ！とか(#^ω^)` —— 颜文字里的 ω 被标成 オメガ（不该标）
+  // ② `対バンにはATフィールド` —— `AT` 命中词典的 at アット（该 エーティー）
+  // ③ `I-I-I-I-I-I-I'm mine` —— 记号在 `'` 前就断了，最后只注到 `I`，`'m` 整个丢了
+  // ④ `無限増幅回路（Ω）` —— Ω 是电阻单位（读 オーム），原来整行被判成希腊语、走引擎读 オ
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>勝算なくても行っちゃえ！とか(#^ω^)</p></li>
+  <li class="line"><p>対バンにはATフィールド</p></li>
+  <li class="line"><p>I-I-I-I-I-I-I'm mine</p></li>
+  <li class="line"><p>〈想い〉の無限増幅回路（Ω）</p></li>
+  <li class="line"><p>GOしろ！ NOと言えない YOUと一緒に</p></li>
+  <li class="line"><p>Θάλασσα και ουρανός</p></li>
+</ul></div></div></body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+
+  // ① 颜文字：一个注音都不该有（`^` 之类在 letters.js 里算"装饰符号粘连"）
+  assert.strictEqual(rubyCount(ps[0]), 0, "颜文字不该注音：" + ps[0].innerHTML);
+  assert.strictEqual(baseText(ps[0]), "勝算なくても行っちゃえ！とか(#^ω^)", "原文一字不改");
+  // ② ATフィールド：紧贴假名的全大写缩写按字母名
+  assert.strictEqual(pairsOf(ps[1]).get("AT"), "エーティー", "AT 该读 エーティー：" + ps[1].innerHTML);
+  // ③ 记号 + 缩写尾巴：`'m` 要跟最后一个 I 合成一个词（アイム）
+  const l2 = pairsOf(ps[2]);
+  assert.strictEqual(l2.get("I'm"), "アイム", "I'm 要整体标（含 'm）：" + ps[2].innerHTML);
+  assert.strictEqual(l2.get("mine"), "マイン");
+  assert.strictEqual([...ps[2].querySelectorAll("ruby.wk-ruby")].filter((r) => r.childNodes[0].nodeValue === "I").length, 6);
+  // ④ 单字母希腊字母：Ω 是电阻单位（大写按单位，小写 ω 才是字母名）
+  assert.strictEqual(pairsOf(ps[3]).get("Ω"), "オーム", "Ω 该读 オーム：" + ps[3].innerHTML);
+  // 反面：全大写的**英文词**照旧按词读（别被缩写表带跑）
+  const l4 = pairsOf(ps[4]);
+  assert.strictEqual(l4.get("GO"), "ゴー", JSON.stringify([...l4]));
+  assert.strictEqual(l4.get("NO"), "ノー");
+  assert.strictEqual(l4.get("YOU"), "ユー");
+  // 反面：真希腊语行上的单字母照旧走引擎（`ουρανός` ウラノス），不是字母名
+  const l5 = pairsOf(ps[5]);
+  assert.strictEqual(l5.get("ουρανός"), "ウラノス", JSON.stringify([...l5]));
+  assert.strictEqual(l5.get("και"), "カイ");
+});
+
 test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 ア", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">
@@ -1802,8 +1848,11 @@ test("缩写 / 喊叫 / 署名行：SOS・QTE・AAAAA 读对，署名行的碎�
   assert.strictEqual(pairsOf(ps[6]).get("Music"), "ミュージック", "正常歌词行不能被误杀");
 
   /*
-   * 第二遍：配一个假模型。`AT` 离线还是词典的 アット（我们只把它标成"没把握"），
-   * 模型看到「対バンにはATフィールド」就该给 エーティー —— 这正是截图里的期望。
+   * 第二遍：配一个假模型。`AT` 现在**离线就有确定答案**了 —— 它紧贴假名，
+   * 而且是日语里通行的那批首字母缩写（main.js 的 GLUED_ACRONYM），读 エーティー，
+   * 所以**根本不用问模型**（letters 层名次最前）。这里守住两件事：
+   * ① 显示的就是 エーティー（不是词典里的 at アット）；
+   * ② `AT` 不进请求（有确定答案），`SOS` / 署名行的名字也不进。
    */
   const asked = [];
   const env2 = bootPlugin(HTML, {
@@ -1813,7 +1862,7 @@ test("缩写 / 喊叫 / 署名行：SOS・QTE・AAAAA 读对，署名行的碎�
       asked.push(items.map((it) => String(it.w).toLowerCase()));
       const out = {};
       items.forEach((it, i) => {
-        out[String(i + 1)] = String(it.w).toLowerCase() === "at" ? "エーティー" : "テスト";
+        out[String(i + 1)] = "テスト";
       });
       return Promise.resolve({
         ok: true,
@@ -1825,9 +1874,9 @@ test("缩写 / 喊叫 / 署名行：SOS・QTE・AAAAA 读对，署名行的碎�
   await env2.runLoad();
   await sleep(1600);
   const p2 = env2.document.querySelector("ul.lyric li p");
-  assert.strictEqual(pairsOf(p2).get("AT"), "エーティー", "贴假名的全大写缩写要交给模型判：" + p2.innerHTML);
+  assert.strictEqual(pairsOf(p2).get("AT"), "エーティー", "贴假名的缩写要按字母名：" + p2.innerHTML);
   const words = [].concat.apply([], asked).map((w) => String(w).toLowerCase());
-  assert.ok(words.indexOf("at") >= 0, "AT 要问模型：" + words.join(","));
+  assert.ok(words.indexOf("at") < 0, "AT 有确定答案（字母名），不该问模型：" + words.join(","));
   assert.ok(words.indexOf("sos") < 0, "SOS 有确定答案（字母名），不该问：" + words.join(","));
   assert.ok(words.indexOf("gon") < 0, "署名行的名字不该问：" + words.join(","));
 });

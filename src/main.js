@@ -565,6 +565,56 @@
     return new RegExp("(?:" + KANA + esc + "|" + esc + KANA + ")").test(s);
   }
 
+  /*
+   * 日语里通行的那批**首字母缩写**：紧贴假名时按**字母名**读。
+   *
+   * 用户截图：`対バンにはATフィールド` 的 `AT` 被读成 **アット**（词典里 at = アット 先命中了），
+   * 该读 **エーティー**（A.T.フィールド）。同类还有 OP 映像 / ED テーマ / CM ソング / BGM…
+   *
+   * 为什么不写一条"全大写 2~3 个字母紧贴假名就逐字母读"的通则：歌词里
+   * `YOU` / `SKY` / `DAY` / `NO` / `GO` / `UP` 也常写成全大写，那几个要按**词**读，
+   * 光看拼写分不出来（`AT` 既是英文介词 at、也是 A.T.）。所以只有这张**人工核过**的表
+   * 才钉成字母名；表外的照旧标成"没把握"、交给大模型按整句判（下面那条规则）。
+   */
+  var GLUED_ACRONYM = {
+    at: "\u30A8\u30FC\u30C6\u30A3\u30FC", // エーティー（ATフィールド）
+    op: "\u30AA\u30FC\u30D4\u30FC", // オーピー（OP映像）
+    ed: "\u30A4\u30FC\u30C7\u30A3\u30FC", // イーディー（EDテーマ）
+    cm: "\u30B7\u30FC\u30A8\u30E0", // シーエム
+    pv: "\u30D4\u30FC\u30D6\u30A4", // ピーブイ
+    mv: "\u30A8\u30E0\u30D6\u30A4", // エムブイ
+    se: "\u30A8\u30B9\u30A4\u30FC", // エスイー（効果音）
+    bgm: "\u30D3\u30FC\u30B8\u30FC\u30A8\u30E0", // ビージーエム
+    iq: "\u30A2\u30A4\u30AD\u30E5\u30FC", // アイキュー
+    dj: "\u30C7\u30A3\u30FC\u30B8\u30A7\u30FC", // ディージェー
+    mc: "\u30A8\u30E0\u30B7\u30FC", // エムシー
+    cg: "\u30B7\u30FC\u30B8\u30FC", // シージー
+    ng: "\u30A8\u30CC\u30B8\u30FC", // エヌジー
+    ol: "\u30AA\u30FC\u30A8\u30EB", // オーエル
+    hp: "\u30A8\u30A4\u30C1\u30D4\u30FC", // エイチピー
+    pc: "\u30D4\u30FC\u30B7\u30FC", // ピーシー
+    sf: "\u30A8\u30B9\u30A8\u30D5", // エスエフ
+  };
+
+  /*
+   * 孤零零一个希腊字母（**不在希腊语行上**时）：读日语里通行的字母名 / 单位读法。
+   *
+   * 用户截图：`無限増幅回路（Ω）` 里的 Ω 是电阻单位 —— 日语读 **オーム**（不是 オメガ）。
+   * 大写 Ω 按单位，小写 ω 保留字母名 オメガ（颜文字里的 ω 由 letters.js 的
+   * "装饰符号粘连"挡住，根本不标）。
+   * 希腊语行上的单字母是**词**（`η` 是冠词、`ω` 是感叹词），照旧走希腊语引擎。
+   */
+  var GREEK_LETTER_KANA = {
+    "\u03B1": "\u30A2\u30EB\u30D5\u30A1", "\u03B2": "\u30D9\u30FC\u30BF", "\u03B3": "\u30AC\u30F3\u30DE",
+    "\u03B4": "\u30C7\u30EB\u30BF", "\u03B5": "\u30A4\u30D7\u30B7\u30ED\u30F3", "\u03B6": "\u30BC\u30FC\u30BF",
+    "\u03B7": "\u30A4\u30FC\u30BF", "\u03B8": "\u30B7\u30FC\u30BF", "\u03B9": "\u30A4\u30AA\u30BF",
+    "\u03BA": "\u30AB\u30C3\u30D1", "\u03BB": "\u30E9\u30E0\u30C0", "\u03BC": "\u30DF\u30E5\u30FC",
+    "\u03BD": "\u30CB\u30E5\u30FC", "\u03BE": "\u30AF\u30B7\u30FC", "\u03BF": "\u30AA\u30DF\u30AF\u30ED\u30F3",
+    "\u03C0": "\u30D1\u30A4", "\u03C1": "\u30ED\u30FC", "\u03C3": "\u30B7\u30B0\u30DE", "\u03C2": "\u30B7\u30B0\u30DE",
+    "\u03C4": "\u30BF\u30A6", "\u03C5": "\u30A6\u30D7\u30B7\u30ED\u30F3", "\u03C6": "\u30D5\u30A1\u30A4",
+    "\u03C7": "\u30AB\u30A4", "\u03C8": "\u30D7\u30B5\u30A4", "\u03C9": "\u30AA\u30E1\u30AC",
+  };
+
   /**
    * 这一行里有没有"成串的大写单字母"（`(A, B)`、`A・B`、`A B C`）。
    *
@@ -711,6 +761,28 @@
      * 扫描时根本不会成词，所以不受影响。
      */
     if (String(word) === "&") return { kana: "アンド", source: "letters", confident: true };
+    /*
+     * 紧贴假名的全大写缩写（`ATフィールド` / `OP映像`）：人工核过的那批按字母名读。
+     * 表外的照旧走下面的"标成没把握"那条，交给大模型按整句判 ——
+     * `YOU` / `SKY` / `DAY` / `NO` 这些也常写成全大写，那几个要按词读（见 GLUED_ACRONYM 的说明）。
+     */
+    if (gluedUpperCase(word, line)) {
+      var acr = GLUED_ACRONYM[String(word).toLowerCase()];
+      if (acr) return { kana: acr, source: "letters", confident: true };
+    }
+    /*
+     * 孤零零一个希腊字母（不在希腊语行上）：读字母名 —— Ω 按日语习惯读 **オーム**
+     * （电阻单位），小写 ω 读 オメガ（见 GREEK_LETTER_KANA 的说明）。
+     */
+    var rawLetter = String(word == null ? "" : word);
+    if (rawLetter.length === 1 && /[\u0370-\u03FF\u1F00-\u1FFF]/.test(rawLetter)) {
+      var letterLang = line ? lineLang(line) : null;
+      if (letterLang !== "el") {
+        if (rawLetter === "\u03A9" || rawLetter === "\u2126") return { kana: "オーム", source: "letters", confident: true };
+        var greekName = GREEK_LETTER_KANA[rawLetter.toLowerCase()];
+        if (greekName) return { kana: greekName, source: "letters", confident: true };
+      }
+    }
     var r = state.reader ? state.reader.read(word) : null;
     /*
      * 「学会的词」（core/learn.js）：模型在两个不同句子里答过同一个读音 → 沉淀成
