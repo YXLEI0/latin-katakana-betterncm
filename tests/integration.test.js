@@ -2281,6 +2281,136 @@ test("斯瓦希里语歌词（用例 3 / 4）：按开音节直读，中文译�
   }
 });
 
+test("拉丁语行的段标 `(A:` / `(B:` 不注音，同行的词照常标", async () => {
+  // 用户截图：用例 7 里 `Vindicia (A: Vanitatum sentio) (B: Sentio dolor, ah dolores)`
+  // —— A / B 是分句标记，头上却出现了读音。判据只看"这个字母后面紧跟冒号"，
+  // 所以 `(A, B)` 那种成串的照样读字母名（用户当初要的就是那个）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Vindicia (A: Vanitatum sentio) (B: Sentio dolor, ah dolores)</p></li>
+  <li class="line"><p>(A, B) 退屈に打つ QTE</p></li>
+  <li class="line"><p>A story of love and I</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+
+  const l0 = linePairs(ps, 0);
+  assert.strictEqual(l0.get("A"), undefined, "段标 A 不许注音：" + JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("B"), undefined, "段标 B 不许注音：" + JSON.stringify([...l0]));
+  // 同行的词一个都不能少
+  assert.strictEqual(l0.get("Vindicia"), "ヴィンディキア");
+  assert.strictEqual(l0.get("Vanitatum"), "ヴァニタトゥム");
+  assert.strictEqual(l0.get("sentio"), "センティオ");
+  assert.strictEqual(l0.get("dolores"), "ドロレス");
+
+  // 反向：成串的大写单字母还是读字母名（这是用户之前点名要的）
+  const l1 = linePairs(ps, 1);
+  assert.strictEqual(l1.get("A"), "エー", JSON.stringify([...l1]));
+  assert.strictEqual(l1.get("B"), "ビー");
+  // 英文行里的冠词 A 照旧
+  const l2 = linePairs(ps, 2);
+  assert.strictEqual(l2.get("A"), "ア", JSON.stringify([...l2]));
+});
+
+test("外语行不做首音校验：拉丁语 vacuum 的 ワクーム 也会被收下（英文行仍然卡）", async () => {
+  // 用户报的「Vacuum 的读音一直是黄的」：黄的 = 规则层（暂定），说明模型答案没被收下。
+  // 根因是首音校验 —— 那套判据按**英语**拼写定的（v → バ行/ヴ），拉丁语的
+  // vacuum 读 ワクーム 就被判成"不是音译"丢掉，而 miss 是永久的（还落盘），
+  // 于是那个词永远停在规则层。现在外语行整行跳过这道校验。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Vacuum, fatuus</p></li>
+  <li class="line"><p>the blorf is loud</p></li>
+</ul></div></div>
+</body></html>`;
+  const asked = [];
+  const env = bootPlugin(HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions", online: false },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const content = JSON.parse(init.body).messages[0].content;
+      const items = JSON.parse(content.slice(content.indexOf("[")));
+      asked.push(items.map((it) => it.w + "@" + String(it.line).slice(0, 12)));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = "ワクーム"; // 模型给的拉丁语读音（英语口径下会被判掉）
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1800);
+
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  assert.ok(asked.length >= 1, "应该问过模型：" + JSON.stringify(asked));
+  assert.ok(asked.some((batch) => batch.some((w) => w.indexOf("vacuum@") === 0)), "vacuum 要问模型：" + JSON.stringify(asked));
+  assert.ok(asked.some((batch) => batch.some((w) => w.indexOf("blorf@") === 0)), "英文行的 blorf 也要问：" + JSON.stringify(asked));
+
+  const latin = linePairs(ps, 0);
+  assert.strictEqual(latin.get("Vacuum"), "ワクーム", "外语行要收下模型答案：" + JSON.stringify([...latin]));
+  assert.strictEqual(latin.get("fatuus"), "ワクーム", "外语行要收下模型答案：" + JSON.stringify([...latin]));
+
+  // 英文行：同一个答案仍然要被首音校验拦住（b 开头的音译首音必须落在 バ行）
+  const en = linePairs(ps, 1);
+  assert.notStrictEqual(en.get("blorf"), "ワクーム", "英文行不许放这种答案进来：" + JSON.stringify([...en]));
+  const rejected = env.api.llm.rejects().filter((r) => String(r.word).toLowerCase() === "blorf");
+  assert.ok(rejected.length >= 1 && rejected[0].why === "没通过首音校验", "英文行要记一条被拒：" + JSON.stringify(env.api.llm.rejects()));
+});
+
+test("一次性清掉旧的「问过但没收下」记录：被误伤的答案会重新问一遍", async () => {
+  // 用户报的「Vacuum 一直是黄的」在真机上还有第二层原因：那条 miss 是**永久**的、
+  // 还落了盘（当时被首音校验判掉了）。校验放宽之后老记录就成了误伤，所以
+  // core/llm.js 载入缓存时会**一次性**把它们清掉（用一个小标记记住，命中不动）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Vacuum, fatuus</p></li>
+</ul></div></div>
+</body></html>`;
+  const legacy = {};
+  legacy["vacuum\u0000Vacuum, fatuus"] = { miss: true, t: Date.now(), said: "ワクーム", why: "没通过首音校验", at: Date.now() };
+  legacy["fatuus\u0000Vacuum, fatuus"] = { k: "ファトゥウス", t: Date.now() }; // 命中：一条都不许动
+
+  const asked = [];
+  const env = bootPlugin(HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions", online: false },
+    legacyKeys: { "western-katakana.llm.v1": JSON.stringify(legacy) },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      const content = JSON.parse(init.body).messages[0].content;
+      const items = JSON.parse(content.slice(content.indexOf("[")));
+      asked.push(items.map((it) => it.w));
+      const out = {};
+      items.forEach((it, i) => {
+        out[String(i + 1)] = "ワクーム";
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1800);
+
+  const words = [].concat.apply([], asked).map((w) => String(w).toLowerCase());
+  assert.ok(words.indexOf("vacuum") >= 0, "被误伤的 vacuum 要重新问：" + JSON.stringify(asked));
+  assert.strictEqual(words.indexOf("fatuus"), -1, "命中过的词不该重问：" + JSON.stringify(asked));
+  // 页面上的 Vacuum 换成了模型答案（不再是规则层的暂定值）
+  const got = linePairs(env.document.querySelectorAll("ul.lyric li p"), 0);
+  assert.strictEqual(got.get("Vacuum"), "ワクーム", JSON.stringify([...got]));
+  // 落盘的缓存里也不该再有那条 miss
+  const raw = JSON.parse(env.window.localStorage.getItem("western-katakana.llm.v1"));
+  assert.ok(!raw["vacuum\u0000Vacuum, fatuus"] || raw["vacuum\u0000Vacuum, fatuus"].miss !== true, "老的 miss 要清掉：" + JSON.stringify(raw));
+});
+
 test("俄语歌词（用例 6）：西里尔字母也注音（词典和罗马音层都读不了它）", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

@@ -628,6 +628,23 @@
     return new RegExp("[*\uFF0A\u00D7\u203B]+\u200B*" + esc + "(?![A-Za-z])").test(s);
   }
 
+  /**
+   * 单个大写字母的**段标**（`(A:` / `B:` / `A：`）：不注音。
+   *
+   * 用户截图：拉丁语歌词里的 `Vindicia (A: Vanitatum sentio) (B: Sentio dolor, …)`
+   * —— 这里的 A / B 是分句、分段的标记，既不是字母名也不是单词。判据只看
+   * "这个字母后面紧跟冒号"，所以 `(A, B)` 那种成串的照样读字母名（用户当初要的
+   * 就是那个），英文行里的冠词 A 也不受影响。
+   */
+  function labelLetter(word, line) {
+    var w = String(word == null ? "" : word);
+    if (!/^[A-Z]$/.test(w)) return false;
+    var s = String(line == null ? "" : line);
+    if (!s) return false;
+    var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(esc + "\\s*[:：]").test(s);
+  }
+
   /** 这段文字里有没有"后面紧跟日语词尾"的重复字母串（打码）—— 给排障用 */
   function looksCensoredRun(text) {
     var s = String(text == null ? "" : text);
@@ -660,11 +677,13 @@
      */
     if (censorLikeRun(word, line)) return null;
     /*
-     * 大写单字母：成串的读字母名（`(A, B)` -> エー / ビー），
+     * 大写单字母：成串的读字母名（`(A, B)` -> エー / ビー），**段标**（`A:` / `B:`）留白，
      * 孤零零一个的照旧 —— `A` 是冠词（ア）、`I` 是代词（アイ），
      * 别的（`B`、`C`…）没法判，还是留白（返回 null 表示"这词不标"）。
      */
     if (/^[A-Z]$/.test(String(word == null ? "" : word))) {
+      // 段标不注音，而且要排在字母名前面：`(A:` 这种既像字母名又不是
+      if (labelLetter(word, line)) return null;
       if (line && lineLetterRun(line)) {
         var letterKana =
           typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[String(word).toLowerCase()] : null;
@@ -749,6 +768,25 @@
       kana = d[key];
     }
     return !!kana && kana !== rom;
+  }
+
+  /**
+   * 在线层拿回来的答案过不过关（两层共用）。
+   *
+   * 第一道是**纯片假名**（由各层自己判），第二道是**首音校验**：
+   * `looksLikeTransliteration` 拦的是"意译 / 拟声词"——用户报的 `tick` 被回成
+   * カチカチ 就是这种。
+   *
+   * **但那套判据是按英语拼写定的**（t→タ行、v→バ行…），外语行上会误伤：
+   * 拉丁语的 v 读 ヴ 也读 ワ（`vacuum` → ワクーム 被判掉过，德语 w→ヴ、
+   * x→クス 英语里根本没有）。所以**外语行整行不做这道校验** —— 那一行的语种
+   * 我们已经认出来了，模型也拿得到整句，用英语口径去卡只会把正确答案丢掉。
+   * （丢掉的后果特别难查：那条 miss 是永久的、还落盘，那个词就永远停在规则层。）
+   */
+  function validateAnswer(word, kana, line) {
+    if (typeof WKReading === "undefined") return true;
+    if (line && lineLang(line)) return true;
+    return WKReading.looksLikeTransliteration(word, kana);
   }
 
   function resolveReading(word, line) {    if (!state.reader) return null;
@@ -1792,9 +1830,7 @@
       state.corrector = WKCorrect.createCorrector({
         online: config.online,
         // 纯片假名还不够：还要像这个词的音译（tick 不能被回成 カチカチ）
-        validate: function (word, kana) {
-          return typeof WKReading === "undefined" ? true : WKReading.looksLikeTransliteration(word, kana);
-        },
+        validate: validateAnswer,
         // 免费接口没有 token 概念，用请求数 + 字符数记账
         onUsage: function (fields) {
           if (state.usage) state.usage.add("google", fields);
@@ -1883,9 +1919,7 @@
             }
           },
           // 同上：拦住"意译/拟声词"（用户报的 tick -> カチカチ）
-          validate: function (word, kana) {
-            return typeof WKReading === "undefined" ? true : WKReading.looksLikeTransliteration(word, kana);
-          },
+          validate: validateAnswer,
           log: function () {
             trace("llm", Array.prototype.join.call(arguments, " "));
             if (config.verbose) console.log.apply(console, [LOG].concat(Array.prototype.slice.call(arguments)));

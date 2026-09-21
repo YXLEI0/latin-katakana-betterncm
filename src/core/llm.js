@@ -247,6 +247,7 @@
      * 答案校验：由上层注入（main.js 传 reading.js 的 looksLikeTransliteration）。
      * 光看"纯片假名"拦不住**意译/拟声词** —— 用户报的 tick -> カチカチ 就是这种，
      * 校验不过就按 miss 处理（记下来，别再问同一个词）。
+     * 第三个参数是这个词所在的整句：上层用它判断"这行是不是外语"，外语行不做首音校验。
      */
     var validate = typeof options.validate === "function" ? options.validate : null;
     /*
@@ -274,6 +275,40 @@
      */
     var byWord = {};
     var persisted = loadCache();
+    /*
+     * 一次性清掉旧的「问过但没收下」记录（miss）。
+     *
+     * 为什么要有这一手：答案校验刚刚放宽了 —— 首音校验那套判据是按**英语**拼写
+     * 定的，外语行上会误伤（拉丁语 vacuum 的 ワクーム 就被判掉过，德语 w→ヴ、
+     * 拉丁语 v→ヴ/ワ 这些对应关系英语里根本没有）。老 miss 里混着正确答案，
+     * 而 miss 是**永久**的、还落了盘 —— 不主动清一次，那个词会永远停在规则层
+     * （用户截图里的「Vacuum 一直是黄的」就是这么来的）。
+     *
+     * 只清一次（用一个标记记住），命中的缓存一条都不动。
+     */
+    (function purgeStaleMisses() {
+      var FLAG = "western-katakana.llm.misspurge1";
+      try {
+        if (typeof localStorage === "undefined" || localStorage.getItem(FLAG)) return;
+        localStorage.setItem(FLAG, "1");
+      } catch (e) {
+        return; // localStorage 不可用就别动缓存
+      }
+      var dropped = 0;
+      for (var k in persisted) {
+        if (Object.prototype.hasOwnProperty.call(persisted, k) && persisted[k] && persisted[k].miss === true) {
+          delete persisted[k];
+          dropped++;
+        }
+      }
+      if (!dropped) return;
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(persisted));
+      } catch (e2) {
+        /* 写不进去也没关系：内存里已经清掉了 */
+      }
+      log("清掉 " + dropped + " 条旧的「问过但没收下」记录（校验放宽了，里面可能有被误伤的正确答案）");
+    })();
     var queue = []; // 待问的词（数组，保持入队顺序）
     var queued = new Set(); // 去重
     var inflight = false;
@@ -653,7 +688,8 @@
         if (!said) why = "模型没给";
         else if (!RE_KATAKANA.test(said)) why = "不是纯片假名";
         else if (said.length > 14) why = "太长了（>14）";
-        else if (validate && !validate(item.word, said)) why = "没通过首音校验";
+        // 第三个参数是这个词所在的整句（队列条目里叫 context，提示词里叫 line）
+        else if (validate && !validate(item.word, said, item.context || item.line)) why = "没通过首音校验";
         if (!why) {
           mem.set(item.key, { k: said });
           byWord[item.word] = said; // 外层索引：给 peek()/控制台用
