@@ -126,6 +126,40 @@
         }
       }
       trim();
+      purgeSingleLetters();
+    }
+
+    /*
+     * 一次性清掉「单字母」词条。
+     *
+     * 为什么：单字母的读音**取决于语境** —— 英文里的冠词 `a`（ア）、字母名
+     * （`(A, B)` エー）、段标（`(A:` 不标）。词级词条（不带语境）钉死一个必然出错：
+     * 用户机器上就攒了 `a → アー`（模型在 `(A:` 那种行里答的），于是拉丁语歌词里
+     * 的段标 A 一直带着 アー —— 光加"段标不注音"的规则还不够，得把这条老词条清掉。
+     *
+     * 只清一次（用一个小标记记住）；以后也不会再收（见 main.js 的 onAnswer 过滤）。
+     */
+    function purgeSingleLetters() {
+      var FLAG = "western-katakana.learned.purge1";
+      try {
+        if (!storage || storage.getItem(FLAG)) return;
+        storage.setItem(FLAG, "1");
+      } catch (e) {
+        return;
+      }
+      var dropped = 0;
+      for (var k in words) {
+        if (!Object.prototype.hasOwnProperty.call(words, k)) continue;
+        if (k.length === 1) {
+          delete words[k];
+          dropped++;
+        }
+      }
+      for (var s in seen) {
+        if (!Object.prototype.hasOwnProperty.call(seen, s)) continue;
+        if (s.length === 1) delete seen[s];
+      }
+      if (dropped) save();
     }
 
     function isKana(kana) {

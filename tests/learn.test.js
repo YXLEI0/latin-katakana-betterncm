@@ -104,15 +104,30 @@ test("落盘 + 重启后还在：换个实例读同一份 localStorage 也能拿
 
 test("localStorage 里的脏数据一律忽略，不能把插件搞崩", () => {
   const KEY = "western-katakana.learned.v1";
-  for (const raw of ["不是 JSON", "null", "[]", '{"words":"x"}', '{"words":{"a":{"k":"漢字"}}}', '{"words":{"b":{"k":"ア"}}}']) {
+  for (const raw of ["不是 JSON", "null", "[]", '{"words":"x"}', '{"words":{"muse":{"k":"漢字"}}}', '{"words":{"muse":{"k":""}}}', '{"words":{"muse":42}}']) {
     const storage = fakeStorage({ [KEY]: raw });
     const s = newStore({ storage: storage });
-    assert.doesNotThrow(() => s.get("a"));
-    assert.strictEqual(s.get("a"), null, "脏数据不能被当成词条：" + raw);
+    assert.doesNotThrow(() => s.get("muse"));
+    assert.strictEqual(s.stats().count, 0, "坏数据一条都不该进来：" + raw);
+    assert.strictEqual(s.get("muse"), null, "脏数据不能被当成词条：" + raw);
   }
-  // 唯一合法的那条要留下
-  const ok = newStore({ storage: fakeStorage({ [KEY]: '{"words":{"b":{"k":"ア"}}}' }) });
-  assert.strictEqual(ok.get("b"), "ア");
+  // 同一份数据里好坏混着时：只丢坏的那条，合法的照旧能用
+  const ok = newStore({ storage: fakeStorage({ [KEY]: '{"words":{"muse":{"k":"ア"},"bad":{"k":"漢字"}}}' }) });
+  assert.strictEqual(ok.get("muse"), "ア");
+  assert.strictEqual(ok.get("bad"), null);
+  assert.strictEqual(ok.stats().count, 1);
+});
+
+test("单字母词条一律不收：载入时清掉老的，之后也不会被沉淀", () => {
+  // 单字母的读音取决于语境（冠词 a ア / 字母名 (A, B) エー / 段标 (A: 不标），
+  // 词级词条钉死一个必然出错 —— 用户机器上就攒了 `a → アー`，
+  // 于是拉丁语歌词里的段标一直带着读音。
+  const KEY = "western-katakana.learned.v1";
+  const storage = fakeStorage({ [KEY]: JSON.stringify({ version: 1, words: { a: { k: "アー", at: 1 }, muse: { k: "ミューズ", at: 2 } }, seen: {} }) });
+  const s = newStore({ storage: storage });
+  assert.strictEqual(s.get("a"), null, "单字母老词条要清掉");
+  assert.strictEqual(s.get("muse"), "ミューズ", "别的词条一条都不许动");
+  assert.ok(storage._map[KEY].indexOf("アー") < 0, "清理要落盘：" + storage._map[KEY]);
 });
 
 test("上限：超了就丢最久没用过的", async () => {

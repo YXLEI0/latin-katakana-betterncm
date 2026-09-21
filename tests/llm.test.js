@@ -80,6 +80,43 @@ function makeClient(ctx, opts) {
   return { client, calls, updates, statuses };
 }
 
+// ============================================================ 回答被截断要抢救
+
+test("回答被截断（JSON 不完整）时：能对上的先收下，批次减半，没抢到的不算永久 miss", async () => {
+  // 用户机器上的轨迹里反复出现「大模型请求失败（响应里没有 JSON），120s 后再试」：
+  // 一批 29~30 个词时回答可能被 max_tokens 截断（尾部没有 `}`），老代码会整批丢掉、
+  // 原样重发同一批、再失败 —— 那些词就永远停在规则层（用户看到的"一直是黄的"）。
+  const ctx = loadCore();
+  const truncReply = () => '{"1":"イチ","2":"ニ","3":"サン","4":"ヨン"'; // 故意少了结尾的 }
+  const c = makeClient(ctx, { reply: truncReply, batchSize: 10 });
+  const words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet"];
+  for (const w of words) c.client.lookup(w, "line one");
+  await c.client.flush();
+
+  // 抢救出来的先收下（4 条）
+  assert.strictEqual(c.client.peek("alpha"), "イチ", "抢救到的答案要收下");
+  assert.strictEqual(c.client.peek("delta"), "ヨン");
+  // 没抢到的（后面的词）**不记 miss**：它们还得能重问
+  assert.strictEqual(c.client.peek("juliet"), null);
+  assert.strictEqual(c.client.stats().missesCached, 0, "截断不是模型的错，不许记成永久 miss");
+  // 批次自适应减半：下一轮用更小的批，回答才不会被截断
+  assert.strictEqual(c.client.stats().batchCap, 5, "批次要减半：" + c.client.stats().batchCap);
+  assert.strictEqual(c.client.stats().requests, 1, "这一批算成功（有抢救到的结果）");
+  assert.ok(c.client.stats().hits >= 4, "命中数：" + c.client.stats().hits);
+});
+
+test("完全解析不出 JSON 时：按失败处理（退避重试），并且批次也减半", async () => {
+  const ctx = loadCore();
+  const c = makeClient(ctx, { reply: () => "抱歉，我不能回答这个问题。", batchSize: 10, cooldownMs: 1 });
+  for (const w of ["alpha", "bravo"]) c.client.lookup(w, "line one");
+  await c.client.flush();
+
+  assert.strictEqual(c.client.stats().failures, 1, "要记一次失败");
+  assert.ok(/没有 JSON/.test(c.client.stats().lastError), "错误要说清是没解析出 JSON：" + c.client.stats().lastError);
+  assert.ok(/截断|10 个词/.test(c.client.stats().lastError) || c.client.stats().batchCap === 5, "批次要减半：" + JSON.stringify({ cap: c.client.stats().batchCap, err: c.client.stats().lastError }));
+  assert.strictEqual(c.client.stats().missesCached, 0, "失败不写永久 miss");
+});
+
 // ============================================================ 被拒的答案要留痕
 
 /** 和 main.js 一样把首音校验注入进去（不注入的话什么答案都会被收下） */

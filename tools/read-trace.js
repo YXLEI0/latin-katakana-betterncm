@@ -229,6 +229,12 @@ function lastStamp(text) {
 }
 
 let best = { text: "", where: "", stamp: "" };
+/*
+ * 不是轨迹数组的键（比如大模型缓存 `*.llm.v1`、学会的词 `*.learned.v1`）里
+ * **没有时间戳行**，上面那套"谁的最后一行最新用谁"就选不出东西来（`"" > ""` 恒假），
+ * 于是明明读到了值却报"没找到键"。所以另留一份"最长的那个值"兜底。
+ */
+let bestRaw = { text: "", where: "" };
 for (const x of files) {
   const dst = path.join(tmp, x.f);
   try {
@@ -250,12 +256,16 @@ for (const x of files) {
     if (text.length > local.text.length) local = { text, where: x.f, stamp: lastStamp(text) };
   }
   if (local.text) {
-    console.log(`--- ${x.f} (${x.size}B) 条目 ${entries.length}，轨迹 ${local.text.length} 字符，最后一行 ${local.stamp}`);
+    console.log(`--- ${x.f} (${x.size}B) 条目 ${entries.length}，值 ${local.text.length} 字符${local.stamp ? "，最后一行 " + local.stamp : ""}`);
+    if (local.text.length > bestRaw.text.length) bestRaw = { text: local.text, where: local.where };
     if (local.stamp > best.stamp) best = local;
   } else {
     console.log(`--- ${x.f} (${x.size}B) 条目 ${entries.length}，没有这个键`);
   }
 }
+
+// 没有时间戳的键（缓存 / 词表）就用"最长的那个值"；轨迹仍然按时间戳选
+if (!best.text && bestRaw.text) best = { text: bestRaw.text, where: bestRaw.where, stamp: "" };
 
 try {
   fs.rmSync(tmp, { recursive: true, force: true });

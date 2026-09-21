@@ -2315,6 +2315,41 @@ test("拉丁语行的段标 `(A:` / `(B:` 不注音，同行的词照常标", as
   assert.strictEqual(l2.get("A"), "ア", JSON.stringify([...l2]));
 });
 
+test("段标不会被「学会的词」带出读音；呼语 O 读 オー", async () => {
+  // 两条都是用户截图上来的：
+  //   1. `Ah senta (A: …` 里的 A 一直带着 アー —— 光加"段标不注音"还不够：
+  //      机器上早就攒了一条 **词级**的 `a → アー`（模型在 `(A:` 那种行里答的、
+  //      答稳了两次被沉淀成离线词条），而"学会的词"排在所有规则前面，把规则绕过去了。
+  //      现在段标判定排在最前面，并且单字母不再沉淀、老词条一次性清掉。
+  //   2. `O Chrysalis` 里的 O 是呼语（"哦 / 啊"），该读 オー —— 用户点名要它标上。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Ah senta (A: Dolores sentio)</p></li>
+  <li class="line"><p>O Chrysalis</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, {
+    config: { online: false, llmEnabled: false },
+    // 模拟真机：老版本攒下来的单字母词条
+    legacyKeys: {
+      "western-katakana.learned.v1": JSON.stringify({ version: 1, words: { a: { k: "アー", at: 1 } }, seen: {} }),
+    },
+  });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+
+  const l0 = linePairs(ps, 0);
+  assert.strictEqual(l0.get("A"), undefined, "段标 A 不许注音（学会的词也不行）：" + JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("Ah"), "アー", JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("Dolores"), "ドロレス");
+  // 老的单字母词条要被一次性清掉（以后也不会再收）
+  assert.deepStrictEqual([...env.api.learn.list()], [], "单字母的老词条要清掉：" + JSON.stringify([...env.api.learn.list()]));
+
+  const l1 = linePairs(ps, 1);
+  assert.strictEqual(l1.get("O"), "オー", "呼语 O 要注音：" + JSON.stringify([...l1]));
+});
+
 test("外语行不做首音校验：拉丁语 vacuum 的 ワクーム 也会被收下（英文行仍然卡）", async () => {
   // 用户报的「Vacuum 的读音一直是黄的」：黄的 = 规则层（暂定），说明模型答案没被收下。
   // 根因是首音校验 —— 那套判据按**英语**拼写定的（v → バ行/ヴ），拉丁语的

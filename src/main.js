@@ -659,6 +659,12 @@
 
   function localReading(word, line) {
     /*
+     * 段标（`(A:` / `B:`）**排在所有层前面**：它压根不该有读音，
+     * 缓存里有没有都不该有 —— 用户机器上就攒过 `a → アー`（模型在 `(A:` 那种行里
+     * 答的），那条「学会的词」会把这条规则整个绕过去。所以这一判最先做。
+     */
+    if (labelLetter(word, line)) return null;
+    /*
      * 先看「学会的词」（core/learn.js）：模型在两个不同句子里答过同一个读音、
      * 而且和本地层不一样 —— 这种已经沉淀成离线词条了，**不再问模型**（省钱就在这）。
      * 它的名次按离线词典算（见 effectiveRank），所以在线层不会再覆盖它。
@@ -682,8 +688,13 @@
      * 别的（`B`、`C`…）没法判，还是留白（返回 null 表示"这词不标"）。
      */
     if (/^[A-Z]$/.test(String(word == null ? "" : word))) {
-      // 段标不注音，而且要排在字母名前面：`(A:` 这种既像字母名又不是
-      if (labelLetter(word, line)) return null;
+      /*
+       * 呼语 `O`（`O Chrysalis` / `O love`）读 オー。
+       *
+       * 用户截图点名要它标上：歌词里这个 O 是"哦 / 啊"那种呼唤语气（拉丁语、英语、
+       * 意大利语都这么写），不是排版噪声；字母名本来也就是 オー，两回事一样的结果。
+       */
+      if (String(word) === "O") return { kana: "オー", source: "letters", confident: true };
       if (line && lineLetterRun(line)) {
         var letterKana =
           typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[String(word).toLowerCase()] : null;
@@ -1898,6 +1909,13 @@
            */
           onAnswer: function (word, kana, line) {
             if (!state.learned) return;
+            /*
+             * 单字母不沉淀：它的读音**取决于语境**（冠词 `a` ア、字母名
+             * `(A, B)` エー、段标 `(A:` 不标），词级词条钉死一个必然出错 ——
+             * 用户机器上那条 `a → アー` 就是这么来的（模型在 `(A:` 的行里答的），
+             * 结果拉丁语歌词里的段标一直带着 アー。和"两可短音节不收"同一个道理。
+             */
+            if (/^[A-Za-z]$/.test(word)) return;
             var local = state.reader ? state.reader.read(word) : null;
             if (!local || !local.kana) return;
             if (isTwoWayShort(word, local.kana)) return;

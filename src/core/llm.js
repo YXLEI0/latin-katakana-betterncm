@@ -152,6 +152,28 @@
   }
 
   /** 尽力把响应体读成字符串（读不到就给空串，绝不 reject） */
+  /**
+   * 宽松抢救：把 `"下标": "读音"` / `"词": "读音"` 逐条抠出来。
+   *
+   * 用在**回答被截断**（JSON 不完整）的时候：能对上的先收下，剩下的不算
+   * "模型没给"（那是永久 miss），留给下一轮重问 —— 批次同时会减半，
+   * 所以下一轮大概率能拿到完整回答。
+   */
+  function salvageJson(text) {
+    if (typeof text !== "string" || !text) return null;
+    var out = {};
+    var n = 0;
+    var re = /"?([0-9]+|[A-Za-z][A-Za-z0-9' _-]*)"?\s*:\s*"([^"\\]{1,24})"/g;
+    var m;
+    while ((m = re.exec(text))) {
+      if (out[m[1]] === undefined) {
+        out[m[1]] = m[2];
+        n++;
+      }
+    }
+    return n ? out : null;
+  }
+
   function readBody(res) {
     try {
       if (res && typeof res.text === "function") {
@@ -624,7 +646,22 @@
           var content =
             data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
           var obj = pickJson(content);
-          if (!obj) throw new Error("响应里没有 JSON");
+          /*
+           * 严格解析失败时**抢救**一遍，而不是整批丢掉。
+           *
+           * 用户机器上的轨迹里反复出现「响应里没有 JSON」：一批 29~30 个词时回答
+           * 可能被 max_tokens 截断（尾部没有 `}`），pickJson 会全盘否掉；接着按
+           * 退避重发**同一批**，于是再失败 —— 那些词就永远停在规则层（用户看到的
+           * "一直是黄的，大模型没来矫正"）。抢救能对上的条目 + 把批次减半，
+           * 这个循环就断开了。
+           */
+          var partial = false;
+          if (!obj) {
+            obj = salvageJson(content);
+            if (!obj) throw new Error("响应里没有 JSON：" + String(content == null ? "" : content).slice(0, 120));
+            partial = true;
+            log("模型的回答不是完整 JSON（可能被截断），抢救出 " + Object.keys(obj).length + " 条");
+          }
           // 记 token：接口给了 usage 就用它，没给就只记次数
           var u = data && data.usage;
           onUsage({
@@ -635,7 +672,7 @@
             promptTokens: u && typeof u.prompt_tokens === "number" ? u.prompt_tokens : 0,
             completionTokens: u && typeof u.completion_tokens === "number" ? u.completion_tokens : 0,
           });
-          applyBatch(batch, obj);
+          applyBatch(batch, obj, partial);
           return true;
         })
         .catch(function (err) {
@@ -651,8 +688,12 @@
         });
     }
 
-    /** 一批词回来了：合法的记命中，模型没给/给错的记 miss（不再问第二次） */
-    function applyBatch(batch, obj) {
+    /**
+     * 一批词回来了：合法的记命中，模型没给/给错的记 miss（不再问第二次）。
+     * partial=true 表示这次回答被截断、只抢救回来一部分（见 salvageJson）——
+     * 那种情况下没抢到的条目**不记 miss**，留给下一轮重问。
+     */
+    function applyBatch(batch, obj, partial) {
       var hits = 0;
       var missed = 0;
       /*
@@ -709,6 +750,15 @@
           }
         } else {
           /*
+           * 「回答被截断」时抢出来的那几条：没抢到的**不记 miss**，留给下一轮重问。
+           *
+           * 为什么要区别对待：miss 是**永久**的（还落盘），只有"模型明确给不出/
+           * 给错了"才该记。截断是我们这边的批次太大造成的，记成 miss 就等于
+           * 因为一次截断把那些词永久钉在规则层（用户报的正是"一直是黄的"）。
+           * 它们没进 mem，下一轮 lookup() 会重新入队 —— 而批次同时已经减半。
+           */
+          if (partial) continue;
+          /*
            * 记成"问过、没结果"：这一句里的这个词下一轮不会再发。
            *
            * 注意它是**永久**的（会落 localStorage）—— 模型当时给的答案被我们判掉了，
@@ -728,8 +778,17 @@
       cooldownMs = cooldownBase;
       cooldownUntil = 0;
       failedSinceHit = 0;
-      // 这一批成了 -> 自适应上限也恢复（之前可能因为超时被减半过）
-      if (batchCap) {
+      /*
+       * 这一批成了 -> 自适应上限也恢复（之前可能因为超时被减半过）。
+       * **例外**：回答被截断（partial）时不但不恢复，还要减半 —— 就是批次太大
+       * 才被截断的，下一轮用更小的批去试，那些没抢到的词才拿得到答案。
+       */
+      if (partial) {
+        var half = Math.max(5, Math.floor((batch.length || cfg.batchSize) / 2));
+        batchCap = half;
+        stats.batchCap = half;
+        lastError = "回答被截断（这批 " + batch.length + " 个词），下次改成 " + half + " 个再试";
+      } else if (batchCap) {
         batchCap = 0;
         stats.batchCap = 0;
       }
@@ -762,8 +821,12 @@
        * 超时（"The user aborted a request."）多半是这批太大 / 服务商在排队：
        * 把自适应批次减半，下一轮用更小的批去试，成功之后自动恢复。
        * 只减不加，所以不会来回震荡。
+       *
+       * 「响应里没有 JSON」也走这条路：回答被 max_tokens 截断时 JSON 不完整，
+       * 原样重发同一批只会再失败一次（真机轨迹里就是这么循环的 —— 那批词
+       * 永远停在规则层）。减半之后批次小了，回答就不再被截断。
        */
-      if (isTimeoutError(err)) {
+      if (isTimeoutError(err) || /没有 JSON/.test(raw)) {
         // 按**这一批实际的大小**减半（而不是配置里的上限）：这次发出去多少，
         // 下次就砍一半，最贴近"这批太大了"的实际原因；下限 5 个。
         var base = batch.length || (batchCap > 0 ? batchCap : cfg.batchSize);
