@@ -4,6 +4,24 @@
 
 首个版本：给日语歌歌词里的**西文字母**（拉丁 / 西里尔 / 希腊）标注**片假名读音**。
 
+### 单个 `*` 不再是打码 + 带假名的行不判外语（`Ave` 两行两个读音）（本次）
+
+用户两张截图：
+
+**一、`(*teto sax solo)` 里的 `teto` 没标**（同一行 `sax` サックス / `solo` ソロ 都标了）
+
+- 根因：`censoredBefore` 的判据是"紧跟在 `*`／`＊`／`×`／`※` 之后就不标"（给 `****ed` 里的 `ed` 定的），单个 `*` 也命中了 —— 而单个 `*` / `※` 是**脚注 / 演奏提示**，后面往往是一个完整的词
+- 现在要求**两个以上**才算打码：`****ed` 的 `ed` 照旧留白，`(*teto sax solo)` 的 `teto` 读 テト
+
+**二、同一个 `Ave` 两行两个读音**（`アヴェ` / `アベ`）
+
+- 截图里 `Ave Musica...仮面の民は誘う(Fortuna)` 的 Ave 是 **アヴェ**（规则层），而 `Ave Musica...安らかな世界へ(Lacrima)` 里是 **アベ**（词典 —— 用户点名过"Ave Mujica 官方读 アベ"）
+- 根因：前者被 `detect` 判成了**拉丁语行**（`ave` 在拉丁语词表里、`Musica`/`Fortuna` 又是拉丁词形），于是整行走规则层 —— `localReading` 里拉丁语行对所有词都 `needEngine`，手工核过的词典条目被引擎盖掉；后者没判成拉丁语，所以词典生效
+- 现在：**有假名的行就是日语行，不做外语判定**（`core/langs.js` 的 `detect`）—— 日语歌里的拉丁词照旧"词典优先"，两个 Ave 都是 アベ。纯拉丁语行（用户的用例 2/5/7）不受影响，仍然走引擎
+
+测试：integration 新增一条（两行 Ave 必须同音 + 有假名的行不判外语）、打码那条补上 `(*teto sax solo)`。全套 **333 → 334 全绿**，`npm run check` 0 警告。
+
+
 ### 制作信息行：乐器 / 工种的长尾也认得出（用户的 HOYO-MiX 署名表）（本次）
 
 用户贴了一整块署名（作词 Lyricist / 作曲 Composer / 管弦配器 Orchestrator / 编曲（电子）Arranger / 演唱 Voice / 尺八 Shakuhachi / 乐队 Orchestra / 录音棚 Recording Studio / 录音师 Recording Engineer / 出品 Produced by / 音频编辑 Editing Engineer / 混音师 Mixing Engineer / 母带制作 Mastering Engineer），截图是 `尺八 Shakuhachi：顾剑楠 Jiannan Gu` 那行 —— 名字被注上了音。

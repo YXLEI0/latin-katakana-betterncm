@@ -1966,6 +1966,23 @@ test("打码的 `****ed`、采样行、以及全大写的 `DIVA`", async () => {
 
   assert.strictEqual(rubyCount(ps[1]), 0, "采样署名行整行不注音：" + ps[1].innerHTML);
 
+  // 单个 `*` 是脚注 / 演奏提示，不是打码：`(*teto sax solo)` 里的 teto 要标
+  // （用户截图：那一行 sax サックス / solo ソロ 都标了，就 teto 空着）
+  const NOTE_HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>(*teto sax solo)</p></li>
+</ul></div></div>
+</body></html>`;
+  const env2 = bootPlugin(NOTE_HTML, { config: { online: false, llmEnabled: false } });
+  await env2.runLoad();
+  await sleep(300);
+  const noteP = env2.document.querySelector("ul.lyric li p");
+  const note = new Map(
+    [...noteP.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+  );
+  assert.strictEqual(note.get("teto"), "テト", "单个 * 后面的完整词要标：" + noteP.innerHTML);
+  assert.strictEqual(note.get("solo"), "ソロ", JSON.stringify([...note]));
+
   assert.strictEqual(
     new Map([...ps[2].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])).get("DIVA"),
     "ディーヴァ",
@@ -2537,6 +2554,33 @@ ${CREDITS.map((c) => '  <li class="line"><p>' + c + "</p></li>").join("\n")}
   await sleep(300);
   const ps2 = env2.document.querySelectorAll("ul.lyric li p");
   assert.ok(rubyCount(ps2[1]) > 0, "周围不是署名行时不该连它也跳过：" + ps2[1].innerHTML);
+});
+
+test("日语行里的拉丁词走词典：同一个 `Ave` 不许两行两个读音", async () => {
+  // 用户截图：`Ave Musica...仮面の民は誘う(Fortuna)` 里 Ave 被读成 **アヴェ**（拉丁语引擎），
+  // 而同一首歌的 `Ave Musica...安らかな世界へ(Lacrima)` 里是 **アベ**（词典，用户点名
+  // "Ave Mujica 官方读 アベ"）。根因：前者被判成了拉丁语行（`ave` 在拉丁语词表里），
+  // 整行走规则层、把词典盖掉了；后者没判成拉丁语，所以词典生效。
+  //
+  // 现在：**有假名的行就是日语行**，不做外语判定 —— 日语歌里的拉丁词照旧"词典优先"。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Ave Musica...仮面の民は誘う(Fortuna)</p></li>
+  <li class="line"><p>Ave Musica...安らかな世界へ(Lacrima)</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+
+  const l0 = linePairs(ps, 0);
+  const l1 = linePairs(ps, 1);
+  assert.strictEqual(l0.get("Ave"), "アベ", "日语行里走词典：" + JSON.stringify([...l0]));
+  assert.strictEqual(l1.get("Ave"), "アベ", JSON.stringify([...l1]));
+  assert.strictEqual(l0.get("Ave"), l1.get("Ave"), "同一个词两行必须同一个读音");
+  // 纯拉丁语行仍然走引擎（那才是拉丁语），这条由 langs.test.js 的用例守着
+  assert.strictEqual(env.api.lang("Ave Musica...仮面の民は誘う(Fortuna)").id, null, "有假名的行不判外语");
 });
 
 test("俄语歌词（用例 6）：西里尔字母也注音（词典和罗马音层都读不了它）", async () => {

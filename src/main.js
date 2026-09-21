@@ -616,16 +616,20 @@
   }
 
   /**
-   * 紧挨在打码符号后面的词（`****ed` 里的 `ed`、`***ing` 里的 `ing`）：
+   * 紧挨在**打码符号**后面的词（`****ed` 里的 `ed`、`***ing` 里的 `ing`）：
    * 那是被隐去的词的一部分，单个片段没有意义 —— 不标。
    * 用户截图：`Oh, I'll be ****ed up` 里只有 `ed` 头上有 エド。
+   *
+   * **两个以上才算打码**：单个 `*` / `※` 是脚注或演奏提示，后面往往是一个完整的词
+   * （用户截图 `(*teto sax solo)` —— `teto` 被当成 `****ed` 的碎片跳过了，
+   * 那一行里 `sax` / `solo` 都标了、就它空着）。
    */
   function censoredBefore(word, line) {
     var w = String(word == null ? "" : word);
     var s = String(line == null ? "" : line);
     if (!w || !s) return false;
     var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp("[*\uFF0A\u00D7\u203B]+\u200B*" + esc + "(?![A-Za-z])").test(s);
+    return new RegExp("[*\uFF0A\u00D7\u203B]{2,}\u200B*" + esc + "(?![A-Za-z])").test(s);
   }
 
   /**

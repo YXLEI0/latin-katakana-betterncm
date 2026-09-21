@@ -1407,6 +1407,17 @@
     if (!s) return null;
     if (/[\u0400-\u04FF]/.test(s)) return "ru";
     if (/[\u0370-\u03FF\u1F00-\u1FFF]/.test(s)) return "el";
+    /*
+     * 有**假名**的行就是日语行，不做外语判定。
+     *
+     * 用户截图：`Ave Musica...仮面の民は誘う(Fortuna)` 被判成了拉丁语，于是整行
+     * 走规则层 —— 手工核过的 `ave アベ`（用户点名"Ave Mujica 官方读 アベ"）被引擎的
+     * アヴェ 盖掉；而同一首歌里 `Ave Musica...安らかな世界へ(Lacrima)` 没被判成拉丁语、
+     * 读的是词典的 アベ —— 同一个词两行两个读音。
+     * 日语歌里的拉丁词该走"词典优先"那条路（和大写单字母、段标同一个道理）：
+     * 那一行是日语，不是拉丁语。
+     */
+    if (/[\u3041-\u3096\u30A1-\u30FA]/.test(s)) return null;
 
     var cands = [];
     var reading = dep("WKReading");
