@@ -69,14 +69,15 @@ test("连字符串起来的长词要拆开：Looser-Krankheit-Was 是三个词�
   const toks = letters.scan("A-Z Looser-Krankheit-Was IS das?");
   assert.deepStrictEqual(
     toks.map((t) => t.text),
-    ["A-Z", "Looser", "Krankheit", "Was", "IS", "das"],
-    "A-Z 是记号（逐字母读），后面三个各自成词"
+    ["A", "Z", "Looser", "Krankheit", "Was", "IS", "das"],
+    "A-Z 是记号（逐字母读，拆成一个字母一个词），后面几个各自成词"
   );
-  assert.strictEqual(toks[0].notation, true, "A-Z 仍然是记号");
-  // 位置要能对上原文，注音层靠它把 ruby 插在正确的位置（连字符留成普通文本）
+  assert.strictEqual(toks[0].notation, true, "A 是记号零件");
+  assert.strictEqual(toks[1].notation, true, "Z 是记号零件");
+  // 位置要能对上原文，注音层靠它把 ruby 插在正确的位置（分隔符留成普通文本）
   for (const t of toks) assert.strictEqual("A-Z Looser-Krankheit-Was IS das?".slice(t.start, t.end), t.text);
   assert.deepStrictEqual(
-    toks.slice(1, 4).map((t) => t.norm),
+    toks.slice(2, 5).map((t) => t.norm),
     ["looser", "krankheit", "was"]
   );
 
@@ -153,24 +154,39 @@ test("looksReadable：单字母默认不标，但 a / I / o 是真词要标", ()
   assert.strictEqual(lo["tragedia"], true);
 });
 
-test("记号整体算一个词：D/N/A / N/A / A.B.C / R&B / X-Y", () => {
-  // 用户报的：`だって D/N/Aじゃ 騙れない`。记号不该被切成三个单字母，
-  // 而是整体逐字母读（reading.js 的 notationToKatakana）。
+test("记号拆成一个字母一个词：D/N/A / N/A / A.B.C / R&B / X-Y / M・I・D・I", () => {
+  // 用户先报：`だって D/N/Aじゃ 騙れない` 里的 A 被读成 ア（该读字母名）。
+  // 后来又报：`M·I·D·I` 上面压着一整条 `エムアイディーアイ`，
+  // "能不能分别注在每个字母上" —— 于是记号**拆成一个字母一个词**，
+  // 每个字母各标一个 ruby（读音由 main.js 的 lineLetterRun 判成字母名）。
   const cases = [
-    ["D/N/A", "d/n/a"],
-    ["N/A", "n/a"],
-    ["A.B.C", "a.b.c"],
-    ["R&B", "r&b"],
-    ["X-Y", "xy"], // 连字符会在 normalize 里被吃掉 —— 所以读音层要拿**原始写法**
+    ["D/N/A", ["D", "N", "A"]],
+    ["N/A", ["N", "A"]],
+    ["A.B.C", ["A", "B", "C"]],
+    ["R&B", ["R", "&", "B"]], // `&` 是唯一有读音的分隔符（アンド），自己算一个词
+    ["X-Y", ["X", "Y"]],
+    ["M\u30FBI\u30FBD\u30FBI", ["M", "I", "D", "I"]],
+    ["M\u00B7I\u00B7D\u00B7I", ["M", "I", "D", "I"]], // 中点三种写法都认
+    ["M\u2022I\u2022D\u2022I", ["M", "I", "D", "I"]],
   ];
-  for (const [raw, norm] of cases) {
+  for (const [raw, want] of cases) {
     const toks = letters.scan(raw);
-    assert.strictEqual(toks.length, 1, raw + " 应该是一个词，实际 " + toks.length + " 个");
-    assert.strictEqual(toks[0].text, raw);
-    assert.strictEqual(toks[0].notation, true, raw + " 应该被标成记号");
-    assert.strictEqual(letters.looksReadable(toks[0]), true, raw + " 要标（逐字母读音）");
-    if (norm) assert.strictEqual(toks[0].norm, norm);
+    assert.deepStrictEqual(
+      toks.map((t) => t.text),
+      want,
+      JSON.stringify(raw) + " 要拆成 " + JSON.stringify(want)
+    );
+    for (const t of toks) {
+      assert.strictEqual(t.notation, true, raw + " 的零件要带 notation 标记");
+      assert.strictEqual(letters.looksReadable(t), true, raw + " 的每个零件都要标");
+      // 位置对得上原文（分隔符留在原地当普通文本，注音层靠 start/end 排 ruby）
+      assert.strictEqual(raw.slice(t.start, t.end), t.text);
+    }
   }
+  const and = letters.scan("R&B")[1];
+  assert.strictEqual(and.symbol, true, "& 是符号词（读 アンド）");
+  assert.strictEqual(letters.scan("M\u30FBI\u30FBD\u30FBI")[0].norm, "m", "单字母的 norm 就是它自己");
+
   // 反例：连字符词的每段不止一个字母，就不是记号，按普通词读
   const mail = letters.scan("e-mail")[0];
   assert.strictEqual(mail.notation, false, "e-mail 是普通词");
@@ -203,14 +219,24 @@ test("带变音符号的拉丁字母要能扫到，不能把词切成两半", ()
   assert.strictEqual(letters.looksReadable(letters.scan("&Ō&")[0]), false, "粘着分隔符的仍然不标");
 });
 
-test("粘在分隔符上的单字母不算词（D/N/A 里的 A 被注成 ア 是错的）", () => {
-  // 用户报的：`だって D/N/Aじゃ 騙れない` 里那个 A 被注音了。
-  // 它是标题记号的零件，不是英文冠词。
-  const glued = ["だって D/N/Aじゃ 騙れない", "N/A", "A.B.C", "X-Y", "&A&"];
-  for (const line of glued) {
+test("记号里的单字母照标（读字母名）；孤零零粘着分隔符的单字母仍然不标", () => {
+  // 用户报过：`だって D/N/Aじゃ 騙れない` 里那个 A 被读成 ア（冠词读法）。
+  // 现在记号拆成一个字母一个词，每个字母都标 —— 但标的是**字母名**（エー），
+  // 由 main.js 的 lineLetterRun 按整行判（见 integration 用例）。
+  for (const line of ["だって D/N/Aじゃ 騙れない", "N/A", "A.B.C", "X-Y", "M\u30FBI\u30FBD\u30FBI"]) {
     for (const tk of letters.scan(line)) {
       if (tk.text.length === 1) {
-        assert.strictEqual(letters.looksReadable(tk), false, JSON.stringify(line) + " 里的 " + tk.text + " 不该标");
+        assert.strictEqual(tk.notation, true, line + " 里的 " + tk.text + " 是记号零件");
+        assert.strictEqual(letters.looksReadable(tk), true, line + " 里的 " + tk.text + " 要标（字母名）");
+      }
+    }
+  }
+  // 不是记号、只是粘在分隔符上的单字母（`&A&`、句尾的 `A.`）：照旧不标
+  for (const line of ["&A&", "A.", "(*A*)"]) {
+    for (const tk of letters.scan(line)) {
+      if (tk.text.length === 1) {
+        assert.strictEqual(tk.notation, false, line + " 里的 " + tk.text + " 不是记号");
+        assert.strictEqual(letters.looksReadable(tk), false, line + " 里的 " + tk.text + " 不该标");
       }
     }
   }
@@ -220,6 +246,11 @@ test("粘在分隔符上的单字母不算词（D/N/A 里的 A 被注成 ア 是
   assert.strictEqual(letters.looksReadable(free[0]), true, "句首的 A 是冠词，要标");
   const iTok = letters.scan("I love you")[0];
   assert.strictEqual(letters.looksReadable(iTok), true, "I 是代词，要标");
+  // 孤零零一个 `&`（you & me）根本不成分词，所以不会多出个 アンド
+  assert.deepStrictEqual(
+    letters.scan("you & me").map((t) => t.text),
+    ["you", "me"]
+  );
 });
 
 test("重复字母：全大写 2~3 个当缩写标，小写/长串留白", () => {

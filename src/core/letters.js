@@ -32,7 +32,7 @@
   /** 三种字母合起来的"一个西文字母" */
   var WEST = "[" + LAT_CLS + CYR_CLS + GRK_CLS + "]";
   /** 记号里的分隔符（`D/N/A` 的斜杠等） */
-  var GLUE = "[\\/\\\\|_.&#*~+=\\u30FB\\uFF0F\\uFF3C\\u2010\\u2011\\u2013\\u2014-]";
+  var GLUE = "[\\/\\\\|_.&#*~+=\\u30FB\\uFF0F\\uFF3C\\u2010\\u2011\\u2013\\u2014\\u00B7\\u2022-]";
 
   /*
    * 一个"词"：字母开头结尾，中间允许撇号和连字符（don't / e-mail / rock'n'roll）。
@@ -140,7 +140,7 @@
    * "A." 这种句首缩写不再注音，比把 `A.B.C` 里的 A 注成 ア 好得多。
    * 装饰性符号（`&A&`、`*A*`、`#A`）同样算粘住：那种 A 是排版效果，不是冠词。
    */
-  var GLUE_CHARS = "/\\|_.\u30FB\uFF0F\uFF3C-\u2010\u2011\u2013\u2014&#*~+=\u301C\uFF5E";
+  var GLUE_CHARS = "/\\|_.\u30FB\uFF0F\uFF3C-\u2010\u2011\u2013\u2014\u00B7\u2022&#*~+=\u301C\uFF5E";
   function isGluedLetter(text, start, end) {
     var before = start > 0 ? text.charAt(start - 1) : "";
     var after = end < text.length ? text.charAt(end) : "";
@@ -188,6 +188,48 @@
       var start = i;
       var end = i + raw.length;
       /*
+       * 记号（`D/N/A`、`M・I・D・I`、`R&B`、`A.B.C`）**拆成一个字母一个词**。
+       *
+       * 用户截图：`M·I·D·I` 上面压着一整条 `エムアイディーアイ`，和每个字母对不上
+       * （"能不能分别注在每个字母上"）。拆开之后每个字母各标一个 ruby
+       * （エム / アイ / ディー / アイ），分隔符留在原地当普通文本。
+       *
+       * `&` 是唯一**有读音**的分隔符（アンド），所以它自己发一个"符号词"；
+       * 别的分隔符（`/` `.` `・` `-` …）不发音，不当词。
+       */
+      if (RE_NOTATION_WHOLE.test(raw)) {
+        for (var q = 0; q < raw.length; q++) {
+          var chN = raw.charAt(q);
+          var atN = start + q;
+          if (RE_WEST_ONE.test(chN)) {
+            out.push({
+              text: chN,
+              start: atN,
+              end: atN + 1,
+              norm: chN.toLowerCase(),
+              glued: true,
+              notation: true,
+              script: scriptOf(chN),
+              diacritic: /[^\x00-\x7F]/.test(chN),
+            });
+          } else if (chN === "&") {
+            out.push({
+              text: "&",
+              start: atN,
+              end: atN + 1,
+              norm: "&",
+              glued: true,
+              notation: true,
+              symbol: true,
+              script: "latin",
+              diacritic: false,
+            });
+          }
+        }
+        i = end;
+        continue;
+      }
+      /*
        * 连字符链：先看要不要拆成几个独立的词（见 splitDashes 的说明）。
        * 拆出来的每一段自己走一遍 norm / script / diacritic —— 读音层和注音层
        * 都当成普通的词处理，连字符留在原地当普通文本。
@@ -219,7 +261,7 @@
         // 单字母且粘着分隔符 —— 只有在它**没有**组成记号时才会走到
         // （例如句尾那个孤零零的 `A.`），那种不标
         glued: raw.length === 1 ? isGluedLetter(text, start, end) : false,
-        notation: raw.length > 1 && RE_NOTATION_WHOLE.test(raw),
+        notation: false,
         // 属于哪种字母（latin / cyrillic / greek）：读音层按它选拼读规则
         script: scriptOf(raw),
         // 带变音符号（Ō / é / ü …）：读音层要先折成 ASCII 再查，见 reading.js
@@ -276,8 +318,14 @@
      * 而且没有"打码占位符"那种顾虑 —— 整词一律照标。
      */
     if (token.script && token.script !== "latin") return token.glued !== true;
-    // 记号：整体逐字母读（D/N/A -> ディーエヌエー）
-    if (token.notation === true) return token.norm.replace(/[^a-z]/g, "").length >= 2;
+    /*
+     * 记号里的零件（`D/N/A` 的 D、`M・I・D・I` 的 I、`R&B` 的 `&`）：**一律照标**。
+     * 它们本来就是"逐字母读"的那串字母，读音由读音层按**整行**判成字母名
+     * （见 main.js 的 lineLetterRun / localReading）；拿"粘着分隔符的单字母不标"
+     * 那条去挡它们就全空了（用户当初报的正是 `D/N/A` 里的 A 被读成 ア —— 现在
+     * 标的是字母名 エー）。
+     */
+    if (token.notation === true) return true;
     /*
      * 同一个**辅音**字母重复的整词。
      *

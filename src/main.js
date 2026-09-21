@@ -578,7 +578,7 @@
   function lineLetterRun(line) {
     var s = String(line == null ? "" : line);
     if (!s) return false;
-    if (/[A-Z]\s*[,.\u3001\u30FB\/&|]\s*[A-Z]/.test(s)) return true;
+    if (/[A-Z]\s*[,.\u3001\u30FB\u00B7\u2022\/&|]\s*[A-Z]/.test(s)) return true;
     if (typeof WKMatcher === "undefined") return false;
     var toks;
     try {
@@ -586,10 +586,17 @@
     } catch (e) {
       return false;
     }
-    var n = 0;
+    /*
+     * 记号（`D/N/A`、`M・I・D・I`、`X-Y`）在 matcher 里已经**拆成了一个字母一个词**
+     * （用户要"分别注在每个字母上"），所以这里数的是"记号零件"：有两个就说明
+     * 这一行是逐字母读的。剩下的那种（`A B C` 三个以上孤立的）照旧数非粘连的单字母。
+     */
+    var nota = 0;
+    var iso = 0;
     for (var i = 0; i < toks.length; i++) {
-      if (/^[A-Z]$/.test(toks[i].text) && toks[i].glued !== true) n++;
-      if (n >= 3) return true;
+      if (toks[i].notation === true) nota++;
+      else if (/^[A-Z]$/.test(toks[i].text) && toks[i].glued !== true) iso++;
+      if (nota >= 2 || iso >= 3) return true;
     }
     return false;
   }
@@ -697,6 +704,13 @@
       }
       if (String(word) !== "A" && String(word) !== "I") return null;
     }
+    /*
+     * 记号里的 `&`（`R&B` / `A&B`）：读 **アンド**。它是唯一有读音的分隔符，
+     * 记号拆成一个字母一个词之后 `&` 自己也成了一个词（见 letters.js），
+     * 不认它就会在 R 和 B 之间空一格。孤零零的 `&`（`you & me`）不是记号零件、
+     * 扫描时根本不会成词，所以不受影响。
+     */
+    if (String(word) === "&") return { kana: "アンド", source: "letters", confident: true };
     var r = state.reader ? state.reader.read(word) : null;
     /*
      * 「学会的词」（core/learn.js）：模型在两个不同句子里答过同一个读音 → 沉淀成

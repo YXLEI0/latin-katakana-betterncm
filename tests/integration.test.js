@@ -404,11 +404,55 @@ test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 �
   await sleep(600);
 
   const p = env.document.querySelector("ul.lyric li p");
-  // 记号整体一个 ruby，读音是字母名；不是把 A 单独读成 ア
-  assert.deepStrictEqual(PAIRS(p), [["D/N/A", "ディーエヌエー"]]);
+  // 记号**一个字母一个 ruby**，读音是字母名；不是把 A 单独读成 ア
+  assert.deepStrictEqual(PAIRS(p), [
+    ["D", "ディー"],
+    ["N", "エヌ"],
+    ["A", "エー"],
+  ]);
   assert.strictEqual(baseText(p), "だって D/N/Aじゃ 騙れない", "原文一字不改");
-  const stats = env.api.stats();
-  assert.ok(stats.reading.letterHits >= 1, "应该记在 letters 这一类上：" + JSON.stringify(stats.reading));
+  // 来源是字母名那一层（`letters`）：类名一直在，颜色只由开关决定
+  const first = p.querySelector("ruby.wk-ruby");
+  assert.ok(/wk-src-letters/.test(first.className), "应该记在 letters 这一类上：" + first.className);
+});
+
+test("用户报的那行：`M・I・D・I` 分别注在每个字母上（不是压一整条）", async () => {
+  // 用户截图：播放栏歌名 `M·I·D·I` 上面压着一整条 `エムアイディーアイ`，
+  // 和每个字母对不上 —— "能不能分别注在每个字母上"。
+  // 中间点三种写法（`・` U+30FB / `·` U+00B7 / `•` U+2022）都要认。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-playbar"><div class="words"><span class="name"><a href="#">M\u30FBI\u30FBD\u30FBI</a></span></div></div>
+  <div class="m-lyric"><ul class="lyric">
+    <li class="line"><p>R&B と M\u00B7I\u00B7D\u00B7I と M\u2022I\u2022D\u2022I</p></li>
+  </ul></div>
+</div>
+</body></html>`;
+  const env = bootPlugin(HTML);
+  await env.runLoad();
+  await sleep(600);
+
+  const title = env.document.querySelector(".m-playbar .name");
+  assert.deepStrictEqual(PAIRS(title), [
+    ["M", "エム"],
+    ["I", "アイ"],
+    ["D", "ディー"],
+    ["I", "アイ"],
+  ]);
+
+  // `R&B`：`&` 是唯一有读音的分隔符，自己一个 ruby（アンド）
+  const line = env.document.querySelector("ul.lyric li p");
+  const pairs = PAIRS(line);
+  assert.deepStrictEqual(pairs.slice(0, 3), [
+    ["R", "アール"],
+    ["&", "アンド"],
+    ["B", "ビー"],
+  ]);
+  assert.deepStrictEqual(
+    pairs.slice(3).map((x) => x[0]),
+    ["M", "I", "D", "I", "M", "I", "D", "I"]
+  );
+  assert.strictEqual(baseText(line), "R&B と M\u00B7I\u00B7D\u00B7I と M\u2022I\u2022D\u2022I", "原文一字不改");
 });
 
 test("控制台诊断：WK 短别名存在，llm.check() 能一句话回答「生效了没有」", async () => {
@@ -2657,14 +2701,16 @@ test("连字符串起来的长词：一行里每个词各自一个 ruby（不许
   const p = env.document.querySelectorAll("ul.lyric li p")[0];
   const bases = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue);
   assert.ok(!bases.includes("Looser-Krankheit-Was"), "整条链不许当成一个词：" + JSON.stringify(bases));
-  assert.deepStrictEqual(bases, ["A-Z", "Looser", "Krankheit", "Was", "IS", "das"], JSON.stringify(bases));
+  // `A-Z` 是记号 -> 拆成 A / Z 两个字母各一个 ruby；连字符链 -> 拆成三个词
+  assert.deepStrictEqual(bases, ["A", "Z", "Looser", "Krankheit", "Was", "IS", "das"], JSON.stringify(bases));
   // 底字一个字符都不能变（连字符还是普通文本，夹在几个 ruby 中间）
   assert.strictEqual(baseText(p), "A-Z Looser-Krankheit-Was IS das?");
   // 这一行判成德语（was / das + Krankheit 的 -heit，`A-Z` 里的 A 不再吃英语惩罚）
   assert.strictEqual(env.api.lang("A-Z Looser-Krankheit-Was IS das?").id, "de", "这一行要判成德语");
   // 每个词有自己的读音：`was` 是德语同形异音，走引擎的 ヴァス（不是英语词典的 ワズ）
   const got = linePairs(env.document.querySelectorAll("ul.lyric li p"), 0);
-  assert.strictEqual(got.get("A-Z"), "エーゼット", "A-Z 是记号，逐字母读");
+  assert.strictEqual(got.get("A"), "エー", "A-Z 是记号，逐字母读");
+  assert.strictEqual(got.get("Z"), "ゼット");
   assert.strictEqual(got.get("Was"), "ヴァス", "德语行：was 不许读成英语的 ワズ：" + JSON.stringify([...got]));
   assert.strictEqual(got.get("Krankheit"), "クランクハイト");
 });
