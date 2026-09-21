@@ -4,6 +4,26 @@
 
 首个版本：给日语歌歌词里的**西文字母**（拉丁 / 西里尔 / 希腊）标注**片假名读音**。
 
+### 制作信息行：乐器 / 工种的长尾也认得出（用户的 HOYO-MiX 署名表）（本次）
+
+用户贴了一整块署名（作词 Lyricist / 作曲 Composer / 管弦配器 Orchestrator / 编曲（电子）Arranger / 演唱 Voice / 尺八 Shakuhachi / 乐队 Orchestra / 录音棚 Recording Studio / 录音师 Recording Engineer / 出品 Produced by / 音频编辑 Editing Engineer / 混音师 Mixing Engineer / 母带制作 Mastering Engineer），截图是 `尺八 Shakuhachi：顾剑楠 Jiannan Gu` 那行 —— 名字被注上了音。
+
+**为什么原来漏**：署名行的判据是"关键词表 + 冒号"，而旧表只有约 60 个词头，且**空格会打断填充**。用户那块里三种形状全都撞上了：`尺八`/`乐队`/`音频编辑`/`管弦配器` 不在表里、`编曲（电子）` 的括号不在填充字符集里、`作词 Lyricist：` 中间那个空格直接把匹配打断。
+
+**改法**：
+
+1. **三种写法都认**（`core/annotate.js` 的 `RE_CREDIT` 重写）：
+   - `作词：` —— 中文标签（填充里允许括号，`编曲（电子）：` 也能认）
+   - `作词 Lyricist：` / `尺八 Shakuhachi：` / `录音棚 Recording Studio：` —— 中文标签 + 空格 + **首字母大写**的拉丁标签（0~3 个词，所以 `Recording Studio` 这种两词标签也吃）
+   - `Lyricist：` / `Mastering Engineer：` —— 纯拉丁标签
+   结尾仍然必须是冒号 / `by` / 连字符；拉丁标签只吃首字母大写的词 —— 这两条保证歌词不被误杀（`Music と light の 中で`、`Art of love`、`Music is my life:` 都不匹配，有测试守着）
+2. **关键词表补长尾**（60 → 约 120 个词头）：乐器（尺八/二胡/琵琶/古筝/小提琴/大提琴/长笛/萨克斯…）、声部（合唱/童声/人声/旁白/朗诵…）、乐团（乐队/乐团/交响/室内乐/打击乐…）、工种（音频编辑/剪辑/缩混/音乐总监/艺术指导/宣发/视觉/摄影/造型/特别感谢…）、英文（Orchestr/Conduct/Edit/Studio/Label/Shakuhachi/Flute/Violin/Cello/Percussion/Choir/Cover/Director/Supervis/Thanks…）
+3. **块内局部规则**：标签两个表都没有的长尾（`杖鼓 Janggu：`），只要**前后紧挨着的都是署名行**就跳过
+   - 这里刻意用**局部**判据，而不是"整张列表都是署名" —— 网易云的署名常常就挂在歌词列表末尾，按整张列表判会把同一列表里的真歌词一起杀掉（实测：`きらめく light と clover` 跟着署名块一起没了）
+
+测试：integration 新增一条（用户那整块 14 行逐行断言不注音 + 同列表的真歌词照旧注音 + 同一条长尾署名单独出现时不跳过）。全套 **332 → 333 全绿**，`npm run check` 0 警告。
+
+
 ### 单字母 `o` 也标（呼语 O オー / 连词 o オ）（本次）
 
 用户截图：拉丁语歌词 `Lucis, lapsus (O tragedia o splendidae)` 一类行里，大写的呼语 `O` 标上了（オー），**小写的 `o` 全空着**。

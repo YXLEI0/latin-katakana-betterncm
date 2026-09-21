@@ -75,18 +75,50 @@
     "封面", "曲绘", "曲繪", "插画", "插畫", "调校", "調校", "调教", "調教",
     "视频", "視頻", "字幕", "翻译", "翻譯", "鸣谢", "鳴謝", "感谢", "感謝", "发行", "發行", "版权", "版權",
     "采样", "取樣", "音源", "素材", "原曲", "原唱", "翻唱", "伴奏", "后期", "混音",
+    /*
+     * 用户贴过一整块 HOYO-MiX 的署名表，里面这几行原本会漏（那几行的名字就被注了音）：
+     *   `管弦配器 Orchestrator：`、`编曲（电子） Arranger：`、`尺八 Shakuhachi：`、
+     *   `乐队 Orchestra：`、`音频编辑 Editing Engineer：`
+     * 所以这一批是**乐器 / 声部 / 工种**的长尾（关键词表本来只收了常见那几个）。
+     */
+    "配器", "管弦", "编配", "乐器", "樂器", "演奏", "独奏", "独唱", "指挥", "指揮", "合唱", "合音", "童声", "人声", "旁白", "念白", "朗诵", "吟唱",
+    "乐队", "樂隊", "乐团", "樂團", "交响", "交響", "室内乐", "民乐", "打击乐", "架子鼓", "电子琴", "合成器", "钢琴", "鋼琴",
+    "小提琴", "中提琴", "大提琴", "低音提琴", "竖琴", "手风琴", "口琴", "长笛", "短笛", "双簧管", "单簧管", "萨克斯", "小号", "长号", "圆号", "大号",
+    "二胡", "琵琶", "古筝", "古琴", "笛", "箫", "笙", "唢呐", "马头琴", "尺八", "三味线", "太鼓", "打击", "手鼓", "非洲鼓",
+    "音频", "音頻", "编辑", "編輯", "剪辑", "剪輯", "音效", "声效", "缩混", "混缩",
+    "出品人", "音乐总监", "艺术总监", "艺术指导", "監唱", "制作助理", "宣发", "营销", "推广", "商务", "经纪",
+    "美術", "设计", "設計", "视觉", "視覺", "摄影", "攝影", "造型", "服装", "化妆", "道具", "场景", "特效", "动画", "動畫", "调色", "剪輯師",
+    "特别感谢", "特別感謝", "协助", "協助", "支持", "赞助", "提供", "场地", "器材", "厂牌", "出品方",
   ];
   var CREDIT_EN = [
     "Lyric", "Music", "Melody", "Arrang", "Compos", "Produc", "Written", "Words",
     "Guitar", "Bass", "Drum", "Piano", "Keyboard", "Vocal", "Mixing", "Mix", "Master", "Mastering",
     "Recorded", "Engineer", "Strings", "Synthesizer", "Programming", "Chorus", "Art", "Illust", "Design", "Tun",
+    "Orchestr", "Conduct", "Edit", "Score", "Studio", "Label", "Distribut", "Publish", "Management",
+    "Shakuhachi", "Flute", "Violin", "Cello", "Viola", "Harp", "Erhu", "Pipa", "Guzheng", "Koto", "Shamisen",
+    "Percussion", "Choir", "Harmony", "Cover", "Director", "Coordinator", "Supervis", "Thanks", "Support",
   ];
+  /*
+   * 署名行的形状。三种写法都要认（用户的署名表里三种混着）：
+   *   ① `作词：` / `混音&母带处理：` —— 中文标签（标签里允许括号：`编曲（电子）`）
+   *   ② `作词 Lyricist：` / `尺八 Shakuhachi：` / `录音棚 Recording Studio：`
+   *      —— 中文标签 + 空格 + **首字母大写**的拉丁标签（乐器 / 工种的长尾就在这儿，
+   *      不需要把它们一个个列进关键词表）
+   *   ③ `Lyricist：` / `Mastering Engineer：` —— 纯拉丁标签
+   *
+   * 结尾的"冒号 / `by` / 连字符"是必须的，而且**空格会打断填充**、拉丁标签那一串
+   * 只吃首字母大写的词 —— 这两条是为了不误杀歌词：`Music と light の 中で`、
+   * `Art of love`、`Music is my life:` 都不匹配（有测试守着）。
+   */
+  var CREDIT_FILL = "[\\u4e00-\\u9fa5A-Za-z&\\/|,\u3001+\u00B7\u30FB\uFF08\uFF09()]{0,8}";
+  var CREDIT_LATIN_LABEL = "(?:\\s+[A-Z][A-Za-z.&'\\-]*){0,3}";
+  var CREDIT_TAIL = "\\s*(?::|：|by\\b|-)";
   var RE_CREDIT = new RegExp(
     "^\\s*(?:" +
-      CREDIT_CN.join("|") +
-      "|(?:" +
-      CREDIT_EN.join("|") +
-      ")[a-z]*)[\\u4e00-\\u9fa5A-Za-z&\\/|,\u3001+\u00B7\u30FB]{0,8}\\s*(?::|：|by\\b|-)",
+      "(?:" + CREDIT_CN.join("|") + ")" + CREDIT_FILL + CREDIT_TAIL +
+      "|(?:" + CREDIT_CN.join("|") + ")" + CREDIT_FILL + CREDIT_LATIN_LABEL + CREDIT_TAIL +
+      "|(?:" + CREDIT_EN.join("|") + ")[a-z]*" + CREDIT_FILL + CREDIT_LATIN_LABEL + CREDIT_TAIL +
+      ")",
     "i"
   );
 
@@ -676,16 +708,54 @@
      * 往上找到最近的 `li` / `.rnp-lyrics-line` 就是那一行。
      */
     function enclosingLineText(el) {
-      var best = null;
-      for (var p = el, d = 0; p && p.nodeType === 1 && d < 6; p = p.parentNode, d++) {
-        var cls = typeof p.className === "string" ? p.className : "";
-        if (p.tagName === "LI" || /(^|\s)rnp-lyrics-line(\s|$)/.test(cls)) best = p;
-      }
+      var best = lineElementOf(el);
       if (!best) return null;
       try {
         return visibleText(best);
       } catch (e) {
         return null;
+      }
+    }
+
+    /** 往上找到"这一行"的元素（`li` 或 `.rnp-lyrics-line`） */
+    function lineElementOf(el) {
+      var best = null;
+      for (var p = el, d = 0; p && p.nodeType === 1 && d < 6; p = p.parentNode, d++) {
+        var cls = typeof p.className === "string" ? p.className : "";
+        if (p.tagName === "LI" || /(^|\s)rnp-lyrics-line(\s|$)/.test(cls)) best = p;
+      }
+      return best;
+    }
+
+    /*
+     * 这一行是不是夹在**署名块中间**的一行（前后紧挨着的都是署名行）。
+     *
+     * 为什么还要这一手：关键词表永远有长尾（乐器 / 声部 / 工种），但真实署名块里
+     * 漏掉的那一行**前后一定也是署名行**（用户那块里的 `尺八 Shakuhachi：`、
+     * `乐队 Orchestra：`、`音频编辑 Editing Engineer：`）。判据故意取这个**局部**
+     * 特征，而不是"整张列表都是署名" —— 网易云的署名常常就挂在歌词列表末尾，
+     * 按整张列表判会把同一列表里的真歌词一起杀掉（实测：`きらめく light と clover`
+     * 跟着署名块一起没了）。
+     */
+    function insideCreditBlock(lineEl, cache) {
+      if (!lineEl || !lineEl.parentNode) return false;
+      var hit = cache.get(lineEl);
+      if (hit !== undefined) return hit;
+      hit = neighborIsCredit(lineEl, -1) && neighborIsCredit(lineEl, 1);
+      cache.set(lineEl, hit);
+      return hit;
+    }
+
+    /** 紧挨着的上一/下一**元素**兄弟是不是署名行（跳过文本节点） */
+    function neighborIsCredit(lineEl, delta) {
+      var sib = delta < 0 ? lineEl.previousSibling : lineEl.nextSibling;
+      while (sib && sib.nodeType !== 1) sib = delta < 0 ? sib.previousSibling : sib.nextSibling;
+      if (!sib) return false;
+      try {
+        var t = visibleText(sib);
+        return !!(t && (RE_CREDIT.test(t) || RE_CREDIT_HARD.test(t)));
+      } catch (e) {
+        return false;
       }
     }
 
@@ -1574,6 +1644,8 @@
       var changed = 0;
       var skipped = 0;
       var unstable = 0;
+      /** 「这一整块是不是署名表」按行列表缓存，一轮只算一次（见 lineLooksLikeCreditBlock） */
+      var creditBlockCache = new Map();
       /*
        * 这一轮里"要等一会儿再试"的最短时间。有节点因为
        * 「文本在动」（MOTION_WINDOW_MS 滑动窗口）或「认输期」（churn 退避）
@@ -1739,6 +1811,11 @@
         var lineForCredit = enclosingLineText(hostEl);
         if (lineForCredit && lineForCredit !== text && (RE_CREDIT.test(lineForCredit) || RE_CREDIT_HARD.test(lineForCredit))) {
           noteSkip("制作信息行（同行的另一个片段）", text, region);
+          continue;
+        }
+        // 夹在署名块中间的行（前后都是署名行）：整块署名里关键词表漏掉的那一行靠它
+        if (insideCreditBlock(lineElementOf(hostEl), creditBlockCache)) {
+          noteSkip("制作信息块（前后都是署名行）", text, region);
           continue;
         }
         try {

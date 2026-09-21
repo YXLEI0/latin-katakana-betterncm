@@ -2476,6 +2476,69 @@ test("拉丁语行的呼语 O 与连词 o：大写读 オー、小写读 オ（�
   assert.strictEqual(l1.get("infaustae"), "インファウスタエ");
 });
 
+test("整块署名表：关键词表有长尾，靠「周围一整片都是署名行」兜住", async () => {
+  // 用户贴了一整块 HOYO-MiX 的署名（作词/作曲/编曲/演唱/尺八/乐队/录音棚/录音师/
+  // 出品/音频编辑/混音师/母带制作），截图里 `尺八 Shakuhachi：顾剑楠 Jiannan Gu`
+  // 那行的 Shakuhachi / Jiannan / Gu 被注了音 —— 关键词表里没有"尺八"，
+  // 而这一类长尾（乐器 / 声部 / 工种）永远补不完。
+  // 现在两层保险：① 补了一批长尾关键词、允许标签里带括号；② 周围 ≥3 行像署名、
+  // 且占四成以上时，整片都当署名表跳过。
+  const CREDITS = [
+    "作词 Lyricist：项柳 Hsiang Liu",
+    "作曲 Composer：陈致逸 Yu-Peng Chen (HOYO-MiX)",
+    "管弦配器 Orchestrator：陈致逸 Yu-Peng Chen (HOYO-MiX)",
+    "编曲（电子） Arranger：姜以君 Yijun Jiang (HOYO-MiX)",
+    "演唱 Voice：Paolo Andrea Di Pietro",
+    "尺八 Shakuhachi：顾剑楠 Jiannan Gu",
+    // 这一行的标签两个表里都没有（杖鼓 = 长鼓），只能靠"前后都是署名行"那条局部规则兜住
+    "杖鼓 Janggu：李三 San Li",
+    "乐队 Orchestra：Budapest Scoring Orchestra / Art of Loong Orchestra 龙之艺交响乐团",
+    "录音棚 Recording Studio：Budapest Scoring / 上海音像公司录音棚 YX STUDIO",
+    "录音师 Recording Engineer：Dénes Rédly / 莫家伟 Jiawei Mo / 黄巍 Zach Huang",
+    "出品 Produced by：HOYO-MiX",
+    "音频编辑 Editing Engineer：徐威 Aaron Xu",
+    "混音师 Mixing Engineer：黄巍 Zach Huang",
+    "母带制作 Mastering Engineer：黄巍 Zach Huang",
+  ];
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>きらめく light と clover</p></li>
+  <li class="line"><p>Music と light の 中で</p></li>
+${CREDITS.map((c) => '  <li class="line"><p>' + c + "</p></li>").join("\n")}
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+
+  // 前两行是真歌词，照常注音（尤其 `Music と light の 中で`：不能因为以 Music 开头就杀）
+  assert.ok(rubyCount(ps[0]) >= 2, "真歌词要注音：" + ps[0].innerHTML);
+  const lyric = new Map([...ps[1].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]));
+  assert.strictEqual(lyric.get("Music"), "ミュージック", "以 Music 开头但后面是空格的**真歌词**不该被当署名：" + JSON.stringify([...lyric]));
+  assert.strictEqual(lyric.get("light"), "ライト", JSON.stringify([...lyric]));
+
+  // 整块署名：一行都不许有注音（含关键词表里没有的"尺八 / 乐队 / 音频编辑"）
+  for (let i = 0; i < CREDITS.length; i++) {
+    const p = ps[i + 2];
+    assert.strictEqual(rubyCount(p), 0, "署名行不许注音：" + CREDITS[i] + " → " + p.innerHTML);
+  }
+
+  // 反向：同一条"长尾署名"单独出现（周围不是署名行）时不跳过 —— 那条局部规则只看邻居
+  const ALONE = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>きらめく light と clover</p></li>
+  <li class="line"><p>杖鼓 Janggu：李三 San Li</p></li>
+  <li class="line"><p>ずっと dream を見てた</p></li>
+</ul></div></div>
+</body></html>`;
+  const env2 = bootPlugin(ALONE, { config: { online: false, llmEnabled: false } });
+  await env2.runLoad();
+  await sleep(300);
+  const ps2 = env2.document.querySelectorAll("ul.lyric li p");
+  assert.ok(rubyCount(ps2[1]) > 0, "周围不是署名行时不该连它也跳过：" + ps2[1].innerHTML);
+});
+
 test("俄语歌词（用例 6）：西里尔字母也注音（词典和罗马音层都读不了它）", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
