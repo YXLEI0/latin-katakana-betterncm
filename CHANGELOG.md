@@ -4,6 +4,33 @@
 
 首个版本：给日语歌歌词里的**西文字母**（拉丁 / 西里尔 / 希腊）标注**片假名读音**。
 
+### 仓库 / 插件全线改名：latin-katakana → western-katakana（本次）
+
+用户要求「仓库名字和插件名也要改」。上次只改了显示名，这次把标识也一起换掉：
+
+| 位置 | 旧 | 新 |
+| --- | --- | --- |
+| GitHub 仓库 | `latin-katakana-betterncm` | `western-katakana-betterncm` |
+| 插件 slug（装机目录 / 包名） | `latin-katakana` | `western-katakana` |
+| 打包产物 | `builds/latin-katakana.plugin` | `builds/western-katakana.plugin` |
+| `package.json` name | `latin-katakana-betterncm` | `western-katakana-betterncm` |
+| 日志前缀 | `[latin-katakana]` | `[western-katakana]` |
+| 设置面板容器 id | `#latin-katakana-config` | `#western-katakana-config` |
+| localStorage 键 | `latin-katakana.config` / `.trace` / `.learned.v1` / `.usage` / `.llm.v1` / `.cache.v1` / `.off` / `.dev` | 同后缀、前缀换成 `western-katakana` |
+| `main.js` 的 `REPO_URL` | …/latin-katakana-betterncm | …/western-katakana-betterncm |
+
+- **改名不丢数据**：`main.js` 开头有一段一次性搬家 —— 新键不存在、老键存在才复制过去，老键留着不删。配置（含 API Key）、学会的词、模型缓存、用量账本都跟着过去
+- **slug 改了 = 装机目录换了**：新版打进 `C:\betterncm\plugins\western-katakana.plugin`，旧的 `latin-katakana.plugin` 必须删掉 —— 两个 `.plugin` 同时存在会让插件跑两份（注音叠两遍）
+- **有意没改的内部名字**（改成"西文"没有收益、代价却不小）：
+  - DOM 前缀 `lt-ruby` / `lt-rt` / `lt-src-*` / `data-lt-*` —— jp-furigana 的共存补丁**靠这个前缀认我们的节点**，改了会让已经打过补丁的 jp-furigana 判我们的注音是"外人改的"并把整行重建（那一家开始闪），得所有人重跑一次 `npm run patch:furigana`
+  - 控制台别名 `LK` 与模块全局 `LKMatcher` / `LKDict` / `LKReading` / `LKLoan` / `LKLangs` / `LKAnnotate` —— 文档里写的 `LK.stats()` / `LK.lang()` 就是它，改名等于让所有人手上的命令失效
+  - 文件名 `core/latin.js`（它现在认三种字母，但改名要动 manifest 注入顺序、check.js、测试与文档）
+
+**仓库改名要你在网页上点一下**：这台机器上没有 `gh`、也没有 GitHub token，`Settings → Repository name` 只能你来。本地这边 remote、`REPO_URL`、包名、文档都已经指到 `western-katakana-betterncm`。GitHub 改完会保留**旧地址的重定向**，所以旧 URL 的 push / clone 也不会断。
+
+测试：改名后全套 **322 → 323 全绿**（新增一条「老键搬家」的集成测试：把 `latin-katakana.config / .usage / .learned.v1` 预置进去，断言配置、账本、学会的词都跟着过来，而且新键已有值时不许被老键盖回去），`npm run check` 0 警告（它还自带"main.js 的 REPO_URL 与仓库名一致"这条校验，所以命名不会两边漂）
+
+
 ### 西文各语种支持 + 删掉 LK.why() / LK.word() + 插件改叫「西文」（本次）
 
 用户要求：① 删掉 `LK.why()` / `LK.word()`；② 增加汉语拼音、拉丁语、葡萄牙语、荷兰语、德语、俄语（西里尔）、希腊语等支持（给了 sljfaq 的葡 / 荷 / 德 / 俄页面和 7 组用例）；③ 插件名里的「拉丁」改成「西文」。
@@ -34,7 +61,7 @@
 
 **四、删掉调试 API**：`LK.why()` / `LK.word()` 以及面板的「排障」区块（输入框 + 两颗按钮）、`annotate.explain()` 一起删。要看跳过原因用 `LK.stats().lastPass.skips` / `.errors`，看某个词用 `LK.read()` 对比 `LK.display()` + `LK.llm.rejects()`。**新增两个只读命令**：`LK.lang('一行歌词')` 看语种判定，`LK.loan()` / `LK.loan('de')` 看借词表。
 
-**五、改名**：「拉丁字母片假名注音」→「**西文字母片假名注音**」（manifest、README、notes、package.json）；`slug` 仍是 `latin-katakana`（装机路径与更新都挂在它上面，改了会让老用户的插件变成两份）。
+**五、改名**：显示名「拉丁字母片假名注音」→「**西文字母片假名注音**」（manifest、README、notes、package.json）；`slug` 那次**先没动**（还是 `latin-katakana`），留到下一次连同仓库一起改（见上一条）。
 
 **六、顺带修掉的英文规则死角**（用户用例里正好都碰上）：`stronger` 规则层读 サトロンゲー、`cage` 读 キャジ —— 连同 `strongest` / `stranger(s)` / `cages` / `caged` 一起写进人工词表，词典 6463 → **6470** 条。
 
@@ -1107,7 +1134,7 @@ DOM 里新旧注音混在一行（用户看到的"没注音"是框架重建了�
 用户要求：「加个 api 用量统计」。
 
 新增 `core/usage.js`（独立模块）与设置面板的「API 用量」区块，记**本次 / 今天 /
-累计**三份账，后两份落 `localStorage['latin-katakana.usage']`（跨天时「今天」自动翻页，
+累计**三份账，后两份落 `localStorage['western-katakana.usage']`（跨天时「今天」自动翻页，
 累计不动）：
 
 | 记什么 | 大模型 | 免费接口（Google） |

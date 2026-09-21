@@ -17,7 +17,7 @@
  * 收下之后按**离线词典的优先级**参与层序（`source: "learned"`）——
  * 也就是说这个词以后不再问模型，钱就省在这里。
  *
- * 落盘：localStorage['latin-katakana.learned.v1']；
+ * 落盘：localStorage['western-katakana.learned.v1']；
  * 坏了 / 被手改坏 / 写不进去一律当没有（绝不能因为一份缓存把插件搞崩）。
  * 条数上限 MAX_WORDS，超了丢"最久没用过的"。
  *
@@ -29,7 +29,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  var STORAGE_KEY = "latin-katakana.learned.v1";
+  var STORAGE_KEY = "western-katakana.learned.v1";
   var VERSION = 1;
 
   /** 条数上限：够一首歌到一整张专辑的量，也不会把 localStorage 撑爆 */

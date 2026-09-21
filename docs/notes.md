@@ -233,7 +233,7 @@ npm run build:dict            合并进 src/core/dict.js (人工 > 沉淀 > 大�
 | **不是"两可"的短音节** | 那些词的读音本来就取决于那句话 |
 | 模型后来给了**别的**读音 | 立刻把已收的条目**撤掉** (说明它靠语境) |
 
-- 存在 `localStorage['latin-katakana.learned.v1']` (上限 3000 条, 超了丢最久没用过的)
+- 存在 `localStorage['western-katakana.learned.v1']` (上限 3000 条, 超了丢最久没用过的)
 - 面板「大模型校正」那块有一行 `学会的词: N 个 …` 和「清空已学会的词」按钮, 用上的词数 (= 省下的提问次数) 也在那行里
 - 控制台: `LK.learn.list()` / `LK.learn.stats()` / `LK.learn.forget('xxx')` / `LK.learn.clear()`
 - 按来源上色时它是**深绿**
@@ -269,7 +269,7 @@ npm run build:dict            合并进 src/core/dict.js (人工 > 沉淀 > 大�
 
 ```bash
 npm install
-npm run build            # 产出 builds/latin-katakana.plugin
+npm run build            # 产出 builds/western-katakana.plugin
 npm run install:plugin   # 顺便复制到 C:\betterncm\plugins
 ```
 
@@ -279,7 +279,7 @@ npm run install:plugin   # 顺便复制到 C:\betterncm\plugins
 | --- | --- |
 | [jp-furigana](https://github.com/Leleawa/jp-furigana) | 汉字 → 振假名 |
 | [片假名终结者](https://github.com/YXLEI0/katakana-terminator-betterncm) | 片假名 → 英文 |
-| **本插件** | 拉丁字母 → 片假名读音 |
+| **本插件** | 西文字母 → 片假名读音 |
 
 三者都会往同一行插节点, 所以 jp-furigana 需要打共存补丁 (同一份补丁三个插件共用)。另外片假名终结者要 **2.1.1 或更新**: 那一版起它才认得本插件插的 `lt-ruby` / `lt-rt`
 
@@ -303,11 +303,11 @@ npm run patch:furigana -- --force # 以备份为基准重打
 
 ## 设置
 
-面板默认只显示三块 —— **开关**、**大模型校正**、**预览**; 其余折进最下面的「**高级设置**」(原生 `<details>`), 里面按「接口 / 外观 / 范围 / 读音来源顺序 / API 用量 / 排障 / 操作」分组
+面板默认只显示三块 —— **开关**、**大模型校正**、**预览**; 其余折进最下面的「**高级设置**」(原生 `<details>`), 里面按「接口 / 外观 / 范围 / 读音来源顺序 / API 用量 / 操作」分组
 
 | 选项 | 说明 |
 | --- | --- |
-| 启用拉丁字母注音 | 总开关 |
+| 启用注音 | 总开关 |
 | 用大模型校正读音 | 需要填 API Key; 关掉则这一层完全不工作 |
 | 接口地址 / 模型 / API Key | 默认 DeepSeek; 任何 OpenAI 兼容接口都行。「测试连接」当场验证 |
 | 规则没把握时联网校正读音 | 免费的那条路 (Google 接口)。配了大模型时大模型优先 |
@@ -333,12 +333,12 @@ npm run patch:furigana -- --force # 以备份为基准重打
 - **只统计真正发出去的请求**: 命中缓存不算 (那些省下来的量单独显示); `fetch` 直接抛异常 (请求根本没发出去) 也只记一次失败、不记请求
 - **免费接口没有 token 概念**, 用请求数 + 字符数衡量
 - **花费是估算**: 填了单价才会显示, 公式就是 `输入 token × 输入单价 + 输出 token × 输出单价`, 单位统一成 元 / 百万 token
-- 账本存在 `localStorage['latin-katakana.usage']`; 坏了 / 被手改坏都不影响使用 (坏数据一律忽略)
+- 账本存在 `localStorage['western-katakana.usage']`; 坏了 / 被手改坏都不影响使用 (坏数据一律忽略)
 - 控制台: `LK.usage()` 看账本, `LK.usageReset('session'|'today'|'all')` 清零
 
 ## 排障
 
-控制台里有一个 `LK` 对象 (`window.LatinKatakana` 的短别名, 两个名字都行):
+控制台里有一个 `LK` 对象 (`window.WesternKatakana` 的短别名, 两个名字都行; 改名前的 `window.LatinKatakana` 也仍然挂着):
 
 ```js
 LK.stats()             // 读音 + 大模型 + 在线校正三份统计
@@ -485,7 +485,7 @@ LK.stats().lastPass.retryInMs // 已经安排了多久之后再扫一轮
 
 > 最常见的误会: **大多数歌一个请求都不会发**。6470 条的词典覆盖了英文词频前 6000, 大模型只在遇到词典外的词 (生僻词、人名、乐队名) 时才动
 
-运行轨迹写在 `localStorage` (键 `latin-katakana.trace`), 用仓库里的工具读:
+运行轨迹写在 `localStorage` (键 `western-katakana.trace`), 用仓库里的工具读:
 
 ```bash
 node tools/read-trace.js

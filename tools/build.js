@@ -1,5 +1,5 @@
 /*
- * 打包：把 src/ 打成 builds/latin-katakana.plugin（.plugin 就是个 zip，文件在 zip 根目录）。
+ * 打包：把 src/ 打成 builds/western-katakana.plugin（.plugin 就是个 zip，文件在 zip 根目录）。
  *
  *   node tools/build.js
  *   node tools/build.js --install              复制到 C:\betterncm\plugins

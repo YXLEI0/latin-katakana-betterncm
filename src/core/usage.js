@@ -25,7 +25,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  var STORAGE_KEY = "latin-katakana.usage";
+  var STORAGE_KEY = "western-katakana.usage";
   var VERSION = 1;
 
   /** 两层在线接口分别记账（键名也是配置/展示里用的 id） */

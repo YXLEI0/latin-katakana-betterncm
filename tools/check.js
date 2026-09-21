@@ -287,7 +287,7 @@ console.log("[4.5/7] 借词表");
 console.log("[5/7] 元信息与仓库地址");
 const MANIFEST = manifest || {};
 const EXPECTED_OWNER = "YXLEI0";
-const EXPECTED_REPO = "latin-katakana-betterncm";
+const EXPECTED_REPO = "western-katakana-betterncm";
 if (MANIFEST.author && MANIFEST.author !== EXPECTED_OWNER) {
   warn(`manifest.author 是「${MANIFEST.author}」，与预期维护者（${EXPECTED_OWNER}）不一致`);
 }

@@ -1,6 +1,6 @@
 # 第三方组件与数据来源
 
-本插件由 **YXLEI0** 维护：https://github.com/YXLEI0/latin-katakana-betterncm
+本插件由 **YXLEI0** 维护：https://github.com/YXLEI0/western-katakana-betterncm
 
 本插件**没有**打包任何第三方运行时库（不需要 kuromoji、不需要分词词典）。
 分发的文件只有本仓库 `src/` 下的代码、一份生成的读音词典和一张预览图。
@@ -16,7 +16,7 @@
 | | 输入 | 注出来的东西 |
 | --- | --- | --- |
 | Katakana Terminator | 片假名外来语 | 英文原词 |
-| 本插件 | 拉丁字母词 | 片假名读音 |
+| 本插件 | 西文字母词 | 片假名读音 |
 
 沿用过来的是 **DOM 注音这一层的实现**（`src/core/annotate.js`）：文本节点切分、
 `<ruby>` 与降级 `<span>` 两套排版、改动记录与失效判定、`age` 闸门、

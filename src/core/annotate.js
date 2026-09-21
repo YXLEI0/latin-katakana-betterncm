@@ -151,7 +151,7 @@
      *
      * katakana-terminator 需要它，是因为那两个插件抢的是同一批字（片假名 vs 汉字）：
      * 谁都不让，jp-furigana 每轮重建整行、我们的注音每轮被抹掉，就是抽搐。
-     * 而本插件标的是**拉丁字母** —— 跟振假名根本不是同一批字。一行里既有汉字
+     * 而本插件标的是**西文字母** —— 跟振假名根本不是同一批字。一行里既有汉字
      * 又有英文时，两种注音本来就该同时出现，让开反而是漏标。
      *
      * 所以这里不需要 skipKanjiLines / coexistWithFurigana 这类开关：
@@ -1593,7 +1593,7 @@
         /*
          * 这里**没有**「按行分工、让给 jp-furigana」那套规则 —— 那是
          * katakana-terminator 需要的（两边都要给同一行的片假名/汉字注音，
-         * 谁都不肯让就会一直重建）。本插件标的是**拉丁字母**，跟振假名
+         * 谁都不肯让就会一直重建）。本插件标的是**西文字母**，跟振假名
          * 完全不是同一批字，没有分工的必要：一行里既有汉字又有英文时，
          * 两种注音本来就该同时存在。
          *
@@ -1931,11 +1931,11 @@
 
   function applyStyles(doc, opts) {
     if (!doc || !doc.head) return;
-    styleEl(doc, "latin-katakana-style").textContent = styles(opts);
+    styleEl(doc, "western-katakana-style").textContent = styles(opts);
   }
 
   function removeStyles(doc) {
-    var el = doc && doc.getElementById("latin-katakana-style");
+    var el = doc && doc.getElementById("western-katakana-style");
     if (el && el.parentNode) el.parentNode.removeChild(el);
   }
 

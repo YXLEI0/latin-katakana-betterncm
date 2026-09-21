@@ -1,22 +1,44 @@
 /*
- * 拉丁字母片假名注音 · BetterNCM 插件入口
+ * 西文字母片假名注音 · BetterNCM 插件入口
  *
- * 干的事：日语歌歌词里的**拉丁字母**（clover / light / diorama / Sekai …）上方
- * 标出片假名读音。和 katakana-terminator（片假名 -> 英文）方向正好相反，
- * 两个可以同时开：一行里既有片假名又有英文时，两种注音会同时出现。
+ * 干的事：日语歌歌词里的**西文字母**（clover / light / diorama / Sekai /
+ * Отчизну / Θάλασσα …）上方标出片假名读音。和 katakana-terminator
+ * （片假名 -> 英文）方向正好相反，两个可以同时开：一行里既有片假名又有英文时，
+ * 两种注音会同时出现。
  *
  * 读音来源（core/reading.js 定顺序）：
- *   1. 离线词典（core/dict.js，399 条，真实外来语写法）
+ *   1. 离线词典（core/dict.js，6470 条，真实外来语写法）
  *   2. 罗马音切分（sekai -> セカイ，歌词里官方写的罗马音）
- *   3. 英文音译规则（light -> ライト，兜底，永远能给一个结果）
- *   4. 联网校正（core/correct.js）：只对"规则猜的、且没把握"的词查一次，
+ *   3. 西文各语种的拼读（core/langs.js：德 / 拉 / 葡 / 荷 / 斯瓦希里 / 拼音 / 俄 / 希，法语在 reading.js）
+ *   4. 英文音译规则（light -> ライト，兜底，永远能给一个结果）
+ *   5. 联网校正（core/correct.js）：只对"规则猜的、且没把握"的词查一次，
  *      且只接受**纯片假名**的结果 —— 翻译成汉字的（love -> 愛）对唱歌没用，丢掉。
  */
 (function () {
   "use strict";
 
-  var LOG = "[latin-katakana]";
-  var REPO_URL = "https://github.com/YXLEI0/latin-katakana-betterncm";
+  var LOG = "[western-katakana]";
+  var REPO_URL = "https://github.com/YXLEI0/western-katakana-betterncm";
+
+  /*
+   * 插件从「latin-katakana」改名叫「western-katakana」时，localStorage 里的键
+   * 前缀也跟着换了。老用户（配置、学会的词、缓存、用量账本）不该因为一次改名
+   * 就全丢，所以这里做一次性搬家：**新键不存在、老键存在**才复制过去，老键留着
+   * 不删（万一要回退）。必须在读 config / 建各层之前跑。
+   */
+  (function migrateStorage() {
+    var SUFFIX = [".config", ".trace", ".learned.v1", ".usage", ".llm.v1", ".cache.v1", ".off", ".dev"];
+    try {
+      for (var i = 0; i < SUFFIX.length; i++) {
+        var oldKey = "latin-katakana" + SUFFIX[i];
+        var newKey = "western-katakana" + SUFFIX[i];
+        var val = localStorage.getItem(oldKey);
+        if (val !== null && localStorage.getItem(newKey) === null) localStorage.setItem(newKey, val);
+      }
+    } catch (e) {
+      /* localStorage 不可用就跳过（隐私模式 / 配额满） */
+    }
+  })();
 
   // ------------------------------------------------------------ 基础工具
 
@@ -56,7 +78,7 @@
    * 那里面的值是 Snappy 压缩的、还跨 record 分片，别手工捞）。
    * 上限 250 行，超出丢最旧的，避免把配额写爆。
    */
-  var TRACE_KEY = "latin-katakana.trace";
+  var TRACE_KEY = "western-katakana.trace";
   var TRACE_MAX = 250;
 
   function trace(kind, msg) {
@@ -83,7 +105,7 @@
 
   // 改了默认值就 +1：用来把旧版本存下来的设置迁移掉
   var CONFIG_VERSION = 2;
-  var CONFIG_KEY = "latin-katakana.config";
+  var CONFIG_KEY = "western-katakana.config";
 
   var DEFAULTS = {
     enabled: true,
@@ -373,11 +395,11 @@
   /*
    * 紧急开关：插件一旦把页面搞崩，设置面板也进不去，所以留一个不依赖 UI 的关闭方式。
    * 在网易云的开发者工具控制台执行：
-   *     localStorage['latin-katakana.off'] = '1'   // 并重启
+   *     localStorage['western-katakana.off'] = '1'   // 并重启
    */
   function emergencyOff() {
     try {
-      return localStorage.getItem("latin-katakana.off") === "1";
+      return localStorage.getItem("western-katakana.off") === "1";
     } catch (e) {
       return false;
     }
@@ -386,7 +408,7 @@
   function devMode() {
     try {
       if (typeof plugin !== "undefined" && plugin.devMode) return true;
-      return localStorage.getItem("latin-katakana.dev") === "1";
+      return localStorage.getItem("western-katakana.dev") === "1";
     } catch (e) {
       return false;
     }
@@ -1000,30 +1022,30 @@
 
   function buildConfigUI() {
     var root = document.createElement("div");
-    root.id = "latin-katakana-config";
+    root.id = "western-katakana-config";
     root.innerHTML =
       "<style>" +
-      "#latin-katakana-config { font-size: 14px; line-height: 1.9; }" +
-      "#latin-katakana-config h3 { margin: 12px 0 4px; font-size: 15px; }" +
-      "#latin-katakana-config .lk-row { margin: 3px 0; }" +
-      "#latin-katakana-config .lk-hint { opacity: .65; font-size: 12px; line-height: 1.5; }" +
-      "#latin-katakana-config input[type=text], #latin-katakana-config input[type=password] { width: 300px; padding: 2px 6px; }" +
-      "#latin-katakana-config .lk-preview { padding: 8px 10px; border: 1px solid rgba(128,128,128,.35); border-radius: 6px; font-size: 18px; }" +
-      "#latin-katakana-config .lk-preview-trans { margin-top: 2px; font-size: 14px; opacity: .6; }" +
-      "#latin-katakana-config .lk-llm-state { margin: 2px 0; }" +
-      "#latin-katakana-config .lk-layer { display: flex; align-items: center; gap: 6px; line-height: 1.8; }" +
-      "#latin-katakana-config .lk-layer-name { min-width: 110px; }" +
-      "#latin-katakana-config .lk-layer-note { opacity: .6; font-size: 12px; flex: 1; }" +
-      "#latin-katakana-config .lk-layer-btn { min-width: 26px; }" +
-      "#latin-katakana-config .lk-layer-btn[disabled] { opacity: .35; }" +
-      "#latin-katakana-config .lk-layer-warn { color: #e8a33d; margin-top: 4px; }" +
-      "#latin-katakana-config .lk-warn { color: #e8a33d; }" +
-      "#latin-katakana-config .lk-links { margin-bottom: 4px; }" +
-      "#latin-katakana-config .lk-links a { margin-right: 14px; }" +
+      "#western-katakana-config { font-size: 14px; line-height: 1.9; }" +
+      "#western-katakana-config h3 { margin: 12px 0 4px; font-size: 15px; }" +
+      "#western-katakana-config .lk-row { margin: 3px 0; }" +
+      "#western-katakana-config .lk-hint { opacity: .65; font-size: 12px; line-height: 1.5; }" +
+      "#western-katakana-config input[type=text], #western-katakana-config input[type=password] { width: 300px; padding: 2px 6px; }" +
+      "#western-katakana-config .lk-preview { padding: 8px 10px; border: 1px solid rgba(128,128,128,.35); border-radius: 6px; font-size: 18px; }" +
+      "#western-katakana-config .lk-preview-trans { margin-top: 2px; font-size: 14px; opacity: .6; }" +
+      "#western-katakana-config .lk-llm-state { margin: 2px 0; }" +
+      "#western-katakana-config .lk-layer { display: flex; align-items: center; gap: 6px; line-height: 1.8; }" +
+      "#western-katakana-config .lk-layer-name { min-width: 110px; }" +
+      "#western-katakana-config .lk-layer-note { opacity: .6; font-size: 12px; flex: 1; }" +
+      "#western-katakana-config .lk-layer-btn { min-width: 26px; }" +
+      "#western-katakana-config .lk-layer-btn[disabled] { opacity: .35; }" +
+      "#western-katakana-config .lk-layer-warn { color: #e8a33d; margin-top: 4px; }" +
+      "#western-katakana-config .lk-warn { color: #e8a33d; }" +
+      "#western-katakana-config .lk-links { margin-bottom: 4px; }" +
+      "#western-katakana-config .lk-links a { margin-right: 14px; }" +
       // 高级设置整块折叠：面板默认只有"开关 / 大模型 / 预览"三块，其余收起来
-      "#latin-katakana-config details.lk-adv { margin-top: 12px; border-top: 1px solid rgba(128,128,128,.25); padding-top: 6px; }" +
-      "#latin-katakana-config details.lk-adv > summary { cursor: pointer; opacity: .8; }" +
-      "#latin-katakana-config details.lk-adv > summary:hover { opacity: 1; }" +
+      "#western-katakana-config details.lk-adv { margin-top: 12px; border-top: 1px solid rgba(128,128,128,.25); padding-top: 6px; }" +
+      "#western-katakana-config details.lk-adv > summary { cursor: pointer; opacity: .8; }" +
+      "#western-katakana-config details.lk-adv > summary:hover { opacity: 1; }" +
       "</style>" +
       '<div class="lk-links">' +
       '<a href="#" data-open="' + REPO + '">源码仓库</a>' +
@@ -1627,7 +1649,7 @@
               copied = false;
             }
             try {
-              console.log("[latin-katakana] 词库素材（" + count + " 条）：", json);
+              console.log("[western-katakana] 词库素材（" + count + " 条）：", json);
             } catch (eLog) {
               /* 控制台打不出来就算了 */
             }
@@ -2204,9 +2226,13 @@
     /*
      * 短别名 `LK`：日志、README、排障文档里写的都是 LK.xxx，
      * 以前只挂了 window.LatinKatakana，照着敲会 "LK is not defined"。
-     * 两个名字都留着（长名给不认识这个插件的人看，短名给控制台用）。
+     * 现在三个名字都留着：
+     *   window.WesternKatakana  长名（插件现在的身份）
+     *   window.LatinKatakana    老长名，改名前的文档 / 脚本里是它，留个别名不至于失效
+     *   window.LK               短名，控制台里敲的就是它（文档里的 LK.stats() / LK.lang()）
      */
-    window.LK = window.LatinKatakana;
+    window.WesternKatakana = window.LatinKatakana;
+    window.LK = window.WesternKatakana;
 
     log(
       "已加载" +

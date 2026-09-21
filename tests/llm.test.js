@@ -137,7 +137,7 @@ test("被拒的答案会落盘：重启之后 rejects() 还看得出原因", asy
   a.client.lookup("tick", "tick tock");
   await a.client.flush();
   a.client.saveCache(); // 正常是 2s 防抖落盘，这里手动触发
-  const saved = JSON.parse(ctx.window.localStorage.getItem("latin-katakana.llm.v1"));
+  const saved = JSON.parse(ctx.window.localStorage.getItem("western-katakana.llm.v1"));
   const key = Object.keys(saved)[0];
   assert.strictEqual(saved[key].said, "カチカチ", "原话要落盘：" + JSON.stringify(saved));
   assert.strictEqual(saved[key].why, "没通过首音校验");

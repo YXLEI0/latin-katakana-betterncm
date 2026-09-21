@@ -1,4 +1,4 @@
-# 西文字母片假名注音 · latin-katakana
+# 西文字母片假名注音 · western-katakana
 
 在日语歌歌词的拉丁字母 / 西里尔字母 / 希腊字母上方标注片假名读音
 
@@ -11,13 +11,13 @@
 
 ## 安装
 
-从 [Releases](../../releases) 下载 `latin-katakana.plugin`, 放进 BetterNCM 的插件目录后重启网易云
+从 [Releases](../../releases) 下载 `western-katakana.plugin`, 放进 BetterNCM 的插件目录后重启网易云
 
 自己打包:
 
 ```bash
 npm install
-npm run build            # 产出 builds/latin-katakana.plugin
+npm run build            # 产出 builds/western-katakana.plugin
 npm run install:plugin   # 顺便复制到 C:\betterncm\plugins
 ```
 

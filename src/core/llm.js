@@ -1,5 +1,5 @@
 /*
- * latin-katakana —— 大模型校正层
+ * western-katakana —— 大模型校正层
  *
  * 存在意义：纯拼写规则永远读不对 hello / question / shining 这类词
  * （规则给 ヘッラオ / クワエサション，实际上没人这么唱）。实测大模型给的读音
@@ -28,7 +28,7 @@
 
   var G = typeof globalThis !== "undefined" ? globalThis : {};
 
-  var CACHE_KEY = "latin-katakana.llm.v1";
+  var CACHE_KEY = "western-katakana.llm.v1";
   var CACHE_TTL_MS = 180 * 24 * 60 * 60 * 1000; // 半年
   var CACHE_MAX = 6000;
   var FLUSH_DELAY_MS = 400; // 攒批窗口

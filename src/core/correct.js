@@ -1,5 +1,5 @@
 /*
- * latin-katakana —— 翻译层
+ * western-katakana —— 翻译层
  *
  * 三级来源，按顺序：
  *   1. 会话缓存（内存 Map）—— 命中就同步返回，零延迟；
@@ -27,7 +27,7 @@
   var G = typeof globalThis !== "undefined" ? globalThis : {};
 
 
-  var CACHE_KEY = "latin-katakana.cache.v1";
+  var CACHE_KEY = "western-katakana.cache.v1";
   var CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 天
   var CACHE_MAX = 4000;
   var FLUSH_DELAY_MS = 1200; // 攒批窗口

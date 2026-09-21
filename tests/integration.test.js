@@ -55,7 +55,11 @@ function bootPlugin(html, options) {
   if (options.config) {
     const saved = {};
     for (const k of Object.keys(options.config)) saved[k] = options.config[k];
-    window.localStorage.setItem("latin-katakana.config", JSON.stringify(saved));
+    window.localStorage.setItem("western-katakana.config", JSON.stringify(saved));
+  }
+  // 改名前的键（用来测"老键搬家"那条）
+  if (options.legacyKeys) {
+    for (const k of Object.keys(options.legacyKeys)) window.localStorage.setItem(k, options.legacyKeys[k]);
   }
 
   const opened = [];
@@ -75,7 +79,7 @@ function bootPlugin(html, options) {
   };
   const plugin = {
     devMode: !!options.dev,
-    pluginPath: "C:/betterncm/plugins/latin-katakana",
+    pluginPath: "C:/betterncm/plugins/western-katakana",
     onLoad: function (fn) {
       listeners.load.push(fn);
     },
@@ -677,7 +681,7 @@ test("层序可调：设置面板的 ↑↓ 按钮能改顺序、落盘，并立
   down.dispatchEvent(new env.window.Event("click"));
 
   assert.deepStrictEqual([...env.api.layers()], ["romaji", "dict", "llm", "google", "rule"], "点完就要换过来");
-  const saved = JSON.parse(env.window.localStorage.getItem("latin-katakana.config"));
+  const saved = JSON.parse(env.window.localStorage.getItem("western-katakana.config"));
   assert.deepStrictEqual(saved.layerOrder, ["romaji", "dict", "llm", "google", "rule"], "顺序要落盘");
 
   // 面板上第一层的 ↑ 现在是禁用的（已经在最上面）
@@ -919,12 +923,12 @@ test("禁用后 DOM 完全还原并收走样式，重新启用又能标注", asy
   await sleep(200);
   assert.strictEqual(rubyCount(env.document.body), 0, "禁用后不该有注音");
   assert.ok(!env.document.body.innerHTML.includes("lt-ruby"), "禁用后 DOM 里不该有痕迹");
-  assert.strictEqual(env.document.getElementById("latin-katakana-style"), null, "注入的样式表要收走");
+  assert.strictEqual(env.document.getElementById("western-katakana-style"), null, "注入的样式表要收走");
 
   env.api.set("enabled", true);
   await sleep(600);
   assert.strictEqual(env.document.body.innerHTML, annotated, "重新启用后应该回到同样的结果");
-  assert.ok(env.document.getElementById("latin-katakana-style"), "样式要补回来");
+  assert.ok(env.document.getElementById("western-katakana-style"), "样式要补回来");
 });
 
 test("断网时依然能标（词典 + 罗马音 + 规则全在本地）", async () => {
@@ -978,7 +982,7 @@ test("用量：大模型返回的 token 数会记进账本（本次 / 今天 / �
     [1, 1, 1],
     "本次 / 今天 / 累计 三份账一起涨"
   );
-  const saved = JSON.parse(env.window.localStorage.getItem("latin-katakana.usage"));
+  const saved = JSON.parse(env.window.localStorage.getItem("western-katakana.usage"));
   assert.strictEqual(saved.total.llm.promptTokens, 321, "累计要落盘");
 });
 
@@ -989,7 +993,7 @@ test("用量：设置面板显示账本，三个清零按钮各管一段", async
   const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   const bucket = (n) => ({ requests: n, ok: n, failures: 0, words: n, chars: n * 5, promptTokens: n * 100, completionTokens: n * 10 });
   env.window.localStorage.setItem(
-    "latin-katakana.usage",
+    "western-katakana.usage",
     JSON.stringify({ version: 1, day: key, today: { llm: bucket(7), google: bucket(2) }, total: { llm: bucket(9), google: bucket(3) } })
   );
   await env.runLoad();
@@ -1028,7 +1032,7 @@ test("用量：单价填了就算花费，单价 0 就不显示钱", async () =>
   const d = new Date();
   const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   env.window.localStorage.setItem(
-    "latin-katakana.usage",
+    "western-katakana.usage",
     JSON.stringify({
       version: 1,
       day: key,
@@ -1091,7 +1095,7 @@ test("按来源着色：类名一直在，颜色只由开关决定（开了立�
   const p = env.document.querySelector("ul.lyric li p");
   assert.ok(p.querySelector("ruby.lt-src-dict"), "词典给的词要带 lt-src-dict：" + p.innerHTML);
 
-  const styleText = () => env.document.getElementById("latin-katakana-style").textContent;
+  const styleText = () => env.document.getElementById("western-katakana-style").textContent;
   assert.strictEqual(env.api.colorize(), false, "默认不开");
   assert.strictEqual(styleText().indexOf("lt-src-dict"), -1, "没开的时候一条颜色规则都不注入");
 
@@ -1149,7 +1153,7 @@ test("按来源着色：大模型换过的词，颜色跟着来源一起变", as
 test("注音不透明度真的生效（老版本被一条 !important 压掉了）", () => {
   const ctx = loadCore(NCM_HTML);
   ctx.LKAnnotate.applyStyles(ctx.document, { rtSize: 55, rtOpacity: 40, colorBySource: false });
-  const css = ctx.document.getElementById("latin-katakana-style").textContent;
+  const css = ctx.document.getElementById("western-katakana-style").textContent;
   assert.ok(/rt\.lt-rt,\s*\.lt-rt\s*\{\s*opacity:\s*0\.4\s*!important/.test(css), "注音要用用户设的 40%：" + css);
   assert.ok(
     css.indexOf("ruby.lt-ruby { opacity: 1 !important; }") >= 0,
@@ -1172,7 +1176,7 @@ test("设置面板：粘进来的 key 会自动洗掉引号 / 空格 / Bearer，
 
   assert.strictEqual(input.value, "sk-abc123456789012345", "输入框里要写成干净的值");
   assert.strictEqual(env.api.config.llmKey, "sk-abc123456789012345");
-  const saved = JSON.parse(env.window.localStorage.getItem("latin-katakana.config"));
+  const saved = JSON.parse(env.window.localStorage.getItem("western-katakana.config"));
   assert.strictEqual(saved.llmKey, "sk-abc123456789012345", "落盘的也要是干净的");
 });
 
@@ -2566,7 +2570,7 @@ test("学会的词：模型在两个句子里答同一个读音 -> 沉淀成离�
    * 重开一次（模拟重启网易云）：把沉淀下来的那份 localStorage 搬到新的页面里，
    * 换成"什么都不许问"的 fetch —— 只要还在注音，就说明它没再花请求。
    */
-  const saved = env.window.localStorage.getItem("latin-katakana.learned.v1");
+  const saved = env.window.localStorage.getItem("western-katakana.learned.v1");
   assert.ok(saved && saved.indexOf("セレンディピティ") >= 0, "要落盘：" + saved);
 
   let calls = 0;
@@ -2577,7 +2581,7 @@ test("学会的词：模型在两个句子里答同一个读音 -> 沉淀成离�
       return Promise.reject(new Error("不该有任何请求"));
     },
   });
-  env2.window.localStorage.setItem("latin-katakana.learned.v1", saved);
+  env2.window.localStorage.setItem("western-katakana.learned.v1", saved);
   await env2.runLoad();
   await sleep(600);
 
@@ -2744,12 +2748,53 @@ test("设置面板的预览：高考听力那句 + 中文翻译行不注音", as
   assert.strictEqual(trans.querySelectorAll("ruby, rt").length, 0, "翻译行不许注音");
 });
 
+test("改名搬家：老的 latin-katakana.* 键会复制到 western-katakana.*，老键留着", async () => {
+  // 插件从 latin-katakana 改名成 western-katakana 之后，localStorage 的键前缀也换了。
+  // 老用户的配置（含 API Key）、学会的词、模型缓存、用量账本不该因为一次改名全丢 ——
+  // main.js 开头有一段一次性搬家：新键不存在、老键存在才复制，老键不删。
+  const env = bootPlugin(NCM_HTML, {
+    legacyKeys: {
+      "latin-katakana.config": JSON.stringify({ rtSize: 99, rtOpacity: 42, llmKey: "sk-legacy", enabled: true }),
+      "latin-katakana.usage": JSON.stringify({ session: {}, today: {}, total: {} }),
+      "latin-katakana.learned.v1": JSON.stringify({ version: 1, words: { legacyword: { k: "レガシー", at: 1 } }, seen: {} }),
+    },
+  });
+  await env.runLoad();
+
+  // 配置跟着过来了（面板上显示的就是老值）
+  assert.strictEqual(env.api.config.rtSize, 99, "老配置要搬过来");
+  assert.strictEqual(env.api.config.llmKey, "sk-legacy");
+  const root = env.listeners.config[0]();
+  assert.strictEqual(root.querySelector('[data-k="rtSize"]').value, "99");
+  assert.strictEqual(root.querySelector('[data-k="llmKey"]').value, "sk-legacy");
+
+  // 新键都写出来了
+  for (const suffix of [".config", ".usage", ".learned.v1"]) {
+    assert.ok(env.window.localStorage.getItem("western-katakana" + suffix), "要写出 western-katakana" + suffix);
+    assert.ok(env.window.localStorage.getItem("latin-katakana" + suffix), "老键留着不删：" + suffix);
+  }
+  // 学会的词也读得到（不是空表）
+  const learned = env.api.learn.list();
+  assert.ok(
+    learned.some((r) => r.word === "legacyword" && r.kana === "レガシー"),
+    JSON.stringify(learned)
+  );
+
+  // 反过来：新键已经存在时，不再被老键覆盖（否则用户改了设置又被老值盖回去）
+  const env2 = bootPlugin(NCM_HTML, {
+    config: { rtSize: 66 },
+    legacyKeys: { "latin-katakana.config": JSON.stringify({ rtSize: 11 }) },
+  });
+  await env2.runLoad();
+  assert.strictEqual(env2.api.config.rtSize, 66, "新键优先，老键不许盖回来");
+});
+
 test("设置面板能构建出来，改动落盘到 localStorage", async () => {
   const env = bootPlugin(NCM_HTML, { dev: true });
   await env.runLoad();
   const root = env.listeners.config[0]();
   assert.ok(root, "onConfig 应该返回一个元素");
-  assert.strictEqual(root.id, "latin-katakana-config");
+  assert.strictEqual(root.id, "western-katakana-config");
 
   const enabled = root.querySelector('[data-k="enabled"]');
   assert.ok(enabled && enabled.type === "checkbox" && enabled.checked === true);
@@ -2759,7 +2804,7 @@ test("设置面板能构建出来，改动落盘到 localStorage", async () => {
   rtSize.value = "70";
   rtSize.dispatchEvent(new env.window.Event("change"));
 
-  const raw = env.window.localStorage.getItem("latin-katakana.config");
+  const raw = env.window.localStorage.getItem("western-katakana.config");
   assert.ok(raw, "配置应该写进 localStorage");
   assert.strictEqual(JSON.parse(raw).rtSize, 70);
 });

@@ -1,5 +1,5 @@
 {
-  "name": "latin-katakana-betterncm",
+  "name": "western-katakana-betterncm",
   "version": "0.1.0",
   "description": "BetterNCM 插件：给日语歌歌词里的拉丁字母 / 西里尔字母 / 希腊字母标注片假名读音",
   "private": true,

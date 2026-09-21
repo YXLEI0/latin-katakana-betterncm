@@ -1,5 +1,5 @@
 /*
- * latin-katakana 的种子词表：英文 -> 片假名读音。
+ * western-katakana 的种子词表：英文 -> 片假名读音。
  *
  * 这是**唯一**的数据源（`src/core/dict.js` 由 tools/build-dict.js 从它生成，
  * 不要手改生成物）。

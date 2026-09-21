@@ -139,7 +139,7 @@ test("脏数据：localStorage 里是坏 JSON / 负数 / 别的形状，都不�
     JSON.stringify({ version: 1, today: { 别的层: { requests: 9 } } }),
   ];
   for (const raw of cases) {
-    const storage = fakeStorage({ "latin-katakana.usage": raw });
+    const storage = fakeStorage({ "western-katakana.usage": raw });
     const { usage, window } = newUsage({ storage });
     const s = usage.snapshot();
     assert.strictEqual(typeof s.total.llm.requests, "number", "坏数据也要给出可用的账本");
