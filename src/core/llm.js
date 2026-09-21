@@ -333,9 +333,25 @@
     })();
     var queue = []; // 待问的词（数组，保持入队顺序）
     var queued = new Set(); // 去重
+    /*
+     * 「要过但还没有结论」的词：key -> { word, context, tries, lastAt }。
+     *
+     * 为什么要单独记一份（队列本身不够）：注音层**只在注音那一刻**问一次
+     * （annotate -> lookup），之后那个词就再没人问了。如果那一刻这一层正好不可用
+     * —— 没配 key、退避中、刚启动配置还没读进来 —— 那个词就永远停在规则层，
+     * 用户看到的就是「这个单词一直是黄的」（`sieh` 就是这么一直黄着的）。
+     * 有这张表，就能在任何时刻把它们捡回来补问（见 sweep）。
+     * 命中或"模型明确给不出"（miss）都算结论，从表里删掉。
+     */
+    var wanted = new Map();
+    var WANT_TRIES = 3; // 一个词最多补问几次（防止对着一个词无限花钱）
+    var WANT_GAP_MS = 30000; // 两次补问之间至少隔这么久
+    var WANT_MAX = 2000; // 这张表只在内存里，但一首接一首放下去也会一直长，给个上限
     var inflight = false;
+    var inflightKeys = new Set(); // 正在飞的那一批（isWaiting 要认它）
     var timer = null;
     var timerDelay = -1;
+    var sweepTimer = null; // 退避到期后的补问（见 scheduleSweepAtCooldownEnd）
     var dirty = false;
     /*
      * 退避起点。正常用 COOLDOWN_MS（60s），测试里可以传个小值
@@ -593,7 +609,10 @@
       }
 
       var batch = queue.splice(0, currentBatchSize());
-      for (var i = 0; i < batch.length; i++) queued.delete(batch[i].key);
+      for (var i = 0; i < batch.length; i++) {
+        queued.delete(batch[i].key);
+        inflightKeys.add(batch[i].key); // 飞行中也算"在等"，isWaiting 要认
+      }
       if (!batch.length) return Promise.resolve(null);
 
       // 提示词里的条目：下标 i 用来对齐响应（同一个词在两句里不会互相覆盖）
@@ -691,7 +710,13 @@
         .then(function (okFlag) {
           clearTimeout(to);
           inflight = false;
+          for (var bk = 0; bk < batch.length; bk++) inflightKeys.delete(batch[bk].key);
           saveCache(false);
+          /*
+           * 每批回来之后补一次问：wanted 里"还没有结论"的词（这次没抢到的、
+           * 或者注音那一刻这一层不可用、根本没进过队列的）在这里被捡回来。
+           */
+          sweep();
           if (queue.length) schedule(okFlag ? FLUSH_DELAY_MS : 0);
           return okFlag;
         });
@@ -742,6 +767,7 @@
         else if (validate && !validate(item.word, said, item.context || item.line)) why = "没通过首音校验";
         if (!why) {
           mem.set(item.key, { k: said });
+          wanted.delete(item.key); // 有结论了，不用再补问
           byWord[item.word] = said; // 外层索引：给 peek()/控制台用
           stats.hits++;
           stats.words++;
@@ -759,14 +785,30 @@
           }
         } else {
           /*
-           * 「回答被截断」时抢出来的那几条：没抢到的**不记 miss**，留给下一轮重问。
-           *
-           * 为什么要区别对待：miss 是**永久**的（还落盘），只有"模型明确给不出/
-           * 给错了"才该记。截断是我们这边的批次太大造成的，记成 miss 就等于
-           * 因为一次截断把那些词永久钉在规则层（用户报的正是"一直是黄的"）。
-           * 它们没进 mem，下一轮 lookup() 会重新入队 —— 而批次同时已经减半。
+           * 「回答被截断」时抢出来的那几条：没抢到的**不记 miss** —— miss 是**永久**的
+           * （还落盘），只有"模型明确给不出/给错了"才该记。截断是我们这边的批次太大
+           * 造成的，记成 miss 就等于因为一次截断把那些词永久钉在规则层。
+           * 它们没进 mem，这里**直接放回队列**重问（见下面 partial 那一支）。
            */
-          if (partial) continue;
+          if (partial) {
+            /*
+             * 直接把没抢到的条目**放回队列**，而不是指望"下一轮 lookup 再来问"。
+             *
+             * 为什么必须现在放：注音层**只在注音那一刻** lookup 一次，那一轮之后
+             * 页面不重扫就再也没人问它了 —— 那个词就一直停在规则层（黄色）。
+             * 批次同时已经减半（见下面），下一轮不会再被截断。
+             */
+            var w = wanted.get(item.key);
+            if (!w) w = remember(item.word, item.key, item.context);
+            /*
+             * 先把它从"飞行中"摘掉：这一批还在 inflightKeys 里（要等 send 的收尾
+             * 才清），enqueue 看到它会以为"已经在问了"而拒绝入队 —— 那就等于
+             * 又把这个词丢了（这个坑第一版就踩了）。
+             */
+            inflightKeys.delete(item.key);
+            enqueue(w);
+            continue;
+          }
           /*
            * 记成"问过、没结果"：这一句里的这个词下一轮不会再发。
            *
@@ -776,6 +818,7 @@
            * 把这类条目清掉重问。
            */
           mem.set(item.key, { miss: true, said: said, why: why, at: Date.now() });
+          wanted.delete(item.key); // 模型明确给不出也是结论，别再补问
           stats.misses++;
           if (why === "没通过首音校验") stats.rejected++;
           recordReject(item.word, said, why);
@@ -898,13 +941,108 @@
         stats.cacheHits++;
         return rec.k;
       }
-      if (!canAsk()) return null;
-      if (!queued.has(key)) {
-        queued.add(key);
-        queue.push({ key: key, word: keyOf(word), context: contextKey(line) });
+      /*
+       * 记进 wanted（**不管这一层现在能不能用**）：能不能用是暂时的
+       * （没配 key / 退避中 / 配置还没读进来），而"这个词要过"是长期的。
+       * 有了它，sweep() 才有机会把"注音那一刻没问上"的词补回来。
+       */
+      remember(word, key, contextKey(line));
+      if (!canAsk()) {
+        /*
+         * 这一层暂时不可用。**退避到期**要排一次补问 —— 不然那些词要等页面重扫
+         * 或者用户点「重试」才会再问，看起来就是"这个词一直是黄的"。
+         * 没开 / 没配 key 就不排（排了也没用，等 configure() 来叫）。
+         */
+        if (cfg.enabled && cfg.key && cfg.endpoint && cooldownUntil > Date.now()) scheduleSweepAtCooldownEnd();
+        return null;
       }
-      schedule(queue.length >= cfg.batchSize ? 0 : FLUSH_DELAY_MS);
+      enqueue(wanted.get(key));
       return null;
+    }
+
+    /** 记一条 wanted（同一个 key 只记一次）；表太长时先瘦身 */
+    function remember(word, key, context) {
+      var have = wanted.get(key);
+      if (have) return have;
+      if (wanted.size >= WANT_MAX) pruneWanted();
+      var item = { key: key, word: keyOf(word), context: context, tries: 0, lastAt: 0 };
+      wanted.set(key, item);
+      return item;
+    }
+
+    /**
+     * wanted 瘦身：先丢"已经有结论"和"补问次数用完"的，还超就丢最早进来的。
+     * 这张表不落盘，但一首歌接一首歌放下去也会一直长 —— 别让它无限长。
+     */
+    function pruneWanted() {
+      var drop = [];
+      wanted.forEach(function (item, k) {
+        if (mem.has(k) || item.tries >= WANT_TRIES) drop.push(k);
+      });
+      for (var i = 0; i < drop.length; i++) wanted.delete(drop[i]);
+      var over = wanted.size - WANT_MAX + 1;
+      if (over <= 0) return;
+      var it = wanted.keys();
+      for (var j = 0; j < over; j++) {
+        var next = it.next();
+        if (next.done) break;
+        wanted.delete(next.value);
+      }
+    }
+
+    /** 把一个 wanted 条目放进请求队列（已经在队列/飞行中就不重复放） */
+    function enqueue(item) {
+      if (!item) return false;
+      if (mem.has(item.key)) return false;
+      if (queued.has(item.key) || inflightKeys.has(item.key)) return false;
+      item.tries++;
+      item.lastAt = Date.now();
+      queued.add(item.key);
+      queue.push({ key: item.key, word: item.word, context: item.context });
+      schedule(queue.length >= cfg.batchSize ? 0 : FLUSH_DELAY_MS);
+      return true;
+    }
+
+    /**
+     * 补问：把 wanted 里"还没有结论、也不在队列/飞行中"的词重新排进去。
+     *
+     * 什么时候会用到：注音那一刻这一层不可用（没配 key / 退避中 / 配置还没读进来），
+     * 之后页面不再重扫，那个词就没人问了 —— 真机上的 `sieh` 一直是黄的。
+     * 每一批回来之后、以及这一层重新可用时（配置更新 / retryNow）都会扫一遍。
+     * 每个词最多补 WANT_TRIES 次、两次之间至少隔 WANT_GAP_MS，免得对着一个词反复花钱。
+     */
+    function sweep() {
+      if (!canAsk() || !wanted.size) return 0;
+      var now = Date.now();
+      var added = 0;
+      wanted.forEach(function (item) {
+        if (added >= cfg.batchSize) return;
+        if (mem.has(item.key)) {
+          wanted.delete(item.key);
+          return;
+        }
+        if (item.tries >= WANT_TRIES) return;
+        if (now - item.lastAt < WANT_GAP_MS) return;
+        if (enqueue(item)) added++;
+      });
+      return added;
+    }
+
+    /**
+     * 退避到期之后补一次问。
+     *
+     * 场景：页面注音的时候这一层正在退避（`lookup` 记了 wanted 但发不出去），
+     * 退避结束**没有任何事件**会来叫我们 —— 那些词就一直是黄的。这里排一个
+     * 到点就 sweep 的定时器，把那根管子接回去。
+     */
+    function scheduleSweepAtCooldownEnd() {
+      if (sweepTimer) return;
+      var delay = Math.max(1000, cooldownUntil - Date.now() + 50);
+      sweepTimer = setTimeout(function () {
+        sweepTimer = null;
+        sweep();
+        if (queue.length) schedule(0);
+      }, delay);
     }
 
     /**
@@ -919,7 +1057,14 @@
       if (!canAsk()) return false; // 没开 / 没配 key / 正在退避 -> 不等
       var key = cacheKeyOf(word, line);
       if (!key) return false;
-      return !mem.has(key); // 已经有结论（命中或"给不出"）就不用等
+      if (mem.has(key)) return false; // 已经有结论（命中或"给不出"）就不用等
+      /*
+       * 补问次数用完的词不再算"在等"：不然那个词会永远挂着"暂定"（淡色），
+       * 而实际上我们已经不会再问它了 —— 用户看到的就是"这个词一直淡淡的/黄黄的"。
+       */
+      var item = wanted.get(key);
+      if (item && item.tries >= WANT_TRIES) return false;
+      return true;
     }
 
     /**
@@ -1029,6 +1174,19 @@
         return out;
       },
       isWaiting: isWaiting,
+      /**
+       * 记一笔"这个词要过"，但**不排队**。
+       *
+       * 给上层的层序遍历用：那一轮大模型这一层用不了（没配 key / 没开），
+       * 但等它可用时（用户填了 key / 退避结束）我们应该**主动补问**，
+       * 而不是等页面重扫 —— 页面不重扫就再也没人问它了，那个词会一直停在规则层。
+       */
+      want: function (word, line) {
+        var key = cacheKeyOf(word, line);
+        if (!key || mem.has(key)) return false;
+        remember(word, key, contextKey(line));
+        return true;
+      },
       flush: flush,
       test: test,
       clearCache: clearCache,
@@ -1053,7 +1211,15 @@
           queue = [];
           queued.clear();
         }
-        if (canAsk() && queue.length) schedule(FLUSH_DELAY_MS);
+        /*
+         * 这一层刚变得可用（多半是用户刚填好 key）：把 wanted 里"注音那一刻
+         * 没问上"的词补回来 —— 不然那些词要等页面重扫才会再问，看起来就是
+         * "这个词一直是黄的"。
+         */
+        if (canAsk()) {
+          sweep();
+          if (queue.length) schedule(FLUSH_DELAY_MS);
+        }
       },
       config: function () {
         return { enabled: cfg.enabled, endpoint: cfg.endpoint, model: cfg.model, hasKey: !!cfg.key, batchSize: cfg.batchSize };
@@ -1085,7 +1251,25 @@
         if (removed) {
           dirty = true;
           saveCache(true);
-          if (canAsk() && queue.length) schedule(FLUSH_DELAY_MS);
+        }
+        /*
+         * miss 清掉之后要**重新排队**：这一类词是"问过但没收下"，mem 里刚被删掉，
+         * 而注音层不会再主动 lookup 它们 —— 不在这里补问，那个词还是黄的
+         * （用户点「重试没结果的词」期待的正是"现在就再问一遍"）。
+         */
+        if (canAsk()) {
+          for (var r = 0; r < keys.length; r++) {
+            var w = wanted.get(keys[r]);
+            if (!w) {
+              var parts = keys[r].split("\u0000");
+              w = { key: keys[r], word: parts[0], context: parts.slice(1).join("\u0000"), tries: 0, lastAt: 0 };
+              wanted.set(keys[r], w);
+            }
+            w.tries = 0;
+            w.lastAt = 0;
+          }
+          sweep();
+          if (queue.length) schedule(FLUSH_DELAY_MS);
         }
         return removed;
       },
@@ -1100,7 +1284,14 @@
         cooldownUntil = 0;
         cooldownMs = cooldownBase;
         failedSinceHit = 0;
-        if (canAsk() && queue.length) schedule(0);
+        if (canAsk()) {
+          // 手动重试就别管"两次补问之间至少要隔 30 秒"了，全部立刻再排一次
+          wanted.forEach(function (item) {
+            item.lastAt = 0;
+          });
+          sweep();
+          if (queue.length) schedule(0);
+        }
         return { pending: queue.length, inflight: inflight };
       },
       /** 最近被拒的答案（模型原话 + 原因），排障用 */
@@ -1130,6 +1321,7 @@
           cached: mem.size,
           missesCached: countMisses(),
           pending: queue.length,
+          wanted: wanted.size, // 「要过但还没结论」的词（补问的对象）
           roomThisMinute: roomThisMinute(),
           batchCap: batchCap, // 超时之后的"临时小批"上限（0 = 正常大小）
           failedSinceHit: failedSinceHit,

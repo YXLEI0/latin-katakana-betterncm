@@ -1727,9 +1727,13 @@
   function wordScore(id, w) {
     var sig = SIGNALS[id];
     var own = sig.words[w] ? sig.words[w] : 0;
-    // 英语常用词：只认"这种语言自己的词表"里写没写（拉丁语的 in、德语的 du 都在表里），
-    // 而且**不给形状分**（`you` 也满足"元音收尾"，给了形状分就把英语惩罚抵消了）
-    if (EN_COMMON[w]) return own;
+    /*
+     * 英语常用词：只认"这种语言自己的词表"里写没写（拉丁语的 in、德语的 du 都在表里），
+     * 而且**不给形状分**（`you` 也满足"元音收尾"，给了形状分就把英语惩罚抵消了）。
+     * 单个字母（只有 `a` / `i` 在英语表里）不算：那是冠词/代词，也是记号的零件
+     * （`A-Z` 里的 A、`(A, B)` 里的 A），fits() 早就按同一个口径忽略了 —— 两处要一致。
+     */
+    if (w.length > 1 && EN_COMMON[w]) return own;
     var score = own;
     for (var j = 0; j < sig.shapes.length; j++) {
       if (sig.shapes[j][0].test(w)) {
@@ -1753,7 +1757,8 @@
       var w = words[i];
       var own = wordScore(id, w);
       if (own) score += own;
-      else if (EN_COMMON[w]) score -= 2;
+      // 单个字母不吃英语惩罚（口径同 wordScore / fits，见那里）
+      else if (w.length > 1 && EN_COMMON[w]) score -= 2;
     }
     return score;
   }

@@ -61,6 +61,49 @@ test("scan：连字符在词尾时不算进词里（light- 应切成 light）", 
   assert.strictEqual(toks[0].text, "light");
 });
 
+test("连字符串起来的长词要拆开：Looser-Krankheit-Was 是三个词（别再压一条超长注音）", () => {
+  // 用户截图：`Looser-Krankheit-` 上面压着一整条 `ルーザークランクハイトヴァス`，
+  // 比底字还宽、和每个词都对不上（"有些单词超长了效果不好"）；大模型那层也把
+  // `looserkrankheitwas` 当成**一个词**去问（真机缓存里就有这条键）。
+  // 判据：每一段都 >= 2 个字母才拆。
+  const toks = letters.scan("A-Z Looser-Krankheit-Was IS das?");
+  assert.deepStrictEqual(
+    toks.map((t) => t.text),
+    ["A-Z", "Looser", "Krankheit", "Was", "IS", "das"],
+    "A-Z 是记号（逐字母读），后面三个各自成词"
+  );
+  assert.strictEqual(toks[0].notation, true, "A-Z 仍然是记号");
+  // 位置要能对上原文，注音层靠它把 ruby 插在正确的位置（连字符留成普通文本）
+  for (const t of toks) assert.strictEqual("A-Z Looser-Krankheit-Was IS das?".slice(t.start, t.end), t.text);
+  assert.deepStrictEqual(
+    toks.slice(1, 4).map((t) => t.norm),
+    ["looser", "krankheit", "was"]
+  );
+
+  // 几种连字符一个待遇（歌词里 ASCII 和 en/em dash 混着用）
+  const dashes = ["Looser-Krankheit", "Looser\u2010Krankheit", "Looser\u2011Krankheit", "Looser\u2013Krankheit", "Looser\u2014Krankheit"];
+  for (const s of dashes) {
+    assert.deepStrictEqual(
+      letters.scan(s).map((t) => t.text),
+      ["Looser", "Krankheit"],
+      JSON.stringify(s) + " 要拆开"
+    );
+  }
+  assert.strictEqual(letters.scan("A\u2013Z")[0].notation, true, "en dash 的 A–Z 也是记号");
+
+  // 有单字母段的不拆：那是**词内**的连字符（e-mail / x-ray / T-ara），拆开只会更差
+  for (const s of ["e-mail", "x-ray", "T-ara", "U-turn"]) {
+    assert.deepStrictEqual(
+      letters.scan(s).map((t) => t.text),
+      [s],
+      s + " 要保持整词"
+    );
+  }
+  // 波浪号照旧是拉长音（不拆）；well-known 这种普通连字符词也拆
+  assert.deepStrictEqual(letters.scan("feel~ing").map((t) => t.text), ["feel~ing"]);
+  assert.deepStrictEqual(letters.scan("well-known").map((t) => t.text), ["well", "known"]);
+});
+
 test("scan：没有拉丁字母时返回空数组", () => {
   assert.deepStrictEqual(letters.scan("きらめく"), []);
   assert.deepStrictEqual(letters.scan(""), []);
@@ -251,5 +294,8 @@ test("normalize：小写化并去掉撇号连字符", () => {
   assert.strictEqual(letters.normalize("Clover"), "clover");
   assert.strictEqual(letters.normalize("E-Mail"), "email");
   assert.strictEqual(letters.normalize("Don\u2019t"), "dont");
+  // 几种连字符都折掉（不然 en dash 的 rendez–vous 查表时键里会留一个 dash）
+  assert.strictEqual(letters.normalize("Rendez\u2013Vous"), "rendezvous");
+  assert.strictEqual(letters.normalize("A\u2014B"), "ab");
   assert.strictEqual(letters.normalize(""), "");
 });

@@ -32,7 +32,7 @@
   /** 三种字母合起来的"一个西文字母" */
   var WEST = "[" + LAT_CLS + CYR_CLS + GRK_CLS + "]";
   /** 记号里的分隔符（`D/N/A` 的斜杠等） */
-  var GLUE = "[\\/\\\\|_.&#*~+=\\u30FB\\uFF0F\\uFF3C-]";
+  var GLUE = "[\\/\\\\|_.&#*~+=\\u30FB\\uFF0F\\uFF3C\\u2010\\u2011\\u2013\\u2014-]";
 
   /*
    * 一个"词"：字母开头结尾，中间允许撇号和连字符（don't / e-mail / rock'n'roll）。
@@ -60,11 +60,48 @@
    *
    * 结尾的那种（`go~` / `love~`）不受影响：连接符后面必须还有字母才算词内。
    * 三种波浪号都收：ASCII `~`、全角 `～`(FF5E)、波ダッシュ `〜`(301C)。
+   *
+   * 连字符几种都收（ASCII `-`、`‐`(2010)、`‑`(2011)、`–`(2013)、`—`(2014)）——
+   * 歌词里这几种混着用，只认 ASCII 那一版的话 `Looser–Krankheit` 会被切成两个词、
+   * 而 `Looser-Krankheit` 却是一条，同一个排版两种切法，看运气。
+   * **串成一条之后还会再判要不要拆**，见 DASH_SPLIT。
    */
-  var WORD_JOIN = "['\\u2019~\uFF5E\u301C-]";
+  var WORD_JOIN = "['\\u2019~\uFF5E\u301C\\-\\u2010\\u2011\\u2013\\u2014]";
 
   /** 普通词（含撇号/连字符/波浪号）；西里尔/希腊字母同样算词 */
   var RE_PLAIN = new RegExp(WEST + "(?:" + WEST + "|" + WORD_JOIN + "(?=" + WEST + "))*", "g");
+
+  /*
+   * 连字符链要**拆成独立的词**：`Looser-Krankheit-Was`、`High-de-Siehst`、`well-known`。
+   *
+   * 原来整条链算一个词（`e-mail` / `x-ray` 那种确实要），于是：
+   *   1. 读音层一次读一整串，注音也只有**一个** ruby —— 用户截图里
+   *      `Looser-Krankheit-` 上面压着一整条 `ルーザークランクハイトヴァス`，
+   *      比底字还宽、和每个词对不上（"有些单词超长了效果不好"）；
+   *   2. 大模型那层把 `looserkrankheitwas` 当成**一个词**去问（真机缓存里就有
+   *      这条键），每个词各问各的、各自沉淀的机会全没了。
+   *
+   * 判据：**每一段都 >= 2 个字母**才拆。`e-mail` / `x-ray` / `T-ara` 里有单字母段
+   * （那是词内的连字符，拆开只会更差），保持整词；`A-Z` 那种记号在扫描时就
+   * 已经被记号规则接走了，到不了这里。
+   */
+  var RE_DASH = /[\-\u2010\u2011\u2013\u2014]/;
+
+  /** 把一条连字符链切成 [{ text, offset }]；不该拆就原样返回一段 */
+  function splitDashes(raw) {
+    var parts = raw.split(RE_DASH);
+    if (parts.length < 2) return null;
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].length < 2) return null;
+    }
+    var out = [];
+    var at = 0;
+    for (var j = 0; j < parts.length; j++) {
+      out.push({ text: parts[j], offset: at });
+      at += parts[j].length + 1; // +1 = 那个连字符
+    }
+    return out;
+  }
 
   /** 这段文字里有没有拉丁字母（含带变音符号的） */
   function hasLatin(text) {
@@ -150,6 +187,30 @@
       }
       var start = i;
       var end = i + raw.length;
+      /*
+       * 连字符链：先看要不要拆成几个独立的词（见 splitDashes 的说明）。
+       * 拆出来的每一段自己走一遍 norm / script / diacritic —— 读音层和注音层
+       * 都当成普通的词处理，连字符留在原地当普通文本。
+       */
+      var parts = splitDashes(raw);
+      if (parts) {
+        for (var p = 0; p < parts.length; p++) {
+          var seg = parts[p];
+          var segStart = start + seg.offset;
+          out.push({
+            text: seg.text,
+            start: segStart,
+            end: segStart + seg.text.length,
+            norm: normalize(seg.text),
+            glued: false,
+            notation: false,
+            script: scriptOf(seg.text),
+            diacritic: /[^\x00-\x7F]/.test(seg.text),
+          });
+        }
+        i = end;
+        continue;
+      }
       out.push({
         text: raw,
         start: start,
@@ -181,7 +242,7 @@
     if (!text) return "";
     return String(text)
       .toLowerCase()
-      .replace(/['\u2019~\uFF5E\u301C-]/g, "");
+      .replace(/['\u2019~\uFF5E\u301C\-\u2010\u2011\u2013\u2014]/g, "");
   }
 
   /*

@@ -117,6 +117,65 @@ test("完全解析不出 JSON 时：按失败处理（退避重试），并且�
   assert.strictEqual(c.client.stats().missesCached, 0, "失败不写永久 miss");
 });
 
+test("回答被截断时：没抢到的词**立刻回到队列**，下一批马上补问（不等页面重扫）", async () => {
+  // 为什么要立刻放回队列：注音层**只在注音那一刻** lookup 一次。老代码截断时
+  // 只写一句"下一轮 lookup 会重新入队"，可页面不重扫就再没有下一轮了 ——
+  // 那个词就永远是黄的（用户报的正是这句）。
+  const ctx = loadCore();
+  let n = 0;
+  const c = makeClient(ctx, {
+    batchSize: 10,
+    reply: () => {
+      n++;
+      return n === 1 ? '{"1":"イチ","2":"ニ"' : JSON.stringify({ 1: "サン" });
+    },
+  });
+  for (const w of ["alpha", "bravo", "charlie"]) c.client.lookup(w, "line one");
+  await c.client.flush();
+  await c.client.flush(); // 补问那一批
+
+  assert.strictEqual(c.calls.length, 2, "没抢到的词要马上再问一批：" + JSON.stringify(c.calls.map((x) => x.words)));
+  assert.deepStrictEqual(c.calls[1].words, ["charlie"], "补问的正是没抢到的那个");
+  assert.strictEqual(c.client.peek("charlie"), "サン");
+  assert.strictEqual(c.client.stats().wanted, 0, "有结论之后不该再留在补问表里");
+});
+
+test("注音那一刻没配 key 的词也要记住，等 key 补上自动补问（「一直是黄的」的另一条路）", async () => {
+  // 真机上的 `sieh` 就是这样：注音那一刻这一层不可用（没配 key / 退避中 /
+  // 配置还没读进来），lookup 直接返回 null 也不入队 —— 之后页面不再重扫，
+  // 那个词就再也没人问过，于是永远停在规则层（黄色）。
+  const ctx = loadCore();
+  const c = makeClient(ctx, { key: "" });
+  c.client.lookup("sieh", "Sieh mit deinen Augen");
+  await c.client.flush();
+  assert.strictEqual(c.calls.length, 0, "没 key 一个请求都不许发");
+  assert.strictEqual(c.client.stats().wanted, 1, "要记住这个词还欠着");
+
+  c.client.configure({ key: "sk-test" });
+  await c.client.flush();
+  assert.strictEqual(c.calls.length, 1, "补上 key 之后要主动补问，而不是等页面重扫");
+  assert.deepStrictEqual(c.calls[0].words, ["sieh"]);
+});
+
+test("退避期间注音的词，retryNow() 之后立刻重问（不用等 60 秒，也不用等重扫）", async () => {
+  const ctx = loadCore();
+  let bad = true;
+  const c = makeClient(ctx, {
+    cooldownMs: 60000,
+    reply: () => (bad ? new Error("boom") : { 1: "ズィー" }),
+  });
+  c.client.lookup("sieh", "Sieh mit deinen Augen");
+  await c.client.flush();
+  assert.strictEqual(c.client.stats().failures, 1, "第一次失败");
+  assert.strictEqual(c.client.peek("sieh"), null);
+
+  bad = false;
+  c.client.retryNow();
+  await c.client.flush();
+  assert.strictEqual(c.client.peek("sieh"), "ズィー", "retryNow 之后要拿到答案");
+  assert.strictEqual(c.client.stats().wanted, 0);
+});
+
 // ============================================================ 被拒的答案要留痕
 
 /** 和 main.js 一样把首音校验注入进去（不注入的话什么答案都会被收下） */

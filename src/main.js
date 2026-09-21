@@ -809,7 +809,8 @@
     return WKReading.looksLikeTransliteration(word, kana);
   }
 
-  function resolveReading(word, line) {    if (!state.reader) return null;
+  function resolveReading(word, line) {
+    if (!state.reader) return null;
     var r = localReading(word, line);
     if (!r || !r.kana) return null;
 
@@ -819,6 +820,22 @@
       if (!ASYNC_LAYERS[id]) continue;
       // 排在当前答案后面的在线层不参与：不发请求、也不覆盖
       if (i >= mine) break;
+      /*
+       * 大模型这一层现在用不了（没配 key / 没开）**也要记一笔**：
+       * 注音层只在注音那一刻走这里一次，不记的话等 key 补上/这一层重新打开时
+       * 就没人再问那个词了 —— 用户看到的正是「这个单词一直是黄的」
+       * （`sieh` 就是这么一直黄着的）。记下来之后，这一层一可用就会补问。
+       */
+      if (id === "llm" && !layerAvailable(id)) {
+        if (state.llm.want) {
+          try {
+            state.llm.want(word, line);
+          } catch (e) {
+            /* 记不上不影响注音 */
+          }
+        }
+        continue;
+      }
       if (!layerAvailable(id)) continue;
 
       if (id === "llm") {
@@ -2245,6 +2262,13 @@
         },
         retryMisses: function () {
           return state.llm && state.llm.retryMisses ? state.llm.retryMisses() : 0;
+        },
+        /*
+         * 手动把「大模型矫正」这根管子接回去：清掉退避，并把"要过但还没结论"的词
+         * （包括注音那一刻这一层不可用、根本没问上的）立刻重新排一次。
+         */
+        retry: function () {
+          return state.llm && state.llm.retryNow ? state.llm.retryNow() : null;
         },
         clearCache: function () {
           if (state.llm) state.llm.clearCache();

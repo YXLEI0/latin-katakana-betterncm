@@ -1571,7 +1571,9 @@ test("know 一族：know ノウ 本身是对的，同族那几个错读也一起
     ["You", "ユー"],
     ["know", "ノウ"],
     ["knowing", "ノウイング"],
-    ["know-how", "ノウハウ"],
+    // `know-how` 这种连字符词现在**按段各标一个 ruby**（见 letters.js 的 splitDashes），
+    // 读音和整词一样是 ノウ + ハウ
+    ["how", "ハウ"],
     ["throwing", "スローイング"],
     ["flowing", "フロウイング"],
     ["blowing", "ブロウイング"],
@@ -2635,6 +2637,33 @@ test("德语行 `Sieh mit deinen Augen`：`mit` 不许念成 MIT 的字母名", 
   assert.strictEqual(got.get("mit"), "ミット", "mit 不许念字母名：" + JSON.stringify([...got]));
   assert.strictEqual(got.get("deinen"), "ダイネン", JSON.stringify([...got]));
   assert.strictEqual(got.get("Augen"), "アウゲン", JSON.stringify([...got]));
+});
+
+test("连字符串起来的长词：一行里每个词各自一个 ruby（不许压一整条超长注音）", async () => {
+  // 用户截图：`A-Z Looser-Krankheit-Was IS das?` 那行，`Looser-Krankheit-` 上面
+  // 压着一整条 `ルーザークランクハイトヴァス`，比底字还宽、和每个词都对不上
+  //（"有些单词超长了效果不好"）。原因是整条连字符链被当成**一个词**。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>A-Z Looser-Krankheit-Was IS das?</p></li>
+</ul></div></div></body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+
+  const p = env.document.querySelectorAll("ul.lyric li p")[0];
+  const bases = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue);
+  assert.ok(!bases.includes("Looser-Krankheit-Was"), "整条链不许当成一个词：" + JSON.stringify(bases));
+  assert.deepStrictEqual(bases, ["A-Z", "Looser", "Krankheit", "Was", "IS", "das"], JSON.stringify(bases));
+  // 底字一个字符都不能变（连字符还是普通文本，夹在几个 ruby 中间）
+  assert.strictEqual(baseText(p), "A-Z Looser-Krankheit-Was IS das?");
+  // 这一行判成德语（was / das + Krankheit 的 -heit，`A-Z` 里的 A 不再吃英语惩罚）
+  assert.strictEqual(env.api.lang("A-Z Looser-Krankheit-Was IS das?").id, "de", "这一行要判成德语");
+  // 每个词有自己的读音：`was` 是德语同形异音，走引擎的 ヴァス（不是英语词典的 ワズ）
+  const got = linePairs(env.document.querySelectorAll("ul.lyric li p"), 0);
+  assert.strictEqual(got.get("A-Z"), "エーゼット", "A-Z 是记号，逐字母读");
+  assert.strictEqual(got.get("Was"), "ヴァス", "德语行：was 不许读成英语的 ワズ：" + JSON.stringify([...got]));
+  assert.strictEqual(got.get("Krankheit"), "クランクハイト");
 });
 
 test("俄语歌词（用例 6）：西里尔字母也注音（词典和罗马音层都读不了它）", async () => {

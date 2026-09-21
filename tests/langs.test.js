@@ -45,6 +45,10 @@ test("语言判定：用户用例 1（德语歌词里的德语行 / 英语行要
     // 用户截图：这行原来表里一个词都没有（只有 mit），判不出德语 → 走英文词典，
     // `mit` 命中 **MIT**（学院缩写）被念成 エムアイティー
     "Sieh mit deinen Augen",
+    // 用户截图的另一行：连字符串起来的长词。原来 `A-Z` 里的那个 A 被当成英语冠词
+    // 扣了 2 分，德语分只剩 2 → 判不出德语 → `was` 走英语词典读成 ワズ（该 ヴァス）。
+    // 单个字母不算英语证据（和 fits() 同一个口径）之后，这行就是德语了
+    "A-Z Looser-Krankheit-Was IS das?",
   ];
   for (const line of de) assert.strictEqual(L.detect(line), "de", line);
 
