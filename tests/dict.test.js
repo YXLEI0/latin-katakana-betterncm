@@ -92,6 +92,9 @@ test("常见歌词词都能「确定地」读出纯片假名（不许掉进猜�
     "ave",
     // Georgette：专有名词，规则拼不出来（用户报的 ゲオーゲターテ）
     "georgette",
+    // Erika / Erik：德语人名（长音）。罗马音层会切成 エリカ（而且标成确定），
+    // 德语引擎的词首 er- 规则又会读成 エアイーカ —— 只能人工钉
+    "erika", "erik",
   ];
   const bad = [];
   for (const w of must) {

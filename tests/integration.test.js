@@ -2666,6 +2666,29 @@ test("连字符串起来的长词：一行里每个词各自一个 ruby（不许
   assert.strictEqual(got.get("Krankheit"), "クランクハイト");
 });
 
+test("德语人名 `Erika`：一行只有一个词也读 エーリカ（不许被罗马音层当日语罗马字）", async () => {
+  // 用户截图：德语歌《Erika》里有一行只有 `Erika`（下一行是翻译「艾丽卡」）。
+  // 整行一个词、判不出语种 → 罗马音层把它当日语罗马字切成 **エリカ**，还标成"确定"
+  // （蓝色），大模型那一层永远不会被问到；德语引擎也兜不住 —— 词首 `er-` 那条规则
+  // 是给 erinnern / Erzählung 那种**非重读前缀**定的（エア…），套到名字上是 エアイーカ。
+  // 德语 Erika 是长音 [ˈeːʁika]，所以人工钉进词典（エーリカ / エーリク）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Erika</p></li>
+  <li class="line"><p>艾丽卡</p></li>
+</ul></div></div></body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  assert.deepStrictEqual(PAIRS(ps[0]), [["Erika", "エーリカ"]], "德语人名要读长音");
+  assert.strictEqual(env.api.read("Erika").source, "dict", "要有确定答案，不许停在罗马音层");
+  assert.strictEqual(env.api.read("erik").kana, "エーリク");
+  // 中文翻译行不注音；英文拼法的 Erica 仍是 エリカ（两回事）
+  assert.strictEqual(rubyCount(ps[1]), 0, "翻译行不注音");
+  assert.strictEqual(env.api.read("Erica").kana, "エリカ", "英文拼法 Erica 是短音");
+});
+
 test("俄语歌词（用例 6）：西里尔字母也注音（词典和罗马音层都读不了它）", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

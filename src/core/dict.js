@@ -2002,6 +2002,8 @@
     "era": "エラ",
     "eric": "エリック",
     "ericsson": "エリクソン",
+    "erik": "エーリク",
+    "erika": "エーリカ",
     "erotic": "エロティック",
     "error": "エラー",
     "errors": "エラーズ",
@@ -6492,6 +6494,6 @@
 
   return {
     words: words,
-    count: 6470,
+    count: 6472,
   };
 });
