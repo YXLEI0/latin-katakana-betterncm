@@ -172,9 +172,10 @@
     var lookup = options.lookup;
     if (typeof lookup !== "function") throw new Error("createAnnotator 需要 lookup(word) 函数");
     /*
-     * 可选：pending(word, line) -> 这个词的读音是不是"暂定"的
+     * 可选：pending(word, line, token) -> 这个词的读音是不是"暂定"的
      * （在线那层还在问，先用规则结果顶上）。暂定的注音加 `wk-pending` 类，
      * 样式上淡一点，等真结果回来由 relabel() 改写并去掉类。
+     * 第三个参数是分词给出的 token（段标那类判断要看位置，见 main.js labelLetter）。
      */
     var pending = typeof options.pending === "function" ? options.pending : null;
     /*
@@ -808,8 +809,11 @@
            * 读音不同，所以语境要跟着词一起传下去。
            *
            * 返回两种形状都认：字符串（老约定）或 { kana, source }（带来源，给着色用）。
+           *
+           * 第三个参数是这个词的 token：段标（`M:`）那类判断要按**位置**判，
+           * 只看整行会把 `M: 匿名Mです。` 里的两个 M 一起留白（用户截图）。
            */
-          var got = lookup(tokens[i].text, context);
+          var got = lookup(tokens[i].text, context, tokens[i]);
           if (typeof got === "string") {
             g = got;
           } else if (got && got.kana) {
@@ -863,7 +867,7 @@
           var isPending = false;
           if (pending) {
             try {
-              isPending = !!pending(tk.text, context);
+              isPending = !!pending(tk.text, context, tk);
             } catch (e) {
               isPending = false;
             }
@@ -1246,6 +1250,22 @@
      *
      * @returns {number} 真正改写的注音数量
      */
+    /**
+     * 从一个已经写好的 ruby 元素上还原一个"够用"的 token。
+     *
+     * 注音时 token 是分词给的（带 `label` = 段标 `M:`），改写（relabel）时手头只有
+     * DOM，于是照同一个判据就地拼一个：**底字后面紧跟的是不是冒号**。
+     * `M: 匿名Mです。` 里行首那个 `M` 的 ruby 后面是 `:`（留白那个压根没有 ruby），
+     * 而 `匿名M` 的 M 后面是 `で` —— 位置信息就是这么保住的。
+     */
+    function tokenAt(el, word) {
+      var after = "";
+      var n = el ? el.nextSibling : null;
+      if (n && n.nodeType === 3) after = n.nodeValue || "";
+      var w = String(word == null ? "" : word);
+      return { text: w, label: w.length === 1 && /^\s*[:：]/.test(after) };
+    }
+
     function relabel() {
       var updated = 0;
       records.forEach(function (rec, node) {
@@ -1266,7 +1286,7 @@
              * 语境要和注音时用的一致（那次用的是宿主的可见原文）——
              * 换别的东西当语境会让缓存键对不上、白白重问一次。
              */
-            var got = lookup(word, visibleText(host));
+            var got = lookup(word, visibleText(host), tokenAt(el, word));
             if (typeof got === "string") {
               gloss = got;
             } else if (got && got.kana) {
@@ -1292,7 +1312,7 @@
             var stillPending = false;
             if (pending) {
               try {
-                stillPending = !!pending(word, visibleText(host));
+                stillPending = !!pending(word, visibleText(host), tokenAt(el, word));
               } catch (e) {
                 stillPending = false;
               }

@@ -863,12 +863,19 @@
    * "这个字母后面紧跟冒号"，所以 `(A, B)` 那种成串的照样读字母名（用户当初要的
    * 就是那个），英文行里的冠词 A 也不受影响。
    */
-  function labelLetter(word, line) {
+  function labelLetter(word, line, token) {
     var w = String(word == null ? "" : word);
     if (!/^[A-Z]$/.test(w)) return false;
+    /*
+     * 注音层把 token 一起传进来时，按 token 的 `label` 标记判（**位置准**）：
+     * `M: 匿名Mです。` 里行首那个 `M:` 是说话人标记（留白），而 `匿名M` 的 M 要读 エム ——
+     * 只看"这一行里有没有 `M:`"会把两个都留白（用户截图）。
+     */
+    if (token) return token.label === true;
     var s = String(line == null ? "" : line);
     if (!s) return false;
     var esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // 控制台调用（没有 token）时退回老判据：这一行里有"这个字母 + 冒号"
     return new RegExp(esc + "\\s*[:：]").test(s);
   }
 
@@ -898,7 +905,53 @@
     });
   }
 
-  function localReading(word, line) {
+  /** 全字母逐个读成字母名（`AM` -> エーエム）；表里没的字母返回 null */
+  function letterNames(word) {
+    if (typeof WKReading === "undefined" || !WKReading.LETTER_KANA) return null;
+    var s = String(word == null ? "" : word).toLowerCase();
+    var out = "";
+    for (var i = 0; i < s.length; i++) {
+      var k = WKReading.LETTER_KANA[s.charAt(i)];
+      if (!k) return null;
+      out += k;
+    }
+    return out || null;
+  }
+
+  /**
+   * 全大写拉丁缩写**紧贴数字**（`AM6:00` / `PM11:30` / `AC30` / `MP3`）：型号、时刻那种写法。
+   *
+   * 用户截图：`AM6:00 目覚まし時計を起こして` 里的 `AM` 被离线词典的英语单词 `am`
+   * （アム）接走了 —— 词典键都是小写，分不清 `am` 和 `AM`。这一判排在词典那一层
+   * **前面**：全大写又贴着数字的，是缩写不是词。
+   *
+   * 位置用 token 的（分词时算好的，最准）；没有 token 的调用方退回在行里找。
+   */
+  function capsBeforeDigit(word, line, token) {
+    var w = String(word == null ? "" : word);
+    if (!/^[A-Z]{2,6}$/.test(w)) return false;
+    /*
+     * 别误伤**全大写写的真词**：`LOVE2` / `HEY3` 这种是歌词在喊词，不是缩写
+     * （逐字母念成 エルオーブイイー 就毁了）。判据：3 个字母以上、带元音、
+     * 而且词典或英文常用词表里有它 —— 那就不算缩写。
+     * `AM` / `PM` 只有两个字母，恰好是"同一个拼写的词"里最常见的例外
+     * （`am` 是英语动词、`pm` 不是词），贴着数字时读字母名。
+     */
+    if (w.length > 2 && /[AEIOUY]/.test(w)) {
+      var low = w.toLowerCase();
+      var dict = typeof WKDict !== "undefined" ? WKDict.words : null;
+      var enWords = typeof WKEnWords !== "undefined" ? WKEnWords.words : null;
+      if ((dict && dict[low] !== undefined) || (enWords && enWords[low])) return false;
+    }
+    var s = String(line == null ? "" : line);
+    if (!s) return false;
+    if (token && typeof token.end === "number" && typeof token.start === "number" && s.slice(token.start, token.end) === w) {
+      return /[0-9]/.test(s.charAt(token.end));
+    }
+    return new RegExp("(^|[^A-Za-z])" + w + "(?=[0-9])").test(s);
+  }
+
+  function localReading(word, line, token) {
     /*
      * 全角字母先折半角（见 foldFullwidthLetters）：词和它所在的那一行都折，
      * 后面查词典 / 沉淀 / 模型 / 语种判定 / 打码与段标那几判就都按折过的看。
@@ -922,7 +975,7 @@
      * 缓存里有没有都不该有 —— 用户机器上就攒过 `a → アー`（模型在 `(A:` 那种行里
      * 答的），那条「学会的词」会把这条规则整个绕过去。所以这一判最先做。
      */
-    if (labelLetter(word, line)) return null;
+    if (labelLetter(word, line, token)) return null;
     /*
      * 紧跟在打码符号后面的片段（`****ed` 里的 ed）：不标。
      */
@@ -1023,6 +1076,15 @@
         var greekName = GREEK_LETTER_KANA[rawLetter.toLowerCase()];
         if (greekName) return { kana: greekName, source: "letters", confident: true };
       }
+    }
+    /*
+     * 全大写缩写**紧贴数字**（`AM6:00` / `PM11:30` / `AC30`）：按字母名逐字读（エーエム）。
+     * 必须排在词典那一层前面 —— 词典键是小写，`AM` 会被当成英语单词 `am`（アム）。
+     * 用户截图：`AM6:00 目覚まし時計を起こして` 的 AM 就是这么被读成 アム 的。
+     */
+    if (capsBeforeDigit(word, line, token)) {
+      var capsKana = letterNames(word);
+      if (capsKana) return { kana: capsKana, source: "letters", confident: true };
     }
     var r = state.reader ? state.reader.read(word) : null;
     /*
@@ -1136,12 +1198,12 @@
     return WKReading.looksLikeTransliteration(word, kana);
   }
 
-  function resolveReading(word, line) {
+  function resolveReading(word, line, token) {
     if (!state.reader) return null;
     // 全角字母折半角（`ＮＯ` -> `NO`）：查表 / 模型键 / 层序都得用同一个形式
     word = foldFullwidthLetters(word);
     if (line != null) line = foldFullwidthLetters(line);
-    var r = localReading(word, line);
+    var r = localReading(word, line, token);
     if (!r || !r.kana) return null;
 
     var mine = effectiveRank(r); // 没把握的答案按最低层算，在线层可以覆盖它
@@ -1190,8 +1252,8 @@
   }
 
   /** 只要读音字符串的调用方（控制台 WK.display / 老代码）走这个 */
-  function readForDisplay(word, line) {
-    var got = resolveReading(word, line);
+  function readForDisplay(word, line, token) {
+    var got = resolveReading(word, line, token);
     return got ? got.kana : null;
   }
 
@@ -1199,11 +1261,11 @@
    * 这个词的读音现在是不是"暂定"的（有比它更优先的在线层还在问）。
    * 注音层靠它在 ruby 上加 `wk-pending` 类 —— 样式淡一点，提示"还不一定"。
    */
-  function isProvisional(word, line) {
+  function isProvisional(word, line, token) {
     if (!word || !state.reader) return false;
     word = foldFullwidthLetters(word);
     if (line != null) line = foldFullwidthLetters(line);
-    var r = localReading(word, line);
+    var r = localReading(word, line, token);
     if (!r) return false;
     var mine = effectiveRank(r);
     for (var i = 0; i < config.layerOrder.length; i++) {
@@ -2316,12 +2378,13 @@
       }
       state.annotator = WKAnnotate.createAnnotator({
         // 返回 { kana, source }：source 用来给"按来源着色"的排障功能打标
-        lookup: function (word, line) {
-          return resolveReading(word, line);
+        // 第三个参数是这个词的 token（段标 `M:` 那类判断要看 token 的位置，不能只看整行）
+        lookup: function (word, line, token) {
+          return resolveReading(word, line, token);
         },
         // 暂定读音（在线那层还在问）会在注音上打一个淡一点的标记
-        pending: function (word, line) {
-          return isProvisional(word, line);
+        pending: function (word, line, token) {
+          return isProvisional(word, line, token);
         },
         // 排障用：这段文字里有没有被判成"打码"的重复字母串
         censoredRun: function (text) {

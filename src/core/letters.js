@@ -280,6 +280,12 @@
         notation: false,
         // 紧跟在数字后面（`300mm` 的 mm）：那多半是**单位词**，见 looksReadable
         afterDigit: start > 0 && /[0-9\uFF10-\uFF19]/.test(text.charAt(start - 1)),
+        /*
+         * **段标**（`M:` / `A：` / `(B:`）：单字母后面（可夹空白）紧跟冒号。
+         * 这一判必须带上**位置** —— 只看"这一行里有没有 `M:`"的话，
+         * `M: 匿名Mです。` 里 `匿名M` 的那个 M 也会跟着留白（用户截图）。
+         */
+        label: raw.length === 1 && /^\s*[:：]/.test(text.slice(end)),
         // 属于哪种字母（latin / cyrillic / greek）：读音层按它选拼读规则
         script: scriptOf(raw),
         // 带变音符号（Ō / é / ü …）：读音层要先折成 ASCII 再查，见 reading.js

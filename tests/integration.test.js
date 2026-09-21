@@ -566,6 +566,42 @@ test("ASCII art / 颜文字行不标；数字后面的单位字母要标；打�
   assert.strictEqual(l6.get("B"), "ビー");
 });
 
+test("全大写缩写贴着数字是字母名：AM6:00 -> エーエム（英语单词 am 不许抢）", async () => {
+  // 用户截图：`AM6:00 目覚まし時計を起こして` 的 AM 被离线词典里的英语单词 `am`（アム）
+  // 接走了 —— 词典键都是小写，分不清 `am` / `AM`。全大写又**紧贴数字**的是缩写
+  // （时刻 / 型号），这一判排在词典前面。
+  // 反面：全大写写的**真词**贴着数字照旧走词典（LOVE2 -> ラブ、HEY3 -> ヘイ）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>AM6:00 目覚まし時計を起こして</p></li>
+  <li class="line"><p>PM11:30 の電車に飛び乗る</p></li>
+  <li class="line"><p>MP3 を聴きながら</p></li>
+  <li class="line"><p>LOVE2 なんてない</p></li>
+  <li class="line"><p>HEY3 なんて呼ばないで</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+
+  const l0 = pairsOf(ps[0]);
+  assert.strictEqual(l0.get("AM"), "エーエム", "AM6:00 的 AM 该读字母名：" + ps[0].innerHTML);
+  const l1 = pairsOf(ps[1]);
+  assert.strictEqual(l1.get("PM"), "ピーエム", "PM11:30 的 PM 该读字母名：" + ps[1].innerHTML);
+  const l2 = pairsOf(ps[2]);
+  assert.strictEqual(l2.get("MP"), "エムピー", "MP3 的 MP 该读字母名：" + ps[2].innerHTML);
+  // 反面：全大写的真词贴数字不许逐字母念
+  const l3 = pairsOf(ps[3]);
+  assert.strictEqual(l3.get("LOVE"), "ラブ", "LOVE2 是词，不是缩写：" + ps[3].innerHTML);
+  const l4 = pairsOf(ps[4]);
+  assert.strictEqual(l4.get("HEY"), "ヘイ", "HEY3 是词，不是缩写：" + ps[4].innerHTML);
+});
+
 test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {
   // 用户三张截图：
   //   ① `T氏にすべてを捧げましょう` / `T Is My Everything` —— 单字母 T 一个注音都没有（该 ティー）
@@ -2698,6 +2734,40 @@ test("段标不会被「学会的词」带出读音；呼语 O 读 オー", asyn
 
   const l1 = linePairs(ps, 1);
   assert.strictEqual(l1.get("O"), "オー", "呼语 O 要注音：" + JSON.stringify([...l1]));
+});
+
+test("说话人段标 `M:` 留白，同一行里 `匿名M` 的 M 照读 エム", async () => {
+  // 用户截图：`M: 匿名Mです。` —— 行首那个 M 是说话人标记（该留白），
+  // 而 `匿名M` 里的 M 是名字的一部分，该读 エム。
+  // 老判据是"这一行里有没有 `M` 跟着冒号"，于是两个 M 一起被留白（一个字都没有）。
+  // 现在按 token 的**位置**判：单字母后面（可夹空白）紧跟冒号才算段标。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>M: 匿名Mです。</p></li>
+  <li class="line"><p>M 匿名Mです。</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+
+  // 第一行：只有 `匿名M` 那个 M 有注音，行首的段标一个字都不许加
+  const rubies0 = [...ps[0].querySelectorAll("ruby.wk-ruby")];
+  assert.deepStrictEqual(
+    rubies0.map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]),
+    [["M", "エム"]],
+    "段标留白、名字里的 M 要注音：" + ps[0].innerHTML
+  );
+  // 有注音的那个 M 前面是 `匿名`（名字里的 M），不是行首的段标
+  assert.strictEqual(String(rubies0[0].previousSibling.nodeValue).slice(-2), "匿名", "注音的该是名字里的 M");
+  // 原文一个字都没动（只多了 <ruby> 里的注音）
+  const rtText = rubies0.map((r) => r.querySelector(".wk-rt").textContent).join("");
+  assert.strictEqual(ps[0].textContent.replace(rtText, ""), "M: 匿名Mです。", "原文一个字都不能改：" + ps[0].innerHTML);
+
+  // 第二行没有冒号，行首的 M 就不是段标（照字母名读）
+  const l1 = [...ps[1].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
+  assert.deepStrictEqual(l1, [["M", "エム"], ["M", "エム"]], "没有冒号时行首 M 不是段标：" + ps[1].innerHTML);
 });
 
 test("外语行不做首音校验：拉丁语 vacuum 的 ワクーム 也会被收下（英文行仍然卡）", async () => {
