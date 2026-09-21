@@ -2583,6 +2583,60 @@ test("日语行里的拉丁词走词典：同一个 `Ave` 不许两行两个读�
   assert.strictEqual(env.api.lang("Ave Musica...仮面の民は誘う(Fortuna)").id, null, "有假名的行不判外语");
 });
 
+test("人工词典优先于「学会的词」：模型沉淀的 `ave アヴェ` 不许盖掉人工的 アベ", async () => {
+  // 用户截图：`ゆこう（Ave Mujica | 世界）へと` 里的 Ave 是 **アヴェ**，而人工词表里
+  // 明明写着 `ave アベ`（用户点名过"Ave Mujica 官方读 アベ"）。
+  // 从真机的 localStorage 里读出来：学会的词里有一条 `ave => アヴェ` ——
+  // 模型在别的行里答过 アヴェ 被沉淀成词条，而"学会的词"当时排在所有层前面，
+  // 于是人工条目被绕过去了。现在它排到词典后面（人工 > 沉淀 > 大模型）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>ゆこう（Ave Mujica | 世界）へと</p></li>
+  <li class="line"><p>ゆこう（Ave Fortuna の 世界）へと</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, {
+    config: { online: false, llmEnabled: false },
+    legacyKeys: {
+      // 照抄真机：ave 被沉淀成了 アヴェ（错的）；fortuna 词典里没有，沉淀的 フォルトゥーナ 该用
+      "western-katakana.learned.v1": JSON.stringify({
+        version: 1,
+        words: { ave: { k: "アヴェ", at: 2 }, fortuna: { k: "フォルトゥーナ", at: 3 } },
+        seen: {},
+      }),
+    },
+  });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const got = linePairs(ps, 0);
+  assert.strictEqual(got.get("Ave"), "アベ", "人工词典条目要赢：" + JSON.stringify([...got]));
+  assert.strictEqual(got.get("Mujica"), "ムジカ", JSON.stringify([...got]));
+  // 词典里**没有**的词，学会的词照旧生效（沉淀的意义就在这）
+  const got2 = linePairs(ps, 1);
+  assert.strictEqual(got2.get("Fortuna"), "フォルトゥーナ", "词典外的词照旧用学会的：" + JSON.stringify([...got2]));
+});
+
+test("德语行 `Sieh mit deinen Augen`：`mit` 不许念成 MIT 的字母名", async () => {
+  // 用户截图：`mit` 被读成 **エムアイティー**（词典里的 MIT = 学院缩写）。
+  // 根因两层：① 这行判不出德语（词表里只有 mit 一个词、分数不够）→ 走英文词典；
+  // ② 词典里 `mit` 就是 MIT 的字母名。现在：① 补了一批德语独有词（sieh/deinen/augen…），
+  // 整行判成德语；② 人工词表把 `mit` 钉成 ミット（德语最常用的介词，读法唯一）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Sieh mit deinen Augen</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const got = linePairs(env.document.querySelectorAll("ul.lyric li p"), 0);
+  assert.strictEqual(env.api.lang("Sieh mit deinen Augen").id, "de", "这一行要判成德语");
+  assert.strictEqual(got.get("mit"), "ミット", "mit 不许念字母名：" + JSON.stringify([...got]));
+  assert.strictEqual(got.get("deinen"), "ダイネン", JSON.stringify([...got]));
+  assert.strictEqual(got.get("Augen"), "アウゲン", JSON.stringify([...got]));
+});
+
 test("俄语歌词（用例 6）：西里尔字母也注音（词典和罗马音层都读不了它）", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">

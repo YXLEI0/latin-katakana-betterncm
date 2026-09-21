@@ -669,15 +669,6 @@
      */
     if (labelLetter(word, line)) return null;
     /*
-     * 先看「学会的词」（core/learn.js）：模型在两个不同句子里答过同一个读音、
-     * 而且和本地层不一样 —— 这种已经沉淀成离线词条了，**不再问模型**（省钱就在这）。
-     * 它的名次按离线词典算（见 effectiveRank），所以在线层不会再覆盖它。
-     */
-    if (state.learned) {
-      var learned = state.learned.get(word);
-      if (learned) return { kana: learned, source: "learned", confident: true };
-    }
-    /*
      * 紧跟在打码符号后面的片段（`****ed` 里的 ed）：不标。
      */
     if (censoredBefore(word, line)) return null;
@@ -707,6 +698,20 @@
       if (String(word) !== "A" && String(word) !== "I") return null;
     }
     var r = state.reader ? state.reader.read(word) : null;
+    /*
+     * 「学会的词」（core/learn.js）：模型在两个不同句子里答过同一个读音 → 沉淀成
+     * 离线词条，**不再问模型**（省钱就在这）。
+     *
+     * 但它排在**人工词典后面**：沉淀是模型给的，人工词表优先 —— 和
+     * `tools/build-dict.js` 的"人工 > 沉淀 > 大模型"同一个口径。
+     * 用户报的 `Ave`（拉丁语歌里的乐队名）就是这么被带歪的：模型在别的行里答过
+     * アヴェ，沉淀成词条之后盖掉了人工核过的 `ave アベ`（"Ave Mujica 官方读 アベ"），
+     * 结果同一首歌里两行两个读音。
+     */
+    if ((!r || !r.kana || r.source !== "dict") && state.learned) {
+      var learned = state.learned.get(word);
+      if (learned) return { kana: learned, source: "learned", confident: true };
+    }
     /*
      * 外语行：**拼读猜出来的答案换成那种语言的拼读**，词典命中的照旧优先。
      *

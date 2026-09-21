@@ -41,6 +41,9 @@ test("语言判定：用户用例 1（德语歌词里的德语行 / 英语行要
     "wenn die Jahreszeit des Tauens kommt",
     "werde ich wach und singe ein Lied",
     "erinnerst du dich noch an den Tag Andem du mir",
+    // 用户截图：这行原来表里一个词都没有（只有 mit），判不出德语 → 走英文词典，
+    // `mit` 命中 **MIT**（学院缩写）被念成 エムアイティー
+    "Sieh mit deinen Augen",
   ];
   for (const line of de) assert.strictEqual(L.detect(line), "de", line);
 
@@ -354,6 +357,10 @@ test("希腊语拼读：逐字母 + 二合字母", () => {
   assert.strictEqual(read("el", "ουρανός"), "ウラノス");
   assert.strictEqual(read("el", "άνθρωπος"), "アンスロポス");
   assert.strictEqual(read("el", "μουσική"), "ムシキ");
+  // β 读 バ行（日语里希腊语借词的通行写法：ベータ / ビザンツ / ビオス）——
+  // 用户截图 `《βίος》` 原来读成 ヴィオス（那个词日语里是 ビオス）
+  assert.strictEqual(read("el", "βίος"), "ビオス");
+  assert.strictEqual(read("el", "βιβλίο"), "ビブリオ");
 });
 
 // ============================================================ 葡 / 荷 / 拼音

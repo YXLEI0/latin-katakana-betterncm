@@ -1058,7 +1058,7 @@
   //   Θάλασσα サラッサ / Ουρανός ウラノス / Άνθρωπος アンスロポス
 
   var EL_CHAR = {
-    "\u03B1": "\u30A2", "\u03B2": "\u30F4", "\u03B3": "\u30B0", "\u03B4": "\u30C9", "\u03B5": "\u30A8",
+    "\u03B1": "\u30A2", "\u03B2": "\u30D6", "\u03B3": "\u30B0", "\u03B4": "\u30C9", "\u03B5": "\u30A8",
     "\u03B6": "\u30BA", "\u03B7": "\u30A4", "\u03B8": "\u30B5", "\u03B9": "\u30A4", "\u03BA": "\u30AF",
     "\u03BB": "\u30EB", "\u03BC": "\u30E0", "\u03BD": "\u30F3", "\u03BE": "\u30AF\u30B9", "\u03BF": "\u30AA",
     "\u03C0": "\u30D7", "\u03C1": "\u30EB", "\u03C3": "\u30B9", "\u03C2": "\u30B9", "\u03C4": "\u30C8",
@@ -1082,7 +1082,13 @@
    * 列按元音分 a/e/i/o/u，其中 η 和 υ 都并到 i 列（η 读 イ、υ 读 イ），ω 并到 o 列。
    */
   var EL_CONS = {
-    "\u03B2": { a: "\u30F4\u30A1", e: "\u30F4\u30A7", i: "\u30F4\u30A3", o: "\u30F4\u30A9", u: "\u30F4" },
+    /*
+     * β 读 **バ行**（不是 ヴァ行）：日语里希腊语借词的通行写法就是 b
+     * —— ベータ（beta）、ビザンツ、ビオス…。用户截图 `《βίος》` 被读成 ヴィオス，
+     * 那个词（Guilty Crown 的 βίος）在日语里是 **ビオス**。
+     * 古希腊语的 β 本来就是 /b/，现代希腊语虽然读 /v/，但日语仍然写 バ行。
+     */
+    "\u03B2": { a: "\u30D0", e: "\u30D9", i: "\u30D3", o: "\u30DC", u: "\u30D6" },
     "\u03B3": { a: "\u30AC", e: "\u30B2", i: "\u30AE", o: "\u30B4", u: "\u30B0" },
     "\u03B4": { a: "\u30C0", e: "\u30C7", i: "\u30C7\u30A3", o: "\u30C9", u: "\u30C9\u30A5" },
     "\u03B6": { a: "\u30B6", e: "\u30BC", i: "\u30B8", o: "\u30BE", u: "\u30BA" },
@@ -1211,6 +1217,18 @@
         wollen: 2, sollen: 2, d\u00FCrfen: 2, m\u00F6gen: 2, wei\u00DF: 2, gro\u00DF: 2, gut: 2, tag: 2, nacht: 2,
         herz: 2, seele: 2, liebe: 2, leben: 2, tod: 2, zeit: 2, welt: 2, traum: 2, licht: 2, wind: 1, hand: 1,
         land: 1, wort: 2, lied: 2, singe: 2, singen: 2, kommt: 2, kommen: 2, geh: 2, gehen: 2, wach: 2, werde: 2,
+        /*
+         * 用户截图 `Sieh mit deinen Augen` 原来判不出德语（表里只有 mit 一个词、分数不够），
+         * 于是走英文词典 —— `mit` 命中词典里的 **MIT**（学院缩写）被念成 エムアイティー。
+         * 这一批是德语独有、歌词里常见的词（避开了 still / fast / hell / warm 这类
+         * 英德同形词，免得把英文行带歪）。
+         */
+        sieh: 2, siehst: 2, sieht: 2, sehen: 2, sah: 2, sahen: 2, deinen: 2, deinem: 2, deiner: 2, deines: 2,
+        meinen: 2, meinem: 2, meiner: 2, meines: 2, ihren: 2, ihrem: 2, ihren: 2, euren: 2, eurem: 2, augen: 2,
+        himmel: 2, erde: 2, feuer: 2, wasser: 2, stern: 2, sterne: 2, schatten: 2, blut: 2, schmerz: 2,
+        angst: 2, hoffnung: 2, sehnsucht: 2, ewig: 2, einsam: 2, kalt: 2, dunkel: 2, leise: 2, weit: 2,
+        tief: 2, hoch: 2, klein: 2, niemals: 2, nimmer: 2, \u00FCberall: 2, zur\u00FCck: 2, vorbei: 2,
+        zusammen: 2, allein: 2, vielleicht: 2, endlich: 2, pl\u00F6tzlich: 2, zwischen: 2, deiner: 2,
       },
       shapes: [
         [/sch/, 2], [/(?:ung|lich|keit|heit|schaft|chen|lein)$/, 2], [/(?:ei|eu|\u00E4u)/, 1], [/ch/, 1],
