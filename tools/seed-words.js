@@ -1122,4 +1122,22 @@ module.exports = [
   { en: "chateau", kana: "シャトー" },
   { en: "rose", kana: "ローズ" },
   { en: "note", kana: "ノート" },
+  /*
+   * 英文拼写规则的两个已知死角（用户用例里正好都碰上了）：
+   *
+   *   1. `str-` 开头的连缀：规则层把 s 当独立音节，stronger 读成 サトロンゲー、
+   *      stranger 读成 サトランゲー（strong / strange 本身在词典里，所以只漏了变形）；
+   *   2. 「元音 + 单辅音 + 词尾 e」的 a（cage キャジ 应该是 ケイジ）——
+   *      cake / game / page / place 这些都在词典里，cage 恰好漏了。
+   *
+   * 两个都是"没歧义、歌词里常见"的那一类，按项目惯例人工钉死；
+   * 顺带把同族的变形也补齐（不然下一首歌又会在 -er / -est / 复数上踩同一脚）。
+   */
+  { en: "stronger", kana: "ストロンガー" },
+  { en: "strongest", kana: "ストロンゲスト" },
+  { en: "stranger", kana: "ストレンジャー" },
+  { en: "strangers", kana: "ストレンジャーズ" },
+  { en: "cage", kana: "ケイジ" },
+  { en: "cages", kana: "ケイジズ" },
+  { en: "caged", kana: "ケイジド" },
 ];

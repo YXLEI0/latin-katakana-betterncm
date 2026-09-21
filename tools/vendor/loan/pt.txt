@@ -1,0 +1,46 @@
+# Japanese loanwords from Portuguese (katakana forms)
+# Source: https://www.sljfaq.org/afaq/portuguese.html
+#   "Which Japanese words come from Portuguese?" - sci.lang.japan FAQ (Ben Bullock)
+# Fetched: 2026-09-21 (single web_fetch, page returned in full, not truncated)
+# Entries: 33
+# Format: portuguese_word:katakana  (keys lowercased, ASCII-folded, punctuation stripped)
+# Katakana is copied verbatim from the FAQ entry brackets; only the katakana spelling
+#   is kept (kanji/▽-marked variants and hiragana-only spellings are omitted).
+# Page entries not included here because the FAQ lists no katakana-only form:
+#   joro (jorro, 如雨露/じょうろ), kanakin (canequim, かなきん), tempura (temporas, てんぷら),
+#   pin kara kiri made (pinta/cruz, ピンからキリまで contains hiragana).
+# sabao maps to two FAQ entries (saboten サボテン "may have come from", shabon シャボン
+#   "came from"); the directly attested one, shabon, is kept for the duplicate key.
+balanco:ブランコ
+bolo:ボーロ
+botao:ボタン
+capa:カッパ
+capitao:カピタン
+caramelo:カルメラ
+carta:カルタ
+charamela:チャルメラ
+choro:ショーロ
+confeito:コンペイトー
+cristao:キリシタン
+cristo:キリスト
+cruz:クルス
+frasco:フラスコ
+gibao:ジバン
+inglez:イギリス
+jaqueta:チョッキ
+marmelo:マルメロ
+meias:メリヤス
+mirra:ミイラ
+olanda:オランダ
+padre:バテレン
+pao:パン
+raxa:ラシャ
+rosario:ロザリオ
+sabado:サバト
+sabao:シャボン
+saraca:サラサ
+tabaco:タバコ
+totanaga:トタン
+veludo:ビロード
+vidro:ビードロ
+zamboa:ザボン

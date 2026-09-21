@@ -820,6 +820,9 @@
     "cad": "キャド",
     "cadenza": "カデンツァ",
     "cafe": "カフェ",
+    "cage": "ケイジ",
+    "caged": "ケイジド",
+    "cages": "ケイジズ",
     "cake": "ケーキ",
     "cal": "キャル",
     "calculate": "カルキュレート",
@@ -5562,6 +5565,8 @@
     "story": "ストーリー",
     "straight": "ストレート",
     "strange": "ストレインジ",
+    "stranger": "ストレンジャー",
+    "strangers": "ストレンジャーズ",
     "strap": "ストラップ",
     "strategic": "ストラテジック",
     "strategies": "ストラテジーズ",
@@ -5580,6 +5585,8 @@
     "strip": "ストリップ",
     "stroke": "ストローク",
     "strong": "ストロング",
+    "stronger": "ストロンガー",
+    "strongest": "ストロンゲスト",
     "strongly": "ストロングリー",
     "struct": "ストラクト",
     "structural": "ストラクチュラル",
@@ -6485,6 +6492,6 @@
 
   return {
     words: words,
-    count: 6463,
+    count: 6470,
   };
 });

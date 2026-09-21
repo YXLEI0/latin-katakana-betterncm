@@ -1,0 +1,18 @@
+# Japanese loanwords from Russian
+# Source: https://www.sljfaq.org/afaq/russian.html
+# Table: "Which Japanese words come from Russian?"
+# Fetched: 2026-09-21
+# Entries: 9
+# Format: <russian>:<katakana>
+# Russian column kept in original Cyrillic, lowercased (no latin romanization).
+# Where the page lists several katakana variants (ikura, vodka), the first
+# purely-katakana variant is used; hiragana variants are omitted.
+борщ:ボルシチ
+блины:ブリヌイ
+икра:イクラ
+комбинат:コンビナート
+матрёшка:マトリョーシカ
+норма:ノルマ
+печка:ペチカ
+пирожки:ピロシキ
+водка:ヴォトカ

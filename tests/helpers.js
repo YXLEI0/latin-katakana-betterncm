@@ -13,7 +13,7 @@ const { after } = require("node:test");
 const SRC = path.join(__dirname, "..", "src");
 
 /** 按 manifest 顺序注入的核心模块（加文件时这里和 manifest 一起改） */
-const CORE_FILES = ["core/latin.js", "core/dict.js", "core/enwords.js", "core/reading.js", "core/correct.js", "core/llm.js", "core/usage.js", "core/learn.js", "core/annotate.js"];
+const CORE_FILES = ["core/latin.js", "core/dict.js", "core/enwords.js", "core/reading.js", "core/loan.js", "core/langs.js", "core/correct.js", "core/llm.js", "core/usage.js", "core/learn.js", "core/annotate.js"];
 
 /**
  * jsdom 的窗口里会有 setInterval / MutationObserver，不关掉进程就不退出。
@@ -64,6 +64,8 @@ function loadCore(html, options) {
     LKMatcher: window.LKMatcher,
     LKDict: window.LKDict,
     LKReading: window.LKReading,
+    LKLoan: window.LKLoan,
+    LKLangs: window.LKLangs,
     LKCorrect: window.LKCorrect,
     LKLLM: window.LKLLM,
     LKLearn: window.LKLearn,

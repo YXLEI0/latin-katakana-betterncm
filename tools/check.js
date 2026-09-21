@@ -87,6 +87,7 @@ console.log("[0/7] 运行时版本");
   const TEST_FILES = [
     "tests/latin.test.js",
     "tests/reading.test.js",
+    "tests/langs.test.js",
     "tests/sljfaq-words.test.js",
     "tests/dict.test.js",
     "tests/annotate.test.js",
@@ -167,6 +168,8 @@ const WANT_ORDER = [
   "core/dict.js",
   "core/enwords.js",
   "core/reading.js",
+  "core/loan.js",
+  "core/langs.js",
   "core/correct.js",
   "core/llm.js",
   "core/usage.js",
@@ -213,6 +216,70 @@ if (dict) {
   if (badVal) fail(`有 ${badVal} 个读音不是纯片假名`);
   if (!badKey && !badVal) ok("词典键值格式正常");
   if (dict.count !== keys.length) fail(`dict.count(${dict.count}) 与实际条目数(${keys.length}) 不一致`);
+}
+
+// ---------------------------------------------------------------- 4.5 借词表
+
+console.log("[4.5/7] 借词表");
+{
+  // core/loan.js 是 tools/build-loan.js 从 tools/vendor/loan/*.txt 生成的（勿手改）。
+  // 手工改了 txt 却没重新生成、或者反过来直接改 JS，都在这里露馅。
+  const LOAN_DIR = path.join(__dirname, "vendor", "loan");
+  let loan = null;
+  try {
+    loan = require(path.join(SRC, "core", "loan.js"));
+  } catch (e) {
+    fail("loan.js 加载失败：" + e.message);
+  }
+  if (loan) {
+    const RE_KANA = /^[\u30A1-\u30F6\u30FC]+$/;
+    const files = fs.existsSync(LOAN_DIR) ? fs.readdirSync(LOAN_DIR).filter((x) => x.endsWith(".txt")) : [];
+    if (!files.length) warn("tools/vendor/loan 下没有借词表（外语行只剩拼读规则）");
+    let total = 0;
+    let bad = 0;
+    for (const f of files) {
+      const id = path.basename(f, ".txt");
+      const pairs = new Map();
+      for (const raw of fs.readFileSync(path.join(LOAN_DIR, f), "utf8").split(/\r?\n/)) {
+        const t = raw.trim();
+        if (!t || t.charAt(0) === "#") continue;
+        const at = t.indexOf(":");
+        if (at <= 0) {
+          fail(`${f}: 这行没有冒号：${t}`);
+          bad++;
+          continue;
+        }
+        const w = t.slice(0, at).trim();
+        const k = t.slice(at + 1).trim();
+        if (!RE_KANA.test(k)) {
+          fail(`${f}: 读音不是纯片假名：${t}`);
+          bad++;
+          continue;
+        }
+        if (pairs.has(w)) {
+          fail(`${f}: 重复的词 ${w}`);
+          bad++;
+          continue;
+        }
+        pairs.set(w, k);
+      }
+      const got = loan.get(id) || {};
+      total += pairs.size;
+      for (const [w, k] of pairs) {
+        if (got[w] !== k) {
+          fail(`core/loan.js 与 ${f} 不一致：${w} 应为 ${k}，实际 ${got[w]}（跑 npm run build:loan）`);
+          bad++;
+          break;
+        }
+      }
+      if (Object.keys(got).length !== pairs.size) {
+        fail(`core/loan.js 的 ${id} 条数不对：${Object.keys(got).length} vs ${pairs.size}（跑 npm run build:loan）`);
+        bad++;
+      }
+    }
+    if (loan.count !== total) fail(`loan.count(${loan.count}) 与实际条目数(${total}) 不一致`);
+    if (!bad) ok(`借词表与 tools/vendor/loan/*.txt 一致（${total} 条）`);
+  }
 }
 
 // ---------------------------------------------------------------- 5. 元信息一致性

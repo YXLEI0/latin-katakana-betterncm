@@ -2699,5 +2699,7 @@
     looksFrench: looksFrench,
     frenchWord: frenchWord,
     FR_LOAN: FR_LOAN,
+    // 法语功能词表：core/langs.js 判语言时拿它给法语打分（"这行有多少法语词"）
+    FR_WORDS: FR_WORDS,
   };
 });

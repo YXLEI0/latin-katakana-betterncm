@@ -1,7 +1,7 @@
 {
   "name": "latin-katakana-betterncm",
   "version": "0.1.0",
-  "description": "BetterNCM 插件：给日语歌歌词里的拉丁字母标注片假名读音",
+  "description": "BetterNCM 插件：给日语歌歌词里的拉丁字母 / 西里尔字母 / 希腊字母标注片假名读音",
   "private": true,
   "license": "MIT",
   "scripts": {
@@ -10,8 +10,9 @@
     "install:plugin": "node tools/build.js --install",
     "verify:install": "node tools/verify-install.js",
     "patch:furigana": "node tools/patch-jp-furigana-plugin.js",
-    "test": "node --test tests/latin.test.js tests/reading.test.js tests/sljfaq-words.test.js tests/dict.test.js tests/annotate.test.js tests/correct.test.js tests/llm.test.js tests/usage.test.js tests/learn.test.js tests/promote.test.js tests/integration.test.js tests/patch.test.js",
-    "test:serial": "node tests/latin.test.js && node tests/reading.test.js && node tests/sljfaq-words.test.js && node tests/dict.test.js && node tests/annotate.test.js && node tests/correct.test.js && node tests/llm.test.js && node tests/usage.test.js && node tests/learn.test.js && node tests/promote.test.js && node tests/integration.test.js && node tests/patch.test.js",
+    "test": "node --test tests/latin.test.js tests/reading.test.js tests/langs.test.js tests/sljfaq-words.test.js tests/dict.test.js tests/annotate.test.js tests/correct.test.js tests/llm.test.js tests/usage.test.js tests/learn.test.js tests/promote.test.js tests/integration.test.js tests/patch.test.js",
+    "test:serial": "node tests/latin.test.js && node tests/reading.test.js && node tests/langs.test.js && node tests/sljfaq-words.test.js && node tests/dict.test.js && node tests/annotate.test.js && node tests/correct.test.js && node tests/llm.test.js && node tests/usage.test.js && node tests/learn.test.js && node tests/promote.test.js && node tests/integration.test.js && node tests/patch.test.js",
+    "build:loan": "node tools/build-loan.js",
     "promote:learned": "node tools/promote-learned.js",
     "build:dict:llm": "node tools/expand-dict-llm.js",
     "check": "node tools/check.js"

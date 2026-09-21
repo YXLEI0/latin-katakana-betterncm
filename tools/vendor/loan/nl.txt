@@ -1,0 +1,53 @@
+# Japanese loanwords from Dutch
+# Source: https://www.sljfaq.org/afaq/dutch.html ("Which Japanese words come from Dutch?", sci.lang.japan FAQ by Ben Bullock)
+# Fetched: 2026-09-21 (single web_fetch, HTTP 200, page content complete/not truncated)
+# Entries: 47
+# Format: dutch_word:katakana  (dutch word lowercased ASCII, diacritics/spaces/hyphens/apostrophes/parens removed; katakana copied verbatim from the page)
+# Note: only the katakana forms printed in the page's 【...】 brackets are used; kanji/ateji spellings and hiragana readings on the page are intentionally omitted.
+alcohol:アルコール
+asbest:アスベスト
+bier:ビール
+blik:ブリキ
+boorbank:ボールバン
+dans:ダンス
+doek:ズック
+dok:ドック
+gas:ガス
+glas:ガラス
+gom:ゴム
+hop:ホップ
+hysterie:ヒステリー
+inkt:インキ
+kabas:カバン
+kamfer:カンフル
+kinine:キニーネ
+koffie:コーヒー
+kok:コック
+kompas:コンパス
+kop:コップ
+kraan:カラン
+kurk:コルク
+lamp:ランプ
+lancet:ランセット
+lens:レンズ
+malaria:マラリヤ
+mantel:マント
+marmot:モルモット
+mast:マスト
+mes:メス
+morfine:モルヒネ
+nikkel:ニッケル
+oblaat:オブラート
+ontembaar:オテンバ
+orgel:オルゴール
+pek:ペンキ
+pen:ペン
+pincet:ピンセット
+pistool:ピストル
+pomp:ポンプ
+ransel:ランドセル
+retort:レトルト
+saffraan:サフラン
+schop:スコップ
+siroop:シロップ
+spuit:スポイト

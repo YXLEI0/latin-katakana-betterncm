@@ -1290,7 +1290,11 @@ test("换歌且页面不再变动时：被跳过的行会自己补回来（不�
   }
   assert.strictEqual(rubyCount(p), 0, "前提：窗口内变太快，这几轮被跳过");
   assert.ok(env.api.stats().lastPass.retryInMs > 0, "要安排下一轮：", JSON.stringify(env.api.stats().lastPass));
-  assert.ok(env.api.why().indexOf("文本在动") >= 0, "LK.why() 要说清为什么跳过：\n" + env.api.why());
+  // 跳过原因留在 lastPass.skips 里（以前有个 LK.why() 专门读它，那个 API 已经删了）
+  assert.ok(
+    env.api.stats().lastPass.skips.join(" ").indexOf("文本在动") >= 0,
+    "要留痕说清为什么跳过：" + JSON.stringify(env.api.stats().lastPass.skips)
+  );
 
   // 关键：接下来**一个 DOM 事件都不发生**，只等 —— 注音必须自己出现
   await sleep(3600);
@@ -1362,54 +1366,6 @@ test("层序：面板不让把「英文音译规则」换到词典/罗马音前�
   // 而且大模型那块的告警要排在第一位（先修层序，再看别的）
   const state = root.querySelector(".lk-llm-state").textContent;
   assert.ok(state.indexOf("英文音译规则") >= 0, "大模型状态区也要提这件事：" + state);
-  // LK.word() 也要说出来
-  assert.ok(env.api.word("the").indexOf("恢复默认顺序") >= 0, "LK.word 要给出修法：\n" + env.api.word("the"));
-});
-
-test("LK.word()：一词体检直接回答「为什么这个词一直不矫正」", async () => {
-  // 用户问的「有些词大模型一直不矫正」。模型对 kaleidoscope 回了 ダニ（蜱虫）
-  // -> 被首音校验判掉 -> 缓存里留一条 miss（永久）-> 那个词就一直用本地读音。
-  // LK.word() 要把这条链子说清楚（含模型原话和原因）。
-  const env = bootPlugin(LLM_HTML, {
-    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions", online: false },
-    fetch: function (url, init) {
-      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
-      const body = JSON.parse(init.body);
-      const items = JSON.parse(body.messages[0].content.slice(body.messages[0].content.indexOf("[")));
-      const out = {};
-      items.forEach((it, i) => {
-        out[String(i + 1)] = "ダニ";
-      });
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(out) } }] }),
-      });
-    },
-  });
-  await env.runLoad();
-  await sleep(1400);
-
-  const t = env.api.word("kaleidoscope");
-  assert.ok(t.indexOf("keidoscope") >= 0 || t.indexOf("kaleidoscope") >= 0, "要有这个词：" + t);
-  assert.ok(t.indexOf("没通过首音校验") >= 0, "要说清是被哪条判据拒的：\n" + t);
-  assert.ok(t.indexOf("ダニ") >= 0, "要带上模型原话：\n" + t);
-  assert.ok(t.indexOf("重试没结果的词") >= 0, "要告诉用户怎么办：\n" + t);
-
-  // 词典命中的词：说清"按设计就不问模型"
-  const t2 = env.api.word("light");
-  assert.ok(t2.indexOf("ライト") >= 0, "要有词典读音：\n" + t2);
-  assert.ok(t2.indexOf("离线词典：ライト") >= 0, "要点明它是词典命中：\n" + t2);
-
-  // llm.rejects() 也能列出被拒的答案
-  const rj = env.api.llm.rejects();
-  assert.ok(rj.length >= 1 && rj[0].said === "ダニ" && rj[0].why === "没通过首音校验", JSON.stringify(rj));
-
-  // 「重试没结果的词」把 miss 清掉之后，同一个词有机会再问一次
-  assert.ok(env.api.llm.stats().missesCached >= 1);
-  const cleared = env.api.llm.retryMisses();
-  assert.ok(cleared >= 1, "要清掉被拒的记录：" + cleared);
-  assert.strictEqual(env.api.llm.stats().missesCached, 0);
 });
 
 test("设置面板：有「重试没结果的词」按钮，点了不会炸", async () => {
@@ -1447,75 +1403,6 @@ test("设置面板：模型层停摆时给出大白话告警 + 「立刻重试�
   assert.ok(env.api.llm.stats().cooldownMs > 0, "前提：确实在退避中");
   btn.dispatchEvent(new env.window.Event("click"));
   assert.strictEqual(env.api.llm.stats().cooldownMs, 0, "点了之后退避要清掉");
-});
-
-test("LK.why('文本')：说清「那一行为什么没注音」（区域外 / 被当翻译层）", async () => {
-  // 用户报的「Love, bluh bluh bluh 和 MWAH! 一直没注音」。读音层其实没问题
-  // （实测 Love→ラブ、bluh→ブルー、MWAH→ンワー 都有），所以问题一定在
-  // "那一行不在我们的区域里"。这个诊断把元素链和原因直接说出来。
-  const HTML = `<!doctype html><html><head></head><body>
-<div id="root">
-  <div class="m-lyric">
-    <ul class="lyric">
-      <li class="line"><p>Love, bluh bluh bluh</p><p>爱、bluh bluh bluh</p></li>
-      <li class="line"><p>MWAH!</p></li>
-    </ul>
-  </div>
-  <div class="lyric-elsewhere"><p>MWAH! 在歌词区外面</p></div>
-</div>
-</body></html>`;
-  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
-  await env.runLoad();
-  await sleep(200);
-
-  // 原文那行标上了（前提）
-  const first = env.document.querySelector("ul.lyric li p");
-  assert.ok(rubyCount(first) >= 3, "原文行要标上：" + first.innerHTML);
-
-  const t = env.api.why("MWAH");
-  assert.ok(t.indexOf("查「MWAH」") >= 0, t);
-  assert.ok(t.indexOf("元素链") >= 0, "要给出元素链：" + t);
-  assert.ok(t.indexOf("lyric-elsewhere") >= 0 || t.indexOf("li.line") >= 0, "链上要能看出它在哪：" + t);
-  assert.ok(t.indexOf("**不是**") >= 0, "区域外的要说清不归我们管：" + t);
-  assert.ok(t.indexOf("当前 scope") >= 0, "要报一下 scope 和区域数：" + t);
-
-  const t2 = env.api.why("bluh");
-  assert.ok(t2.indexOf("bluh →") >= 0, "要列出这一段的词和它的读音：" + t2);
-  assert.ok(t2.indexOf("已经注上了") >= 0 || t2.indexOf("→") >= 0, t2);
-
-  assert.ok(env.api.why("绝不存在的文本").indexOf("没找到") >= 0, "找不到也要有话说");
-  assert.ok(env.api.why().indexOf("上一轮") >= 0, "不带参数还是原来的跳过统计");
-});
-
-test("LK.why()：在区域里却没注音的行，要直接说出原因，不能只报「没有」", async () => {
-  // 用户拿着「在标注区域里：是 / 已经有注音记录：没有」这两行回来问"那为什么"，
-  // 我只好再猜一轮。诊断必须一次给结论：是占位符、认输期、还是在动。
-  const HTML = `<!doctype html><html><head></head><body>
-<div id="root"><div class="m-lyric"><ul class="lyric">
-  <li class="line"><p>ねえあたし知ってるよ きみがひとり“XX”してるの知ってるよ</p></li>
-  <li class="line"><p>作词：MWAH</p></li>
-</ul></div></div>
-</body></html>`;
-  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
-  await env.runLoad();
-  await sleep(250);
-
-  /*
-   * 不标的那一类：**打码的**重复字母串 —— 判据是"后面紧跟日语词尾/助词"
-   * （`“XX”してる`、`XXの…`）。用户的要求是"打码的 XX 留白、缩写的 YY 照标"，
-   * 两者拼写一样，只能看用法。
-   */
-  const ps = env.document.querySelectorAll("ul.lyric li p");
-  assert.ok(ps[0].innerHTML.indexOf("エックス") < 0, "打码的 XX 要留白：" + ps[0].innerHTML);
-  const tx = env.api.why("XX");
-  assert.ok(tx.indexOf("打码") >= 0, "要说清是按打码留白：" + tx);
-  assert.ok(tx.indexOf("在标注区域里：是") >= 0, "前提：它在区域里：" + tx);
-
-  // 制作信息行：在区域里，但按规则跳过 —— 原因要写出来
-  const tc = env.api.why("MWAH");
-  assert.ok(tc.indexOf("制作信息行") >= 0, "要说清是被当成制作信息行：" + tc);
-
-  assert.ok(env.api.why("XX").indexOf("全局：已插注音") >= 0, "末尾要有全局计数：" + env.api.why("XX"));
 });
 
 test("罗马音节行：短音节按罗马音读（PI→ピ / ME→メ），普通英文行不受影响", async () => {
@@ -2211,6 +2098,208 @@ test("法语借词表只作用于法语行（`rose`：法语行 ロゼ / 英文�
   assert.strictEqual(rubyCount(ps[4]), 0, "`℗ 2024 Some Label` 不许注音：" + ps[4].innerHTML);
 });
 
+// ---------------------------------------------------------------- 西文各语种（用户给的 7 组用例）
+
+/** 把第 i 行的 ruby 收成 Map（底字 -> 注音） */
+function linePairs(ps, i) {
+  return new Map(
+    [...ps[i].querySelectorAll("ruby.lt-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".lt-rt").textContent])
+  );
+}
+
+test("德语歌词（用例 1）：整行走德语拼读，英文行不受影响", async () => {
+  // 用户给的第一组用例是德语歌词（Regentropfen sind meine Tränen 那首），
+  // 一首歌里德语段和英文段交替 —— 所以判定必须在**整行**级别。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>die Ruinenstadt ist immer noch schön</p></li>
+  <li class="line"><p>ich warte lange Zeit auf deine Rückkehr</p></li>
+  <li class="line"><p>in der Hand ein Vergissmeinnicht</p></li>
+  <li class="line"><p>It might be just like a bird in the cage</p></li>
+  <li class="line"><p>I need you to be stronger than anyone</p></li>
+  <li class="line"><p>Regentropfen sind meine Tränen</p></li>
+  <li class="line"><p>Wind ist mein Atem und meine Erzählung</p></li>
+  <li class="line"><p>denn mein Körper ist in Wurzeln gehüllt</p></li>
+  <li class="line"><p>werde ich wach und singe ein Lied</p></li>
+  <li class="line"><p>erinnerst du dich noch?</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+
+  const l0 = linePairs(ps, 0);
+  assert.strictEqual(l0.get("die"), "ディー", JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("ist"), "イスト");
+  assert.strictEqual(l0.get("immer"), "イマー");
+  assert.strictEqual(l0.get("noch"), "ノッホ");
+  assert.strictEqual(l0.get("schön"), "シェーン");
+
+  const l1 = linePairs(ps, 1);
+  assert.strictEqual(l1.get("ich"), "イッヒ");
+  assert.strictEqual(l1.get("warte"), "ヴァルテ");
+  assert.strictEqual(l1.get("Zeit"), "ツァイト");
+  assert.strictEqual(l1.get("deine"), "ダイネ");
+  assert.strictEqual(l1.get("Rückkehr"), "リュックケーア");
+
+  const l2 = linePairs(ps, 2);
+  assert.strictEqual(l2.get("der"), "デア");
+  assert.strictEqual(l2.get("Hand"), "ハント");
+  assert.strictEqual(l2.get("Vergissmeinnicht"), "フェアギスマイニッヒト");
+
+  // 英文行照旧走词典/英文规则（没被德语带歪）
+  const en = linePairs(ps, 3);
+  assert.strictEqual(en.get("the"), "ザ", JSON.stringify([...en]));
+  assert.strictEqual(en.get("bird"), "バード");
+  assert.strictEqual(en.get("cage"), "ケイジ");
+  const en2 = linePairs(ps, 4);
+  assert.strictEqual(en2.get("stronger"), "ストロンガー", JSON.stringify([...en2]));
+  assert.strictEqual(en2.get("need"), "ニード");
+
+  const l5 = linePairs(ps, 5);
+  assert.strictEqual(l5.get("Regentropfen"), "レーゲントロプフェン");
+  assert.strictEqual(l5.get("sind"), "ズィント");
+  assert.strictEqual(l5.get("Tränen"), "トレーネン");
+
+  const l6 = linePairs(ps, 6);
+  assert.strictEqual(l6.get("Wind"), "ヴィント");
+  assert.strictEqual(l6.get("Atem"), "アーテム");
+  assert.strictEqual(l6.get("und"), "ウント");
+  assert.strictEqual(l6.get("Erzählung"), "エアツェールング");
+
+  const l9 = linePairs(ps, 9);
+  assert.strictEqual(l9.get("dich"), "ディッヒ");
+  assert.strictEqual(l9.get("noch"), "ノッホ");
+});
+
+test("拉丁语歌词（用例 2 / 5 / 7）：古典式拼读 + 短句靠整首投票", async () => {
+  // 用例 7 里有好几个**两三个词的短行**（`Venu` / `Resurgito` / `Illusio`），
+  // 单看一行判不出来 —— 整首都是拉丁语时按拉丁语读（main.js 的 songLanguage）。
+  // `Vindicia … Vanitatum sentio … dolor, ah dolores` 那行要和用户截图里的
+  // 参考答案一致（ヴィンディキア / ヴァニタトゥム / センティオ / ドロル / ドロレス）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Vosmet vetat res coelica</p></li>
+  <li class="line"><p>Iam premet letum vastum te</p></li>
+  <li class="line"><p>Vae gnari sunt suimet quis in oculis</p></li>
+  <li class="line"><p>Dominatus</p></li>
+  <li class="line"><p>Igni, cinis</p></li>
+  <li class="line"><p>Resurgito</p></li>
+  <li class="line"><p>Novum mundum omnibus aequum condemus</p></li>
+  <li class="line"><p>In fine ab Anastasia servati sumus, aurora orietur</p></li>
+  <li class="line"><p>Vindicia (A: Vanitatum sentio) (B: Sentio dolor, ah dolores)</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+
+  const l0 = linePairs(ps, 0);
+  assert.strictEqual(l0.get("Vosmet"), "ヴォスメト", JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("vetat"), "ヴェタト");
+  assert.strictEqual(l0.get("coelica"), "コエリカ");
+
+  const l2 = linePairs(ps, 2);
+  assert.strictEqual(l2.get("Vae"), "ヴァエ");
+  assert.strictEqual(l2.get("gnari"), "グナリ");
+  assert.strictEqual(l2.get("quis"), "クイス");
+
+  const l4 = linePairs(ps, 4);
+  assert.strictEqual(l4.get("Igni"), "イグニ");
+  assert.strictEqual(l4.get("cinis"), "キニス");
+
+  // 短行：整首投票兜底也应该是拉丁语（不是英语规则）
+  const l3 = linePairs(ps, 3);
+  assert.strictEqual(l3.get("Dominatus"), "ドミナトゥス", JSON.stringify([...l3]));
+  const l5 = linePairs(ps, 5);
+  assert.strictEqual(l5.get("Resurgito"), "レスルギト", JSON.stringify([...l5]));
+
+  const l6 = linePairs(ps, 6);
+  assert.strictEqual(l6.get("Novum"), "ノヴム");
+  assert.strictEqual(l6.get("omnibus"), "オムニブス");
+  assert.strictEqual(l6.get("aequum"), "アエクウム");
+
+  const l8 = linePairs(ps, 8);
+  assert.strictEqual(l8.get("Vindicia"), "ヴィンディキア", JSON.stringify([...l8]));
+  assert.strictEqual(l8.get("Vanitatum"), "ヴァニタトゥム");
+  assert.strictEqual(l8.get("sentio"), "センティオ");
+  assert.strictEqual(l8.get("dolor"), "ドロル");
+  assert.strictEqual(l8.get("dolores"), "ドロレス");
+});
+
+test("斯瓦希里语歌词（用例 3 / 4）：按开音节直读，中文译文不注音", async () => {
+  // 用户给的两大段斯瓦希里语用例都带中文译文（同一行里用 `/` 隔开），
+  // 中文那边一个字都不该有注音（它本来也没有值得注音的字母）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Shambulia! Beba silaha / 出征，肩负一切</p></li>
+  <li class="line"><p>Kwa nchi yetu tutaunguza damu yoyote / 为了家园燃尽最后的血</p></li>
+  <li class="line"><p>Ushujaa waangaza mbingu na ardhi / 勇气点亮天空与大地</p></li>
+  <li class="line"><p>Unasafirini kwa matakwa ya watu wako / 为了愿望而步上巡礼</p></li>
+  <li class="line"><p>Ukuu ukuu / 荣耀终将归于</p></li>
+  <li class="line"><p>Geuka kama alfajiri / 如曙光而行吧</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+
+  const l0 = linePairs(ps, 0);
+  assert.strictEqual(l0.get("Shambulia"), "シャンブリア", JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("Beba"), "ベバ");
+  assert.strictEqual(l0.get("silaha"), "シラハ");
+
+  const l1 = linePairs(ps, 1);
+  assert.strictEqual(l1.get("nchi"), "ンチ");
+  assert.strictEqual(l1.get("yetu"), "イェトゥ");
+  assert.strictEqual(l1.get("damu"), "ダム");
+
+  const l2 = linePairs(ps, 2);
+  assert.strictEqual(l2.get("waangaza"), "ワアンガザ");
+  assert.strictEqual(l2.get("mbingu"), "ンビング", JSON.stringify([...l2]));
+
+  const l3 = linePairs(ps, 3);
+  assert.strictEqual(l3.get("Unasafirini"), "ウナサフィリニ");
+  assert.strictEqual(l3.get("matakwa"), "マタクワ");
+
+  // 中文译文部分一个注音都没有
+  for (let i = 0; i < ps.length; i++) {
+    const rubies = [...ps[i].querySelectorAll("ruby.lt-ruby")];
+    for (const r of rubies) {
+      assert.ok(!/[\u4e00-\u9fa5]/.test(r.childNodes[0].nodeValue), "中文不许注音：" + ps[i].innerHTML);
+    }
+  }
+});
+
+test("俄语歌词（用例 6）：西里尔字母也注音（词典和罗马音层都读不了它）", async () => {
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Мы Отчизну отстоим и восславим себя в веках / 保家卫国之人的荣光</p></li>
+  <li class="line"><p>Виват Анастасия / 荣耀啊，吾皇安娜丝塔夏</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(400);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+
+  const l0 = linePairs(ps, 0);
+  assert.strictEqual(l0.get("Мы"), "ムイ", JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("Отчизну"), "オチズヌ");
+  assert.strictEqual(l0.get("отстоим"), "オトストイム");
+  assert.strictEqual(l0.get("и"), "イ");
+  assert.strictEqual(l0.get("восславим"), "ヴォスラヴィム");
+  assert.strictEqual(l0.get("себя"), "セビャ");
+  assert.strictEqual(l0.get("веках"), "ヴェカフ");
+
+  const l1 = linePairs(ps, 1);
+  assert.strictEqual(l1.get("Виват"), "ヴィヴァト", JSON.stringify([...l1]));
+  assert.strictEqual(l1.get("Анастасия"), "アナスタシヤ");
+});
+
 test("非日语歌是否注音可以开关（默认注音，关掉只标日语歌）", async () => {
   // 用户要的「非日语歌可选是否标注」。判据看**整首**：整首歌词里一个假名都没有
   // （纯英文歌 / 法语歌 / 中文歌）才算非日语歌 —— 所以日语歌里的纯英文行不会被误伤。
@@ -2570,54 +2659,6 @@ test("设置面板：罗马音排在词典前面时给出提醒（它会把英�
   );
 });
 
-test("设置面板：排障区块能直接查「这一行为什么没注音 / 这个词的读音来源」", async () => {
-  // 用户报问题的方式是截图，不是敲控制台 —— 所以把两个诊断做成面板按钮。
-  const HTML = `<!doctype html><html><head></head><body>
-<div id="root">
-  <div class="m-lyric"><ul class="lyric">
-    <li class="line"><p>Shoo, Gimme more, Yeah!</p><p>（翻译）Shoo…</p></li>
-  </ul></div>
-</div>
-</body></html>`;
-  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
-  await env.runLoad();
-  await sleep(250);
-
-  const root = env.listeners.config[0]();
-  const input = root.querySelector(".lk-diag-input");
-  const out = root.querySelector(".lk-diag-out");
-  assert.ok(input && out, "要有排障输入框和输出区");
-
-  const click = (action) => {
-    const b = [...root.querySelectorAll("[data-a]")].find((x) => x.dataset.a === action);
-    assert.ok(b, "要有按钮 " + action);
-    b.dispatchEvent(new env.window.Event("click"));
-  };
-
-  // 没填东西时的提示
-  click("diagWhy");
-  assert.ok(out.textContent.indexOf("先在上面填") >= 0, out.textContent);
-
-  // 查"已经标上的那一段"：要说清"已经注上了"，别让人以为出错
-  input.value = "more";
-  click("diagWhy");
-  assert.ok(out.textContent.indexOf("已经注上了") >= 0, "已注音的要给出明确结论：" + out.textContent);
-
-  // 查"没标的那一行"（这里的翻译层）：要给元素链和「不是」
-  input.value = "（翻译）";
-  click("diagWhy");
-  assert.ok(out.textContent.indexOf("元素链") >= 0, "要给出元素链：" + out.textContent);
-  assert.ok(out.textContent.indexOf("**不是**") >= 0, "要说清不归我们管：" + out.textContent);
-  assert.ok(out.textContent.indexOf("scope") >= 0, "要报 scope：" + out.textContent);
-
-  // 查"这个词的读音来源"
-  input.value = "Shoo";
-  click("diagWord");
-  const t = out.textContent;
-  assert.ok(t.indexOf("离线词典：シュー") >= 0, "要报词典值：" + t);
-  assert.ok(t.indexOf("本地层：") >= 0 && t.indexOf("页面实际用的：") >= 0, t);
-});
-
 test("设置面板：默认只有三块（开关 / 大模型 / 预览），其余收进「高级设置」", async () => {
   // 面板这些轮下来加了太多东西（外观/范围/层序/用量/排障/操作），用户要求简化。
   // 现在默认只留最常用的，其余折进一个 details。
@@ -2652,8 +2693,6 @@ test("设置面板：默认只有三块（开关 / 大模型 / 预览），其�
     '[data-k="scope"]',
     ".lk-layers",
     ".lk-usage",
-    ".lk-diag-input",
-    '[data-a="diagWhy"]',
     '[data-a="rescan"]',
   ];
   for (const sel of inside) {
@@ -2665,7 +2704,7 @@ test("设置面板：默认只有三块（开关 / 大模型 / 预览），其�
   const titles = [...adv.querySelectorAll("h3")].map((h) => h.textContent);
   assert.deepStrictEqual(
     titles,
-    ["接口", "外观", "范围", "读音来源顺序", "API 用量", "排障", "操作"],
+    ["接口", "外观", "范围", "读音来源顺序", "API 用量", "操作"],
     "高级里的分组：" + titles.join(" / ")
   );
 });

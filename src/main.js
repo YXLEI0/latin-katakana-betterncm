@@ -168,7 +168,7 @@
    *   `the` -> 规则层的 セ、`this` 变黄（也是规则层）、
    *   `I'll` 被拆成「イ + ル」= イル，而且**大模型也不再被咨询**（规则先答了）。
    * 面板里的 ↑↓ 已经不让这么换；这个函数用来兜住"手改配置 / 老配置"，
-   * 并在设置面板和 `LK.word()` 里明确说出来。
+   * 并在设置面板里明确说出来。
    *
    * @returns {Array<string>} 被挡住的层名（空数组 = 没问题）
    */
@@ -213,18 +213,9 @@
   var ROMAJI_LINE_SHORT_RATIO = 0.6;
   var romajiLineCache = new Map();
   var ROMAJI_LINE_CACHE_MAX = 200;
-  /** 法语行的判定也缓存（同一行会被问很多次） */
-  var frenchLineCache = new Map();
-  /*
-   * 英法同形异音的词：在英语词典里是英语读音，但法语行上必须走法语拼读。
-   * 词典优先的规则对它们要开个口子（其余法语常用词仍以人工词表为准）。
-   */
-  var FR_HOMOGRAPH = {
-    son: true, plus: true, grand: true, cent: true, pain: true, main: true, coin: true, fin: true,
-    long: true, or: true, fort: true, tour: true, tout: true, tous: true, temps: true, sur: true,
-    dans: true, est: true, sont: true, fait: true, cours: true, mode: true, note: true, sage: true,
-    chair: true, coin: true, laid: true, ver: true, vers: true, sol: true, son: true,
-  };
+  /** 每一行的语种判定也缓存（同一行会被问很多次） */
+  var langLineCache = new Map();
+  var LANG_CACHE_MAX = 200;
 
   /*
    * 只在**英语拼写**里出现的字母组合：日语罗马字里没有 th / wh / ck / gh / ph，
@@ -465,22 +456,81 @@
    * （判完还会被自动沉淀成离线词条）。模型没开时显示的还是原来的词音，不会更差。
    */
   /**
-   * 这一行是不是法语（缓存）。法语歌词用 reading.js 里那套**法语拼读**，
-   * 而不是日语罗马音/英文规则 —— 用户给了一整首法语歌词当例子。
+   * 这一行是什么语言（缓存）。判不出来返回 null —— 那就按老规矩走：
+   * 离线词典 -> 日语罗马音 -> 英文规则。
+   *
+   * 支持的语言在 core/langs.js 里：法语 / 德语 / 拉丁语 / 葡萄牙语 / 荷兰语 /
+   * 斯瓦希里语 / 汉语拼音 / 俄语（西里尔）/ 希腊语。判定分两层：
+   *   ① 这一行自己的特征（LKLangs.detect）；
+   *   ② 整首歌词的多数语种兜底（songLanguage）—— `Dominatus`、`Ukuu ukuu`
+   *      这种两三个词的短行自己分数不够，但整首都是拉丁语/斯瓦希里语时
+   *      应该照那种语言读，不然一行一个读法。
    */
-  function lineLooksFrench(line) {
-    if (!line) return false;
+  function lineLang(line) {
+    if (!line) return null;
     var key = String(line);
-    if (frenchLineCache.has(key)) return frenchLineCache.get(key);
-    var looks = false;
+    if (langLineCache.has(key)) return langLineCache.get(key);
+    var id = null;
     try {
-      looks = typeof LKReading !== "undefined" && LKReading.looksFrench ? !!LKReading.looksFrench(key) : false;
+      if (typeof LKLangs !== "undefined" && LKLangs.detect) {
+        id = LKLangs.detect(key);
+        if (!id) {
+          var song = songLanguage();
+          if (song && LKLangs.fits(song, key)) id = song;
+        }
+      }
     } catch (e) {
-      looks = false;
+      id = null; // 判语言失败绝不影响注音
     }
-    if (frenchLineCache.size > ROMAJI_LINE_CACHE_MAX) frenchLineCache.clear();
-    frenchLineCache.set(key, looks);
-    return looks;
+    if (langLineCache.size > LANG_CACHE_MAX) langLineCache.clear();
+    langLineCache.set(key, id);
+    return id;
+  }
+
+  /**
+   * 整首歌词的语种：数每一行自己判出来的语种，取出现次数最多的那个（至少 2 行）。
+   * 只用来兜住短行，不参与长行的判定；按歌词文本缓存（换歌才重算）。
+   */
+  var songLangCache = { key: "", value: null };
+  function songLanguage() {
+    if (typeof LKLangs === "undefined" || !LKLangs.detect) return null;
+    if (!state.annotator || !state.annotator.findRegions) return null;
+    var regions;
+    try {
+      regions = state.annotator.findRegions("lyrics");
+    } catch (e) {
+      return null;
+    }
+    if (!regions || !regions.length) return null;
+    var texts = [];
+    for (var i = 0; i < regions.length; i++) {
+      try {
+        texts.push(regions[i].textContent || "");
+      } catch (e2) {
+        texts.push("");
+      }
+    }
+    var key = texts.join("\n").slice(0, 4000);
+    if (songLangCache.key === key) return songLangCache.value;
+    var counts = {};
+    var best = null;
+    var bestN = 0;
+    for (var j = 0; j < texts.length; j++) {
+      var id = null;
+      try {
+        id = LKLangs.detect(texts[j]);
+      } catch (e3) {
+        id = null;
+      }
+      if (!id) continue;
+      counts[id] = (counts[id] || 0) + 1;
+      if (counts[id] > bestN) {
+        bestN = counts[id];
+        best = id;
+      }
+    }
+    songLangCache = { key: key, value: bestN >= 2 ? best : null };
+    return songLangCache.value;
   }
 
   function gluedUpperCase(word, line) {
@@ -601,35 +651,32 @@
       if (String(word) !== "A" && String(word) !== "I") return null;
     }
     var r = state.reader ? state.reader.read(word) : null;
-    if (!r || !r.kana) return null;
     /*
-     * 法语行：**拼读猜出来的答案换成法语拼读**，词典命中的照旧优先。
+     * 外语行：**拼读猜出来的答案换成那种语言的拼读**，词典命中的照旧优先。
      *
      * 为什么放在这里、而不是函数末尾：下面"罗马字行/两可短音节"那两支会先返回
-     * （`dans` 这种三字母词就会被它们接走），所以法语必须在它们**之前**判。
+     * （`dans` 这种三字母词就会被它们接走），所以语言判定必须在它们**之前**判。
      *
-     * 为什么词典仍然优先：法语常用词（si スィ、je ジュ、et エ、que ク…）人工钉过，
-     * 比规则近似准。**例外**是英法同形异音的那几个：plus（プラス/プリュ）、
-     * son（サン/ソン）、grand（グランド/グラン）、cent・pain・main・coin・fin・long…
-     * 它们在英语词典里是英语读音，法语行上要按法语读，所以走规则层。
-     * 结果一律 confident:false —— 法语拼读是近似，配了 key 就交给大模型按整句定。
+     * 什么时候用引擎覆盖本地层：
+     *   - 本地层读不出来 —— 西里尔/希腊字母（俄语、希腊语）词典层和罗马音层都读不了，
+     *     这两个语种的支持就落在这条上；
+     *   - 本地层是罗马音/规则猜的 —— 英文读音对外语词没有意义；
+     *   - 这个词是**同形异音**（plus / son / die / Wind…，见 langs.js 的 HOMOGRAPH）。
+     * 借词表命中的排在最前面（那是日语通行写法，等于人工词条）。
+     * 规则层的结果一律 confident:false —— 拼写近似，配了 key 交给大模型按整句定。
      */
-    if (line && typeof LKReading !== "undefined" && LKReading.frenchToKatakana && lineLooksFrench(line)) {
-      /*
-       * 借词表优先（`frenchWord`）：那是"日语里就是这么写的"（ユーザー给的
-       * sljfaq 法语借词表），连英语词典都要让路 —— rose 在英语行是 ローズ、
-       * 在法语行是 ロゼ；lame 在英语行是 レイム、在法语行是 ラメ。
-       * 表里没有才退回规则近似。
-       */
-      var loan = typeof LKReading.frenchWord === "function" ? LKReading.frenchWord(word) : null;
+    var lang = line ? lineLang(line) : null;
+    if (lang && typeof LKLangs !== "undefined" && LKLangs.toKatakana) {
+      var loan = LKLangs.word(lang, word);
       if (loan) return { kana: loan, source: "dict", confident: true };
-      var frKey = typeof LKMatcher !== "undefined" ? LKMatcher.normalize(word) : String(word == null ? "" : word).toLowerCase();
-      var frNeedEngine = r.source === "romaji" || r.source === "rule" || FR_HOMOGRAPH[frKey] === true;
-      if (frNeedEngine) {
-        var fr = LKReading.frenchToKatakana(word);
-        if (fr && fr.kana) return { kana: fr.kana, source: "rule", confident: false };
+      var langKey = typeof LKMatcher !== "undefined" ? LKMatcher.normalize(word) : String(word == null ? "" : word).toLowerCase();
+      var needEngine = !r || !r.kana || r.source === "romaji" || r.source === "rule" || LKLangs.homograph(lang, langKey);
+      if (needEngine) {
+        var foreign = LKLangs.toKatakana(lang, word);
+        if (foreign && foreign.kana) return { kana: foreign.kana, source: "rule", confident: foreign.confident === true };
       }
     }
+    if (!r || !r.kana) return null;
     /*
      * 词典是**英文**词典，`PI` 会被读成 パイ、`ME` 读成 ミー、
      * `PE` 甚至读成 ピーイー（把 "P E" 当字母念）—— 在一首日语歌的罗马字行里
@@ -947,151 +994,6 @@
     }
   }
 
-  // ------------------------------------------------------------ 排障（面板和控制台共用）
-
-  /**
-   * 「这一段为什么没注音」（`LK.why('MWAH')` / 面板的排障按钮）。
-   * 带参数：找页面上包含这段文字的原文文本节点，逐层说清；
-   * 不带参数：报上一轮的扫描/跳过统计（含"注音时出错"的行）。
-   */
-  function diagWhy(text) {
-    var r = state.lastResult;
-    if (text && state.annotator && state.annotator.explain) {
-      var mode = config.scope === "lyrics" || config.scope === "titles" ? config.scope : "safe";
-      var regions = null;
-      try {
-        regions = state.annotator.findRegions(mode);
-      } catch (e) {
-        regions = null;
-      }
-      var lines = ["查「" + text + "」："];
-      var detail = state.annotator.explain(text, regions);
-      for (var i = 0; i < detail.length; i++) lines.push(detail[i]);
-      lines.push("当前 scope=" + config.scope + "，上面认到的区域数：" + (regions ? regions.length : "?"));
-      return lines.join("\n");
-    }
-    if (!r) return "还没扫过（插件没启用？）";
-    var out = [];
-    out.push(
-      "上一轮：区域 " + r.scanned + "，注音 " + r.changed + "，还原 " + r.restored +
-        "，跳过 " + r.skipped + "，放弃 " + (r.unstable || 0) + "，用时 " + state.lastPassMs + "ms"
-    );
-    if (r.retryInMs) out.push("已安排 " + Math.round(r.retryInMs) + "ms 后再扫一轮（跳过是暂时的）");
-    var errs = r.errors || [];
-    if (errs.length) {
-      out.push("注音时出错（这些行没标上）：");
-      for (var ei = 0; ei < errs.length && ei < 5; ei++) out.push("　" + errs[ei]);
-    }
-    var skips = r.skips || [];
-    if (skips.length) {
-      // 同一种原因可能连着出现很多次（一个区域里有好几个节点），压成计数
-      var seen = {};
-      for (var si = 0; si < skips.length; si++) {
-        var key = String(skips[si]).replace(/@\S+\s+".*$/, "").trim();
-        seen[key] = (seen[key] || 0) + 1;
-      }
-      out.push("跳过原因：");
-      for (var k in seen) {
-        if (Object.prototype.hasOwnProperty.call(seen, k)) out.push("　× " + seen[k] + "　" + k);
-      }
-    } else if (!r.unstable) {
-      out.push("没有跳过 —— 还有行没注音的话，点上面的「查这一行为什么没注音」填那行里的一个词");
-    }
-    if (state.error) out.push("错误：" + state.error);
-    return out.join("\n");
-  }
-
-  /**
-   * 「这个词为什么读音不对 / 一直不矫正」（`LK.word('the')` / 面板的排障按钮）。
-   */
-  function diagWord(w) {
-    if (!w) return "用法：LK.word('the')";
-    var out = [];
-    /*
-     * 先挡一种最容易冤人的情况：这个词**本来就不该被标**（单字母缩写、
-     * `XX` 这种同一字母重复的占位符）。不然报告里会写"读作 エックスエックス"，
-     * 看着像插件读错了，其实是"我们故意不标它"。
-     */
-    try {
-      var tkFirst = LKMatcher.scan(String(w))[0];
-      if (tkFirst && tkFirst.text === String(w) && !LKMatcher.looksReadable(tkFirst)) {
-        out.push("这个词**不会**被标注（不是读音问题）：");
-        out.push("　" + (tkFirst.norm.length === 1 ? "单个字母（只有 a / I 是英文单词）" : "同一个字母重复的占位符（`XX`/`XXX`，歌词里是打码）"));
-        out.push("　要不要标是 `core/latin.js` 的 looksReadable() 决定的，跟词典/模型无关");
-        return out.join("\n");
-      }
-    } catch (e) {
-      /* 诊断不该因为分词失败而中断 */
-    }
-    var local = state.reader ? state.reader.read(w) : null;
-    out.push("词：" + w);
-    /*
-     * 「学会的词」要排在最前面说：它是**自己攒出来的**离线词条，很容易被当成
-     * 词典里本来就有的东西（用户报"某个词读错了"，结果发现是模型当初答错、
-     * 被我们沉淀下来了 —— 那就得忘掉它）。
-     */
-    if (state.learned) {
-      var learnedKey = typeof LKMatcher !== "undefined" ? LKMatcher.normalize(w) : String(w).toLowerCase();
-      var lrec = state.learned.peek(w);
-      if (lrec) {
-        out.push("学会的词：" + lrec + "（模型在两个句子里都这么答、已当离线词条用，所以不会再问模型）");
-        out.push("　读音不对就忘掉它：LK.learn.forget('" + learnedKey + "')");
-      } else {
-        var pend = state.learned.stats().pending;
-        if (pend) out.push("学会的词：没有（待定的有 " + pend + " 个，模型在别的句子里再答一次同样的读音就会收下）");
-      }
-    }
-    out.push(
-      "本地层：" + (local ? local.kana + "（" + local.source + "，confident=" + local.confident + "）" : "读不出来")
-    );
-    var dict = typeof LKDict !== "undefined" ? LKDict.words : {};
-    var key = String(w).toLowerCase();
-    out.push("离线词典：" + (dict[key] ? dict[key] : "没有"));
-    var rank = local ? effectiveRank(local) : -1;
-    out.push(
-      "按当前层序（" + config.layerOrder.join(" > ") + "）在线层有没有资格覆盖它：" +
-        (rank < 0 ? "没有（形态层/最优先）" : rank + "，排在它前面的在线层才有资格")
-    );
-    var blockedNow = ruleBlocksSync();
-    if (blockedNow.length) {
-      out.push(
-        "⚠ 但「英文音译规则」排在 " + blockedNow.join(" / ") + " 前面 —— 它会替每个词给答案，" +
-          "所以词典和在线层都用不上了。先点「恢复默认顺序」。"
-      );
-    }
-    var rom = shortRomajiOf(w);
-    if (rom && dict[key] && dict[key] !== rom) {
-      out.push("两可（词典 " + dict[key] + " / 罗马音 " + rom + "）：会标成没把握，由在线层按整句语境判");
-    }
-    if (state.llm) {
-      var peek = state.llm.peek(w);
-      var st = state.llm.stats();
-      out.push("模型缓存里的读音：" + (peek ? peek : "没有（要么没问过，要么是 miss）"));
-      out.push(
-        "模型层：问过 " + st.requests + " 次，命中 " + st.hits + "，没收下 " + st.misses +
-          "（其中首音校验判掉 " + st.rejected + "），缓存里 miss 条目 " + st.missesCached +
-          "，队列 " + st.pending + "，本分钟还剩 " + st.roomThisMinute + " 次额度"
-      );
-      var rj = state.llm.rejects ? state.llm.rejects() : [];
-      var hit = [];
-      for (var i = 0; i < rj.length; i++) {
-        if (String(rj[i].word).toLowerCase() === key) hit.push(rj[i]);
-      }
-      if (hit.length) {
-        out.push("被拒记录：");
-        for (var j = 0; j < hit.length; j++) {
-          out.push("　模型说了「" + (hit[j].said || "（空）") + "」，原因：" + hit[j].why);
-        }
-        out.push("　→ 如果这是模型的正确答案：点「重试没结果的词」再问一次");
-      }
-    }
-    if (state.corrector) {
-      out.push("免费接口那层：" + (state.corrector.isWaiting(w) ? "正在等" : "没在等"));
-    }
-    out.push("页面实际用的：" + readForDisplay(w));
-    return out.join("\n");
-  }
-
   // ------------------------------------------------------------ 设置面板
 
   var REPO = REPO_URL;
@@ -1142,7 +1044,7 @@
       "词典外的词和两可短音节 (Do / Re / PI / ME…) 由它按整句语境判; 答稳的词自动沉淀成离线词条, 以后不再问</div>" +
       "<h3>预览</h3>" +
       '<div class="lk-preview"></div>' +
-      '<details class="lk-adv"><summary>高级设置（接口 / 外观 / 范围 / 读音来源顺序 / 用量 / 排障 / 操作）</summary>' +
+      '<details class="lk-adv"><summary>高级设置（接口 / 外观 / 范围 / 读音来源顺序 / 用量 / 操作）</summary>' +
       "<h3>接口</h3>" +
       '<div class="lk-row"><label>接口地址 <input type="text" data-k="llmEndpoint"></label></div>' +
       '<div class="lk-row"><label>模型 <input type="text" data-k="llmModel"></label></div>' +
@@ -1167,7 +1069,7 @@
       '<option value="custom">自定义选择器</option>' +
       "</select></label></div>" +
       '<div class="lk-row"><label>自定义选择器 <input type="text" data-k="customSelector" placeholder="例如 ul.lyric > li"></label></div>' +
-      '<div class="lk-row"><label><input type="checkbox" data-k="annotateNonJapanese"> 非日语歌也注音 (纯英文 / 法语 / 中文歌)</label></div>' +
+      '<div class="lk-row"><label><input type="checkbox" data-k="annotateNonJapanese"> 非日语歌也注音 (纯英文 / 西文各语种 / 中文歌)</label></div>' +
       '<div class="lk-hint">关掉 = 只标日语歌: 整首歌词一个假名都没有的整首跳过; ' +
       "判据看整首, 所以日语歌里的纯英文行照旧注音</div>" +
       "<h3>读音来源顺序</h3>" +
@@ -1184,11 +1086,7 @@
       '<button data-a="usageReset" data-scope="today">清零今天</button> ' +
       '<button data-a="usageReset" data-scope="all">清零累计</button>' +
       "</div>" +
-      "<h3>排障</h3>" +
-      '<div class="lk-row"><label>词 / 一段歌词 <input type="text" class="lk-diag-input" placeholder="例如 MWAH 或 the"></label> ' +
-      '<button data-a="diagWhy">查这一行为什么没注音</button> ' +
-      '<button data-a="diagWord">查这个词的读音来源</button></div>' +
-      '<div class="lk-hint lk-diag-out"></div>' +      "<h3>操作</h3>" +
+      "<h3>操作</h3>" +
       '<div class="lk-row">' +
       '<button data-a="rescan">重新扫描</button> ' +
       '<button data-a="retry">重试没结果的词</button> ' +
@@ -1745,19 +1643,6 @@
             setTimeout(function () {
               b.textContent = "清除校正缓存";
             }, 1500);
-          } else if (what === "diagWhy" || what === "diagWord") {
-            /*
-             * 面板里的排障：用户报"某一行/某个词不对"时，他截图给我就行，
-             * 不用去开控制台敲命令（这一步以前是真的卡住过）。
-             */
-            var input = root.querySelector(".lk-diag-input");
-            var out = root.querySelector(".lk-diag-out");
-            var text = input ? String(input.value || "").trim() : "";
-            if (!text) {
-              if (out) out.textContent = "先在上面填一个词或一段歌词。";
-            } else if (out) {
-              out.textContent = what === "diagWhy" ? diagWhy(text) : diagWord(text);
-            }
           } else if (what === "learnClear") {
             if (state.learned) {
               var gone = state.learned.clear();
@@ -1857,6 +1742,8 @@
       warn("核心模块未注入，检查 manifest.json 的 injects 顺序");
       return;
     }
+    // 语言层是可选的：没注入时只剩英语/罗马音（老行为），注音照常工作
+    if (typeof LKLangs === "undefined") warn("core/langs.js 没注入：法语 / 德语 / 拉丁语等西文语种不生效");
 
     try {
       betterncm.app.getBetterNCMVersion().then(
@@ -2168,20 +2055,27 @@
         }
         return !!config.colorBySource;
       },
-      /*
-       * 「这个词为什么一直不矫正」——一词体检。
-       *
-       * 用户问「有些词大模型一直不矫正」时，答案通常在这几处之一：
-       *   1. 它命中了**离线词典**（默认词典排在模型前面，按设计就不问模型）；
-       *   2. 缓存里有一条 **miss**（问过但没收下）—— 比如模型的答案被首音校验判掉了，
-       *      而且 miss 是永久的、还落了盘；用 LK.llm.rejects() 看模型当时说了什么；
-       *   3. 还在**队列里等**（模型排在最前面时请求量会撞上限流，20 次/分钟）。
-       */
-      word: function (w) {
-        return diagWord(w);
-      },
       dict: function () {
         return typeof LKDict !== "undefined" ? LKDict.words : {};
+      },
+      /*
+       * 借词表（core/loan.js）：哪些词"日语里就是这么写的"。
+       * LK.loan() 看条数，LK.loan('de') 看德语那张表。
+       */
+      loan: function (langId) {
+        if (typeof LKLoan === "undefined") return null;
+        if (!langId) return { count: LKLoan.count, langs: Object.keys(LKLoan.tables) };
+        return LKLoan.get(langId);
+      },
+      /*
+       * 语言判定：LK.lang('这一行歌词') 看它被判成什么语言。
+       * 插件支持法语 / 德语 / 拉丁语 / 葡萄牙语 / 荷兰语 / 斯瓦希里语 /
+       * 汉语拼音 / 俄语 / 希腊语，判不出来返回 null（那就走词典/罗马音/英文规则）。
+       */
+      lang: function (text) {
+        if (typeof LKLangs === "undefined") return null;
+        var id = text === undefined || text === null ? null : LKLangs.detect(String(text));
+        return { id: id, label: id ? LKLangs.label(id) : "（没判出来）" };
       },
       stats: function () {
         return {
@@ -2192,15 +2086,6 @@
           llm: state.llm ? state.llm.stats() : null,
           learned: state.learned ? state.learned.stats() : null,
         };
-      },
-      /*
-       * 「这一行/这几行为什么没注音」——一句话回答。
-       *
-       * 排障时最难受的就是"某行没注音"不留痕：现在每一轮扫描都会带上跳过原因
-       * （文本在动 / 认输期 / 无译文 / 切不出词 / 不在区域里…），这里直接给结论。
-       */
-      why: function (text) {
-        return diagWhy(text);
       },
       llm: {
         stats: function () {

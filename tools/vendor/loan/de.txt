@@ -1,0 +1,95 @@
+# Japanese loanwords from German
+# Source: https://www.sljfaq.org/afaq/german.html ("Which Japanese words come from German?", sci.lang.japan FAQ by Ben Bullock)
+# Fetched: 2026-09-21 (single web_fetch, HTTP 200, page content complete/not truncated)
+# Entries: 87
+# Format: german_word:katakana  (german word lowercased ASCII, diacritics folded a/o/u/ss, spaces/hyphens/apostrophes/parens removed; katakana copied verbatim from the page)
+# Note: for the "ゼミ・ゼミナール" row only the ・-free form ゼミナール is used, because the format allows katakana and ー only.
+# Note: the page lists both メルヘン and メルヘンティック for "Märchen"; the derived duplicate key marchen is kept once (メルヘン).
+# Note: the page's ピッケル row has an empty "German" cell with "Pickel" in the following column; read as German "Pickel" -> pickel.
+adrenalin:アドレナリン
+allergie:アレルギー
+arbeit:アルバイト
+aspirin:アスピリン
+baumkuchen:バウムクーヘン
+bombe:ボンベ
+dachshund:ダックスフント
+damon:デーモン
+demagogie:デマ
+diesel:ディーゼル
+dobermann:ドーベルマン
+energie:エネルギー
+fett:ヘット
+gaze:ガーゼ
+gelande:ゲレンデ
+genom:ゲノム
+gips:ギプス
+gruppe:グルッペ
+gummi:グミ
+haken:ハーケン
+hakenkreuz:ハーケンクロイツ
+harn:ハルン
+hegemonie:ヘゲモニー
+herpes:ヘルペス
+hormon:ホルモン
+hutte:ヒュッテ
+hysterie:ヒステリー
+ideologie:イデオロギー
+impotenz:インポ
+jod:ヨード
+jodel:ヨーデル
+kaffein:カフェイン
+kanon:カノン
+kapsel:カプセル
+karies:カリエス
+karte:カルテ
+kindergarten:キンダーガルテン
+kocher:コッヘル
+kollagen:コラーゲン
+kranke:クランケ
+lied:リート
+lorelei:ローレライ
+lumpen:ルンペン
+magen:マーゲン
+marchen:メルヘン
+masochist:マゾヒスト
+meister:マイスター
+merkmal:メルクマール
+messe:メッセ
+nazi:ナチ
+neurose:ノイローゼ
+nikotin:ニコチン
+oblate:オブラート
+onanie:オナニー
+operation:オペ
+pickel:ピッケル
+poltergeist:ポルターガイスト
+pudel:プードル
+puls:プルス
+rheumatismus:リューマチ
+rontgen:レントゲン
+rucksack:リュックサック
+schale:シャーレ
+schanze:シャンツェ
+schlafsack:シュラーフ
+schnorchel:シュノーケル
+seil:ザイル
+seminar:ゼミナール
+sonde:ゾンデ
+spitz:スピッツ
+sprechchor:シュプレッヒコール
+stock:ストック
+syphilis:ジフィリス
+thema:テーマ
+these:テーゼ
+trachom:トラホーム
+tuberkulin:ツベルクリン
+typhus:チフス
+ultra:ウルトラー
+vakzin:ワクチン
+vaselin:ワセリン
+vektor:ベクトル
+virus:ビールス
+volkswagen:フォルクスワーゲン
+wappen:ワッペン
+windjacke:ウィンドヤッケ
+yoghurt:ヨーグルト

@@ -4,6 +4,9 @@
  * 和 katakana-terminator 的 matcher.js 正好相反 —— 那个找片假名，这个找拉丁字母。
  * 但要处理的问题一样：不能把整段文字当成一个词，也不能把标点、缩写、单字母
  * 当成要标的东西。
+ *
+ * 俄语（西里尔）和希腊语也要注音，所以这里认三种字母：
+ *   latin / cyrillic / greek。词条上带 script 字段，读音层按它选拼读规则。
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
@@ -17,7 +20,16 @@
    * `Ō` 就是被 ASCII 正则漏掉的：`Tōkyō` 会被切成 `T` + `ky`，
    * 于是 `ky` 单独命中词典读成 ケーワイ，比不标还糟。
    */
-  var LAT = "[A-Za-z\\u00C0-\\u024F\\u1E00-\\u1EFF]";
+  var LAT_CLS = "A-Za-z\\u00C0-\\u024F\\u1E00-\\u1EFF";
+  /** 西里尔字母（基本块 + 补充块） */
+  var CYR_CLS = "\\u0400-\\u04FF\\u0500-\\u052F";
+  /** 希腊字母（基本块 + 多音调扩展） */
+  var GRK_CLS = "\\u0370-\\u03FF\\u1F00-\\u1FFF";
+  var LAT = "[" + LAT_CLS + "]";
+  var CYR = "[" + CYR_CLS + "]";
+  var GRK = "[" + GRK_CLS + "]";
+  /** 三种字母合起来的"一个西文字母" */
+  var WEST = "[" + LAT_CLS + CYR_CLS + GRK_CLS + "]";
   /** 记号里的分隔符（`D/N/A` 的斜杠等） */
   var GLUE = "[\\/\\\\|_.&#*~+=\\u30FB\\uFF0F\\uFF3C-]";
 
@@ -50,8 +62,8 @@
    */
   var WORD_JOIN = "['\\u2019~\uFF5E\u301C-]";
 
-  /** 普通词（含撇号/连字符/波浪号） */
-  var RE_PLAIN = new RegExp(LAT + "(?:" + LAT + "|" + WORD_JOIN + "(?=" + LAT + "))*", "g");
+  /** 普通词（含撇号/连字符/波浪号）；西里尔/希腊字母同样算词 */
+  var RE_PLAIN = new RegExp(WEST + "(?:" + WEST + "|" + WORD_JOIN + "(?=" + WEST + "))*", "g");
 
   /** 这段文字里有没有拉丁字母（含带变音符号的） */
   function hasLatin(text) {
@@ -59,6 +71,23 @@
     // 于是返回 true —— 后面那句 scan 就会去扫一个不存在的文本。
     if (!text) return false;
     return new RegExp(LAT).test(String(text));
+  }
+
+  /** 这段文字里有没有西文字母（拉丁 + 西里尔 + 希腊） */
+  function hasWestern(text) {
+    if (!text) return false;
+    return new RegExp(WEST).test(String(text));
+  }
+
+  var RE_CYR = new RegExp(CYR);
+  var RE_GRK = new RegExp(GRK);
+
+  /** 这个词属于哪种字母：latin / cyrillic / greek（读音层按它选拼读规则） */
+  function scriptOf(text) {
+    var s = String(text == null ? "" : text);
+    if (RE_CYR.test(s)) return "cyrillic";
+    if (RE_GRK.test(s)) return "greek";
+    return "latin";
   }
 
   /*
@@ -94,12 +123,13 @@
     if (!text) return out;
     var i = 0;
     var len = text.length;
-    var RE_LATIN_ONE = new RegExp(LAT);
+    var RE_WEST_ONE = new RegExp(WEST);
     while (i < len) {
       var ch = text.charAt(i);
-      // 注意这里也要用 LAT：只判 [A-Za-z] 的话，`Ōkami` 会在 Ō 上直接跳过，
-      // 剩下 `kami` 被当成一个词（用户报的 `Ō` 不注音就是这么来的）
-      if (!RE_LATIN_ONE.test(ch)) {
+      // 注意这里也要用字母类：只判 [A-Za-z] 的话，`Ōkami` 会在 Ō 上直接跳过，
+      // 剩下 `kami` 被当成一个词（用户报的 `Ō` 不注音就是这么来的）；
+      // 西里尔/希腊同理（俄语、希腊语歌词要整词走语言引擎）
+      if (!RE_WEST_ONE.test(ch)) {
         i++;
         continue;
       }
@@ -111,7 +141,7 @@
       var raw = null;
       var nota = matchAt(RE_NOTATION, text, i);
       // 记号后面不能再跟字母（含带变音符号的），否则 e-mail 会被切成 e-m + ail
-      if (nota && !RE_LATIN_ONE.test(text.charAt(i + nota.length))) raw = nota;
+      if (nota && !RE_WEST_ONE.test(text.charAt(i + nota.length))) raw = nota;
       if (!raw) raw = matchAt(RE_PLAIN, text, i);
       if (!raw) {
         i++;
@@ -128,6 +158,8 @@
         // （例如句尾那个孤零零的 `A.`），那种不标
         glued: raw.length === 1 ? isGluedLetter(text, start, end) : false,
         notation: raw.length > 1 && RE_NOTATION_WHOLE.test(raw),
+        // 属于哪种字母（latin / cyrillic / greek）：读音层按它选拼读规则
+        script: scriptOf(raw),
         // 带变音符号（Ō / é / ü …）：读音层要先折成 ASCII 再查，见 reading.js
         diacritic: /[^\x00-\x7F]/.test(raw),
       });
@@ -174,6 +206,11 @@
 
   function looksReadable(token) {
     if (!token || !token.norm) return false;
+    /*
+     * 西里尔 / 希腊：单字母也是**真词**（俄语的 и / в / с / к / у 全是常用介词），
+     * 而且没有"打码占位符"那种顾虑 —— 整词一律照标。
+     */
+    if (token.script && token.script !== "latin") return token.glued !== true;
     // 记号：整体逐字母读（D/N/A -> ディーエヌエー）
     if (token.notation === true) return token.norm.replace(/[^a-z]/g, "").length >= 2;
     /*
@@ -215,8 +252,10 @@
 
   return {
     hasLatin: hasLatin,
+    hasWestern: hasWestern,
     hasReadable: hasReadable,
     scan: scan,
+    scriptOf: scriptOf,
     normalize: normalize,
     looksReadable: looksReadable,
     isNotation: function (s) {
