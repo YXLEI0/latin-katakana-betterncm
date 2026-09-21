@@ -435,6 +435,49 @@ test("用户截图的四张图：颜文字不标、ATフィールド エーテ�
   assert.strictEqual(l5.get("και"), "カイ");
 });
 
+test("英文词不许被罗马音层抢读：daze デイズ / Shone ショーン / rime ライム / boon ブーン / Hoo~ フー", async () => {
+  // 用户五张英文歌词截图：`daze` ダゼ、`Shone` ショネ、`rime` リメ、`boon` ボオン、
+  // `Hoo~` ホオ —— 全是蓝色的（罗马音层）。病根：这些词既不在离线词典、也不在
+  // 英文词表里，罗马音层就按日语音节切开（da-ze / sho-ne / ri-me / bo-on / ho-o），
+  // 还标成"确定"，层序里罗马音排在在线层前面，大模型也没机会纠。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Don't stand in a daze looking for a sign</p></li>
+  <li class="line"><p>Shone on you and I</p></li>
+  <li class="line"><p>Thaw winter's rime anew</p></li>
+  <li class="line"><p>Woven memories your boon</p></li>
+  <li class="line"><p>Hoo~</p></li>
+</ul></div></div></body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+  const l0 = pairsOf(ps[0]);
+  assert.strictEqual(l0.get("daze"), "デイズ", JSON.stringify([...l0]));
+  assert.strictEqual(l0.get("stand"), "スタンド");
+  assert.strictEqual(l0.get("looking"), "ルッキング");
+  assert.strictEqual(l0.get("sign"), "サイン");
+  const l1 = pairsOf(ps[1]);
+  assert.strictEqual(l1.get("Shone"), "ショーン", JSON.stringify([...l1]));
+  const l2 = pairsOf(ps[2]);
+  assert.strictEqual(l2.get("rime"), "ライム", JSON.stringify([...l2]));
+  assert.strictEqual(l2.get("anew"), "アニュー");
+  assert.strictEqual(l2.get("Thaw"), "ソー");
+  const l3 = pairsOf(ps[3]);
+  assert.strictEqual(l3.get("boon"), "ブーン", JSON.stringify([...l3]));
+  assert.strictEqual(l3.get("Woven"), "ウォーヴン");
+  const l4 = pairsOf(ps[4]);
+  assert.strictEqual(l4.get("Hoo"), "フー", JSON.stringify([...l4]));
+  // 来源是词典（绿色、确定），不再是罗马音层的猜测
+  assert.strictEqual(env.api.read("daze").source, "dict");
+  assert.strictEqual(env.api.read("daze").confident, true);
+  assert.strictEqual(env.api.read("boon").kana, "ブーン");
+});
+
 test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 ア", async () => {
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">

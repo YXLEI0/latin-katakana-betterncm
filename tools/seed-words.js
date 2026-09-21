@@ -827,6 +827,49 @@ module.exports = [
   { en: "blowing", kana: "ブロウイング" },
   { en: "unforgettable", kana: "アンフォーゲタブル" },
   /*
+   * 用户五张截图（英文歌词行）里被**罗马音层抢读**的词。
+   *
+   * 病根：这些词既不在离线词典、也不在英文词表（core/enwords.js）里，于是
+   * 罗马音层按日语音节切开（da-ze / ri-me / sho-ne / bo-on / ho-o），
+   * 还标成"确定"（蓝色）—— 层序里罗马音排在在线层前面，大模型也就没机会纠。
+   * 规则层对这几个也一样错（词尾哑音 e 和 `oo` 是它已知的两个洞：
+   * daze ダゼ、rime リメ、boon ボオン、hoo ホオ）。
+   *
+   * 所以只能人工钉：读法唯一，而且都是英文通行写法。
+   *   -aze 一族：daze デイズ / gaze ゲイズ / maze メイズ / haze ヘイズ /
+   *               craze クレイズ / graze グレイズ / raze レイズ / faze フェイズ
+   *   -ime 一族：rime ライム（= rhyme）/ lime ライム / dime ダイム / chime チャイム / slime スライム
+   *   -oo 一族：boon ブーン / hoo フー / boo ブー / loom ルーム / doom ドゥーム /
+   *              broom ブルーム / spoon スプーン / fool フール / hoof フーフ
+   *   -one / thaw / anew / woven：shone ショーン / thaw ソー / anew アニュー / woven ウォーヴン
+   */
+  { en: "daze", kana: "デイズ" },
+  { en: "gaze", kana: "ゲイズ" },
+  { en: "maze", kana: "メイズ" },
+  { en: "haze", kana: "ヘイズ" },
+  { en: "craze", kana: "クレイズ" },
+  { en: "graze", kana: "グレイズ" },
+  { en: "raze", kana: "レイズ" },
+  { en: "faze", kana: "フェイズ" },
+  { en: "rime", kana: "ライム" },
+  { en: "lime", kana: "ライム" },
+  { en: "dime", kana: "ダイム" },
+  { en: "chime", kana: "チャイム" },
+  { en: "slime", kana: "スライム" },
+  { en: "boon", kana: "ブーン" },
+  { en: "hoo", kana: "フー" },
+  { en: "boo", kana: "ブー" },
+  { en: "loom", kana: "ルーム" },
+  { en: "doom", kana: "ドゥーム" },
+  { en: "broom", kana: "ブルーム" },
+  { en: "spoon", kana: "スプーン" },
+  { en: "fool", kana: "フール" },
+  { en: "hoof", kana: "フーフ" },
+  { en: "shone", kana: "ショーン" },
+  { en: "thaw", kana: "ソー" },
+  { en: "anew", kana: "アニュー" },
+  { en: "woven", kana: "ウォーヴン" },
+  /*
    * 用户问「notes 的读音」时核出来的：**复数/变形形的读音**是大模型词表最容易错的地方。
    *   notes  ノート  ✗（那是单数；复数该 ノーツ，同族的 dates デイツ / rates レーツ 都对）
    *   noting ノティン ✗（该 ノーティング）

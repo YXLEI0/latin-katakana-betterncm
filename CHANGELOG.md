@@ -4,6 +4,31 @@
 
 首个版本：给日语歌歌词里的**西文字母**（拉丁 / 西里尔 / 希腊）标注**片假名读音**。
 
+### 英文词不许被罗马音层抢读（`daze` デイズ / `Shone` ショーン / `rime` ライム / `boon` ブーン / `Hoo~` フー）—— 词典 6748 → 6774（本次）
+
+用户五张英文歌词截图，指的都是**蓝色（罗马音层）**那几个词：
+
+| 截图 | 原来 | 现在 |
+| --- | --- | --- |
+| `Don't stand in a daze looking for a sign` | `daze` **ダゼ** | `daze` **デイズ** |
+| `Shone on you and I` | `Shone` **ショネ** | `Shone` **ショーン** |
+| `Thaw winter's rime anew` | `rime` **リメ** | `rime` **ライム** |
+| `Woven memories your boon` | `boon` **ボオン** | `boon` **ブーン** |
+| `Hoo~` | `Hoo` **ホオ** | `Hoo` **フー** |
+
+**病根**：罗马音层只认拼写 —— 一个词只要切得成日语音节就算"确定"（`da-ze` / `sho-ne` / `ri-me` / `bo-on` / `ho-o`），而层序里罗马音排在**在线层前面**，所以大模型也没机会纠。这些词既不在离线词典、也不在英文词表 (`core/enwords.js`) 里，唯一的挡法是**让词表认识它们**：英文词表里的会被标成"没把握"交给模型，词典里的直接给确定答案。规则层对这几个也一样错（词尾哑音 e 和 `oo` 是它两个已知的洞：`englishToKatakana("daze")` = ダゼ、`"boon"` = ボオン），所以只能人工钉。
+
+**这次钉的**（`tools/seed-words.js`，连同一眼能看出的同族词，省得下次再报）：
+
+- `-aze` 一族：daze デイズ / gaze ゲイズ / maze メイズ / haze ヘイズ / craze クレイズ / graze グレイズ / raze レイズ / faze フェイズ
+- `-ime` 一族：rime ライム（= rhyme）/ lime ライム / dime ダイム / chime チャイム / slime スライム
+- `-oo` 一族：boon ブーン / hoo フー / boo ブー / loom ルーム / doom ドゥーム / broom ブルーム / spoon スプーン / fool フール / hoof フーフ
+- 另外三个：shone ショーン / thaw ソー / anew アニュー / woven ウォーヴン
+
+词典 6748 → **6774**（人工 953 → 979），`docs/notes.md` 里补了一段说明"罗马音层这个天花板"以及它的两条出路（英文词表 → 交给模型；词典 → 确定答案），并注明模型纠正过的词会自动沉淀、再经 `promote:learned` 进词典，这类词会越用越少。
+
+测试：`integration.test.js` +1（五张截图一起验：daze / Shone / rime / boon / Hoo 的读音与来源，含同行的 stand / looking / sign / anew / Woven）。全套 **348 → 349 全绿**，`npm run check` 0 警告。
+
 ### 四张截图：颜文字不标 + `ATフィールド` エーティー + `Ω` オーム + `I'm` 的 `'m` 不再丢（本次）
 
 用户一口气发了四张图（外加一句"最后的 I'm 只注了 I"）：
