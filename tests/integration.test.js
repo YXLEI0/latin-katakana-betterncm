@@ -606,11 +606,15 @@ test("西里尔全大写缩写逐字母读：СССР -> エスエスエスエ�
   // 用户截图：苏联国歌那几行的 `СССР` 被读成 **スル** —— 俄语引擎把它当词，
   // 又按正字法把三个 С 并成一个，于是只剩 С+Р。缩写不是词：西里尔全大写、
   // 又没有元音的（СССР / РФ / КГБ）逐字母读，和拉丁的 SOS エスオーエス 同一个口径；
-  // 带元音的（`ГИМН` ギムン）照旧走引擎。
+  // 带元音的（`ГИМН` ギムン）照旧当词。同一条截图上的长音/软化问题也在这一轮改了：
+  // Государственный ゴスダールストヴェンヌイ（人工借词表核的长音）、
+  // Александров アレクサンドロフ（词尾 в 清音化、д 连缀不再 ドゥ、л+е 不写 リェ）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>ГИМН СССР</p></li>
   <li class="line"><p>РФ と КГБ の話</p></li>
+  <li class="line"><p>А. В. Александров</p></li>
+  <li class="line"><p>Государственный гимн СССР</p></li>
 </ul></div></div>
 </body></html>`;
   const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
@@ -628,16 +632,22 @@ test("西里尔全大写缩写逐字母读：СССР -> エスエスエスエ�
   const l1 = pairsOf(ps[1]);
   assert.strictEqual(l1.get("РФ"), "エルエフ", "РФ 该逐字母读：" + ps[1].innerHTML);
   assert.strictEqual(l1.get("КГБ"), "カーゲーベー", "КГБ 该逐字母读：" + ps[1].innerHTML);
+  const l2 = pairsOf(ps[2]);
+  assert.strictEqual(l2.get("Александров"), "アレクサンドロフ", "词尾 в 清音化、д 连缀读 ド：" + ps[2].innerHTML);
+  const l3 = pairsOf(ps[3]);
+  assert.strictEqual(l3.get("Государственный"), "ゴスダールストヴェンヌイ", "нн 收拨音 + 人工核的长音：" + ps[3].innerHTML);
+  assert.strictEqual(l3.get("гимн"), "ギムン");
+  assert.strictEqual(l3.get("СССР"), "エスエスエスエル");
 });
 
-test("日语行里孤零零的 X 指 Twitter（ツイッター）；X線/X軸 仍是字母名 エックス", async () => {
-  // 用户点名：`Xだけの"人マニア"` 的 X 要读 ツイッター（那首歌官方翻译那行写着 X(Twitter)）。
-  // 但 X 后面紧跟汉字的那些老词（X線 / X軸 / X染色体）是字母 X，仍然是 エックス；
-  // 成串的（(X, Y)）和英文句子里的（X marks the spot）也照旧。
+test("ツイッター只在 `Xだけの…` 那一句命中；别的 X 照旧字母名/留白", async () => {
+  // 用户点名：`Xだけの"人マニア"` 的 X 要读 ツイッター（官方翻译那行写着 X(Twitter)），
+  // 但**只在这一句歌词命中** —— 别的行里孤立的 X 不许跟着变。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>Xだけの"人マニア"</p></li>
   <li class="line"><p>X だけの"人マニア"</p></li>
+  <li class="line"><p>X が導く</p></li>
   <li class="line"><p>X線の写真とX軸</p></li>
   <li class="line"><p>(X, Y) の座標</p></li>
   <li class="line"><p>X marks the spot</p></li>
@@ -652,13 +662,13 @@ test("日语行里孤零零的 X 指 Twitter（ツイッター）；X線/X軸 �
       [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
     );
 
-  assert.strictEqual(pairsOf(ps[0]).get("X"), "ツイッター", "贴假名的 X 要读 ツイッター：" + ps[0].innerHTML);
-  assert.strictEqual(pairsOf(ps[1]).get("X"), "ツイッター", "带空格的 X 也是 Twitter：" + ps[1].innerHTML);
-  const l2 = [...ps[2].querySelectorAll("ruby.wk-ruby")].map((r) => r.querySelector(".wk-rt").textContent);
-  assert.deepStrictEqual(l2, ["エックス", "エックス"], "X線 / X軸 是字母 X：" + ps[2].innerHTML);
-  const l3 = pairsOf(ps[3]);
-  assert.strictEqual(l3.get("X"), "エックス", "成串的 X 读字母名：" + ps[3].innerHTML);
-  assert.strictEqual(pairsOf(ps[4]).get("X"), "エックス", "英文句子里的 X 读字母名：" + ps[4].innerHTML);
+  assert.strictEqual(pairsOf(ps[0]).get("X"), "ツイッター", "这一句的 X 要读 ツイッター：" + ps[0].innerHTML);
+  assert.strictEqual(pairsOf(ps[1]).get("X"), "ツイッター", "带空格的那句也算：" + ps[1].innerHTML);
+  assert.strictEqual(pairsOf(ps[2]).size, 0, "别的行里孤立的 X 不许跟着变 ツイッター：" + ps[2].innerHTML);
+  const l3 = [...ps[3].querySelectorAll("ruby.wk-ruby")].map((r) => r.querySelector(".wk-rt").textContent);
+  assert.deepStrictEqual(l3, ["エックス", "エックス"], "X線 / X軸 是字母 X：" + ps[3].innerHTML);
+  assert.strictEqual(pairsOf(ps[4]).get("X"), "エックス", "成串的 X 读字母名：" + ps[4].innerHTML);
+  assert.strictEqual(pairsOf(ps[5]).get("X"), "エックス", "英文句子里的 X 读字母名：" + ps[5].innerHTML);
 });
 
 test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {

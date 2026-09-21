@@ -2,11 +2,15 @@
 # Source: https://www.sljfaq.org/afaq/russian.html
 # Table: "Which Japanese words come from Russian?"
 # Fetched: 2026-09-21
-# Entries: 9
+# Entries: 14
 # Format: <russian>:<katakana>
 # Russian column kept in original Cyrillic, lowercased (no latin romanization).
 # Where the page lists several katakana variants (ikura, vodka), the first
 # purely-katakana variant is used; hiragana variants are omitted.
+#
+# 人工补的 5 条（不在 sljfaq 表里）：苏联国歌那几行歌词里反复出现的词。
+# 俄语的重音没法从拼写算出来，日语通行的长音只能人工核（用户截图：
+# Государственный 该是 ゴスダールストヴェンヌイ，引擎给的是 ゴスダルストヴェンヌイ）。
 борщ:ボルシチ
 блины:ブリヌイ
 икра:イクラ
@@ -16,3 +20,8 @@
 печка:ペチカ
 пирожки:ピロシキ
 водка:ヴォトカ
+александров:アレクサンドロフ
+гимн:ギムン
+государственный:ゴスダールストヴェンヌイ
+советский:ソヴィエツキー
+союз:ソユーズ

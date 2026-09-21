@@ -821,6 +821,28 @@
   }
 
   /**
+   * **整句专属读音**：只有这一句歌词里的这个词这么读。
+   *
+   * 用户点名：`Xだけの"人マニア"` 的 X 指的是 Twitter（那首歌官方翻译那行写着
+   * `X(Twitter)`），要读 **ツイッター**；但"日语行里孤零零一个 X 一律读 Twitter"
+   * 太宽了 —— 用户要求**只在这一句歌词命中**，别处的 X 该是字母名（`X線` エックス線）
+   * 或者留白。所以按"词 + 整句形状"配对，命中才换读音。
+   */
+  var LINE_READINGS = [{ word: "X", line: /X\s*だけの/, kana: "\u30C4\u30A4\u30C3\u30BF\u30FC" }];
+
+  /** 这一句里有没有为这个词指定的专属读音（见 LINE_READINGS） */
+  function lineReading(word, line) {
+    var w = String(word == null ? "" : word);
+    var s = String(line == null ? "" : line);
+    if (!s) return null;
+    for (var i = 0; i < LINE_READINGS.length; i++) {
+      if (LINE_READINGS[i].word !== w) continue;
+      if (LINE_READINGS[i].line.test(s)) return LINE_READINGS[i].kana;
+    }
+    return null;
+  }
+
+  /**
    * 这一行里有没有"成串的大写单字母"（`(A, B)`、`A・B`、`A B C`）。
    *
    * 用户要的：`(A, B) 退屈に打つ QTE (Why?)` 里的 A / B 该读字母名（エー / ビー），
@@ -1074,25 +1096,12 @@
         if (letterKana) return { kana: letterKana, source: "letters", confident: true };
       }
       /*
-       * 孤零零一个 `X`：歌词里指的是 **Twitter**（用户点名：`X だけの"人マニア"` 里
-       * X 读 ツイッター —— 那首歌的官方翻译那行就写着 `X(Twitter)`）。
-       *
-       * 位置要卡在中间：成串的（`(X, Y)`）上面那条已经接走了；
-       * **X 后面紧跟汉字**的是字母 X 的老词（`X線` / `X軸` / `X染色体`），留给下面那条读 エックス；
-       * 英文句子里的（`X marks the spot`）也归下面那条。
+       * **整句专属读音**：只有 `Xだけの"人マニア"` 那一句里的 X 读 ツイッター
+       * （见 LINE_READINGS）。位置卡在中间：成串的 `(X, Y)` 上面那条已经接走了，
+       * 别处的 X（`X線` エックス線、英文句子里的 `X marks the spot`）一律不受影响。
        */
-      if (String(word) === "X" && line && RE_KANA_ANY.test(line)) {
-        var xAt = -1;
-        if (token && typeof token.end === "number" && line.slice(token.start, token.end) === "X") {
-          xAt = token.end;
-        } else {
-          var xm = /(^|[^A-Za-z])X/.exec(line);
-          if (xm) xAt = xm.index + xm[0].length;
-        }
-        if (!(xAt >= 0 && /[\u3400-\u9FFF]/.test(line.charAt(xAt)))) {
-          return { kana: "ツイッター", source: "dict", confident: true };
-        }
-      }
+      var lineFix = lineReading(word, line);
+      if (lineFix) return { kana: lineFix, source: "dict", confident: true };
       /*
        * 孤零零一个单字母（不成串）时，还有两种看得出"这里要读字母名"的情况：
        *   ① **紧贴日文**：`T氏` / `B面` / `X線` —— 日语就是读字母名（ティーし）；

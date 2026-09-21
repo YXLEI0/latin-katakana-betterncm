@@ -475,6 +475,25 @@ test("俄语拼读：用户用例 6 里的词", () => {
   assert.strictEqual(read("ru", "водка"), "ヴォトカ");
 });
 
+test("俄语观感：词尾 в 清音化、нн 收拨音、-ый / -ий 不多出一拍", () => {
+  // 用户截图：Александров 读成 アリェクサンドゥロヴ、Государственный 读成
+  // ゴスダルストヴェヌイイ。三处都是引擎的结构问题（重音那种算不出来的长音走人工借词表）：
+  //   ① д 在连缀/词尾读 ド（不是 ドゥ）：アレクサンドロフ；
+  //   ② 词尾 в 清音化读 フ（俄语姓氏 -ов / -ев 的通行写法：イワノフ、キエフ）；
+  //   ③ л + е 在日语里写 レ，不写 リェ；нн 收一拍拨音 ン；-ый 读 ヌイ（不多出 イ）。
+  assert.strictEqual(L.toKatakana("ru", "Александров").kana, "アレクサンドロフ");
+  assert.strictEqual(L.toKatakana("ru", "Государственный").kana, "ゴスダルストヴェンヌイ");
+  assert.strictEqual(L.toKatakana("ru", "Анна").kana, "アンナ");
+  assert.strictEqual(L.toKatakana("ru", "красный").kana, "クラスヌイ");
+  assert.strictEqual(L.toKatakana("ru", "Русский").kana, "ルスキー");
+  assert.strictEqual(L.toKatakana("ru", "душа").kana, "ドゥシャ", "ду 仍是 ドゥ（别被 д 的连缀读法带跑）");
+  assert.strictEqual(L.toKatakana("ru", "город").kana, "ゴロド");
+  // 人工借词表核过的长音（引擎算不出重音）
+  assert.strictEqual(read("ru", "государственный"), "ゴスダールストヴェンヌイ");
+  assert.strictEqual(read("ru", "советский"), "ソヴィエツキー");
+  assert.strictEqual(read("ru", "союз"), "ソユーズ");
+});
+
 test("希腊语拼读：逐字母 + 二合字母", () => {
   assert.strictEqual(read("el", "Θάλασσα"), "サラッサ");
   assert.strictEqual(read("el", "ουρανός"), "ウラノス");
