@@ -32,6 +32,7 @@ npm run install:plugin   # 顺便复制到 C:\betterncm\plugins
 - 只标歌词原文行和播放栏标题, 含汉字的行也照标; 中文翻译层、罗马音层、制作信息行 (作词/作曲/编曲/演唱/曲绘…) 和版权行 (`Copyright` / `©` / `℗`) 跳过
 - **RNP 的「复制模式」(总览视图) 整块不注音**, 复制歌词时不会带上注音文字
 - **非日语歌** (整首歌词一个假名都没有的纯英文 / 西文各语种 / 中文歌) 可选是否标注, 见设置面板「范围」
+- **连字符标记长音**: 全大写、形如罗马字音节、被短横线串起来的词每一节都读长音 (`MO-SO` モーソー、`KYO-SO` キョーソー), 而且**整首歌词一起看** —— 这种词常被换行拆开 (上一行结尾 `SO-`、下一行开头 `ZO`), 只看一行判不出来。德语复合词 (`Looser-Krankheit-Was`)、小写词、记号里的单字母 (`X-Y`) 不受影响
 - **整首 / 整句专属读音** (`src/core/songs.js`, `npm run build:songs`): 有些读音只在这一首歌里成立 —— 歌名命中 (或歌词里出现识别词) 时, 这首歌里的这些词按表读 (`the EmpErroR` 的 `the` 是 ジ、`Disco No.39` 的 `No.` 是 ナンバー、`potatoになっていく` 的 `potato` 是 ポテト), 别的歌一点不受影响; 单句专属的走 `Xだけの…` 里的 X 读 ツイッター 那种。进表的前提是**有官方读音可查** (Sekai 主数据或别的官方读法), 自己按词义猜的不进表
 - 可以和 [片假名终结者](https://github.com/YXLEI0/katakana-terminator-betterncm)、[jp-furigana](https://github.com/Leleawa/jp-furigana)、[JapaneseFonts](https://github.com/MuttonString/Furigana) 同时开着; jp-furigana 要先打共存补丁 `npm run patch:furigana`, JapaneseFonts 要打 `npm run patch:fonts` (否则它会把本插件注出来的片假名当成"这是日文歌"的证据)
 - 桌面歌词无效, 那是原生窗口而不是网页

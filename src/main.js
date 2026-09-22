@@ -436,6 +436,8 @@
     betterncmVersion: "",
     // 整首专属读音表（见 SONG_READINGS，每轮扫描开始时按歌名/歌词重算）
     songWords: null,
+    // 「连字符串」（连字符标记长音，见 collectLongVowelWords）：同一趟扫描算出来
+    longWords: null,
   };
 
   // ------------------------------------------------------------ 读音
@@ -871,10 +873,71 @@
   }
 
   /**
+   * **连字符标记长音**：由短横线串起来的全大写罗马字音节（`MO-SO` / `KYO-SO` / `SO-ZO`）
+   * 每一节都读长音 —— 用户点名要的规则（「夢現妄想世界」里 `MO-SO` モーソー、
+   * `SO-ZO` ソーゾー、`KYO-SO` キョーソー）。
+   *
+   * 约束（宁可漏，不可错）：
+   *   - 只认**全大写**、形如罗马字音节的词（1~2 个辅音字母 + 一个元音，共 2~3 个字母）——
+   *     德语复合词（`Looser-Krankheit-Was`）、小写词（`mo-so`）、
+   *     记号里的单字母（`X-Y`：那是逐字母读的另一档）都不吃这条；
+   *   - 短横线必须**紧贴前一个词**（`MO-SO` 算，`MO - SO` 不算）；
+   *   - 至少两节（孤零零一个 `MO-` 不算）。
+   *
+   * 扫描范围是**整首歌词**（拼成一段看），因为这种词常被歌词换行拆开
+   * （上一行结尾 `SO-`、下一行开头 `ZOは海をこえ`）—— 只看一行判不出来。
+   */
+  var RE_LONG_SYL = /^[A-Z]{1,2}[AIUEO]$/;
+  var RE_HYPHEN_HEAD = /^[-\u2010-\u2015]/;
+
+  function collectLongVowelWords(text) {
+    var out = {};
+    var s = String(text == null ? "" : text);
+    if (!s) return out;
+    // 交替取出「词」「词后面的间隔」
+    var re = /([A-Za-z]+)([^A-Za-z]*)/g;
+    var words = [];
+    var gaps = [];
+    var m;
+    while ((m = re.exec(s))) {
+      words.push(m[1]);
+      gaps.push(m[2]);
+    }
+    for (var i = 0; i < words.length; i++) {
+      if (!RE_LONG_SYL.test(words[i]) || !RE_HYPHEN_HEAD.test(gaps[i] || "")) continue;
+      // 从这一节往后把整串收完（A-B-C 三节都要）
+      var run = [words[i]];
+      var j = i;
+      while (j + 1 < words.length && RE_HYPHEN_HEAD.test(gaps[j] || "") && RE_LONG_SYL.test(words[j + 1])) {
+        run.push(words[j + 1]);
+        j++;
+      }
+      if (run.length < 2) continue;
+      for (var k = 0; k < run.length; k++) out[run[k]] = true;
+      i = j;
+    }
+    return out;
+  }
+
+  /** 这个词是不是"连字符串"里的一节（见 collectLongVowelWords） */
+  function isLongVowelWord(word) {
+    var w = String(word == null ? "" : word);
+    return !!(state.longWords && state.longWords[w]);
+  }
+
+  /** 连字符标记长音：常规读出来的尾拍补上 ー（已经有长音符就不动） */
+  function withLongVowel(word, r) {
+    if (!r || !r.kana || !isLongVowelWord(word)) return r;
+    if (/\u30FC$/.test(r.kana)) return r;
+    return { kana: r.kana + "\u30FC", source: r.source, confident: r.confident };
+  }
+
+  /**
    * 这一轮扫描时"整首专属读音"表是哪一张（换歌要重新算）。
    *
    * 歌名取播放栏那行（复用注音层认的那套选择器，见 annotate.js 的 TARGET_SELECTORS）；
    * 拿不到歌名就只靠歌词里的识别词。结果按"歌名 + 歌词开头"缓存，避免每轮都重算。
+   * 顺带把「连字符串」（见 collectLongVowelWords）也算出来 —— 同一趟扫描、同一份歌词。
    */
   function updateSongScope() {
     if (!state.annotator) return;
@@ -896,8 +959,9 @@
     }
     var key = title + "\u0000" + lyrics.slice(0, 4000);
     if (songScopeCache.key === key) return;
-    songScopeCache = { key: key, words: matchSongReading(title, lyrics) };
+    songScopeCache = { key: key, words: matchSongReading(title, lyrics), longWords: collectLongVowelWords(lyrics) };
     state.songWords = songScopeCache.words;
+    state.longWords = songScopeCache.longWords;
   }
 
   /**
@@ -1366,7 +1430,7 @@
     // 全角字母折半角（`ＮＯ` -> `NO`）：查表 / 模型键 / 层序都得用同一个形式
     word = foldFullwidthLetters(word);
     if (line != null) line = foldFullwidthLetters(line);
-    var r = localReading(word, line, token);
+    var r = withLongVowel(word, localReading(word, line, token));
     if (!r || !r.kana) return null;
 
     var mine = effectiveRank(r); // 没把握的答案按最低层算，在线层可以覆盖它

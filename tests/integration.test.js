@@ -730,6 +730,44 @@ test("整首专属读音只在那一首里生效：别的歌里 No 照旧读 ノ
   assert.deepStrictEqual(got2, [["No", "ノー"]], "别的歌里 No 不许跟着变 ナンバー：" + p2.innerHTML);
 });
 
+test("连字符标记长音：`MO-SO` / `KYO-SO` / 换行拆开的 `SO-` + `ZO` 都读长音", async () => {
+  // 用户点名要的通用规则（不针对某一首歌）：全大写、形如罗马字音节、被短横线串起来的，
+  // 每一节都读长音 —— `MO-SO` モーソー、`SO-ZO` ソーゾー、`KYO-SO` キョーソー。
+  // 扫描范围是**整首歌词**：这种词常被换行拆开（上一行结尾 `SO-`、下一行开头 `ZOは海をこえ`），
+  // 只看一行的话 `ZO` 那行自己什么线索都没有（罗马音层会给 ゾ）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>夢限大 MO-SOは風にのり</p></li>
+  <li class="line"><p>夢限大 SO-ZOは海をこえ</p></li>
+  <li class="line"><p>ZOは海をこえ</p></li>
+  <li class="line"><p>夢限大 KYO-SOは宇宙行き</p></li>
+  <li class="line"><p>Looser-Krankheit-Was の話</p></li>
+  <li class="line"><p>Looser の話</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+
+  const l0 = pairsOf(ps[0]);
+  assert.strictEqual(l0.get("MO"), "モー", "MO-SO 的 MO：" + ps[0].innerHTML);
+  assert.strictEqual(l0.get("SO"), "ソー", "MO-SO 的 SO");
+  assert.strictEqual(pairsOf(ps[1]).get("ZO"), "ゾー", "SO-ZO 的 ZO：" + ps[1].innerHTML);
+  // 换行拆开的那行也吃这条规则（整首扫描）
+  assert.strictEqual(pairsOf(ps[2]).get("ZO"), "ゾー", "单独一行的 ZO 也是长音：" + ps[2].innerHTML);
+  assert.strictEqual(pairsOf(ps[3]).get("KYO"), "キョー", "KYO-SO 的 KYO：" + ps[3].innerHTML);
+  // 反面：德语复合词（混合大小写、音节长）不许被这条规则带跑 ——
+  // 和"没有连字符的那一行"读出来必须一模一样
+  const de = pairsOf(ps[4]);
+  assert.ok(!/\u30FC$/.test(de.get("Krankheit") || ""), "Krankheit 不该被加长音：" + ps[4].innerHTML);
+  assert.strictEqual(de.get("Looser"), pairsOf(ps[5]).get("Looser"), "连字符串里的 Looser 要和普通行一样：" + ps[4].innerHTML);
+});
+
 test("整首专属读音：歌名里含假名/汉字/符号的也按表读（potato ポテト / bit ビット）", async () => {
   // 官方读音是**整首歌名**的，遇到"西文 + 假名汉字"混排时，切分靠假名段锚定
   // （假名的读音就是它自己），汉字/数字/符号当通配段。这两条就是自动切出来的。
