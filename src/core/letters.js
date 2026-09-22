@@ -71,10 +71,13 @@
    * 而 `Looser-Krankheit` 却是一条，同一个排版两种切法，全看运气。
    * 串成一条之后还会再判要不要拆，见 splitDashes。
    */
-  var WORD_JOIN = "['\\u2019~\uFF5E\u301C\\-\\u2010\\u2011\\u2013\\u2014\u25CB\u25CF]";
+  var WORD_JOIN = "['\\u2019~\uFF5E\u301C\\-\\u2010\\u2011\\u2013\\u2014\u25CB\u25CF\u25EF\u3007\u2B55]";
 
-  /** 普通词（含撇号/连字符/波浪号）；西里尔/希腊字母同样算词 */
-  var RE_PLAIN = new RegExp(WEST + "(?:" + WEST + "|" + WORD_JOIN + "(?=" + WEST + "))*", "g");
+  /** 普通词（含撇号/连字符/波浪号/结尾的掩码符号）；西里尔/希腊字母同样算词 */
+  var RE_PLAIN = new RegExp(
+    WEST + "(?:" + WEST + "|" + WORD_JOIN + "(?=" + WEST + ")|[\u25CB\u25CF\u25EF\u3007\u2B55])*",
+    "g"
+  );
 
   /*
    * 连字符链要拆成独立的词：`Looser-Krankheit-Was`、`High-de-Siehst`、`well-known`。

@@ -6488,6 +6488,7 @@
     "unless": "アンレス",
     "unlike": "アンライク",
     "unlimited": "アンリミテッド",
+    "uno": "ウノ",
     "unpoison": "アンポイズン",
     "unravelling": "アンラベリング",
     "unsheathe": "アンシーズ",
@@ -6917,6 +6918,6 @@
 
   return {
     words: words,
-    count: 6893,
+    count: 6894,
   };
 });

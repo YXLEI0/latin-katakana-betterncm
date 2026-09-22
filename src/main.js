@@ -755,19 +755,35 @@
    * ツイッター）；找不出或不止一个就退回普通读法。
    */
   var maskCache = {};
+  /** 被涂掉的那个字的符号（`T○itter` / `UN◯` / `UN〇`）：几种圆圈都认 */
+  var MASK_CHAR = /[\u25CB\u25CF\u25EF\u3007\u2B55]/;
+  /*
+   * 人工核过的**掩码词**（`?` 代表被涂掉的那个字母）：通配查词有时会同时命中好几个
+   * 词条（`un?` 能对上 uno / una / une…），这时以这张表为准。
+   * 用户截图 `UN◯♡。`：那个 ◯ 就是 UNO 里的 O，读 ウノ。
+   */
+  var MASKED_WORD_KANA = {
+    "un?": "\u30A6\u30CE", // ウノ
+  };
   function maskedReading(word) {
     var raw = String(word == null ? "" : word);
-    if (!/[\u25CB\u25CF]/.test(raw)) return null;
+    if (!MASK_CHAR.test(raw)) return null;
     if (maskCache[raw] !== undefined) return maskCache[raw];
     var out = null;
     try {
+      var low = raw.toLowerCase();
+      // 先查人工核过的掩码词表（`un?` = UN◯ → ウノ）：通配可能命中好几个词条时靠它定案
+      var patternKey = low.replace(new RegExp(MASK_CHAR.source, "g"), "?");
+      if (MASKED_WORD_KANA[patternKey]) {
+        maskCache[raw] = MASKED_WORD_KANA[patternKey];
+        return maskCache[raw];
+      }
       var dict = typeof WKDict !== "undefined" ? WKDict.words : null;
       if (dict) {
-        var low = raw.toLowerCase();
         var src = "";
         for (var ci = 0; ci < low.length; ci++) {
           var ch = low.charAt(ci);
-          if (/[\u25CB\u25CF]/.test(ch)) src += "[a-z]";
+          if (MASK_CHAR.test(ch)) src += "[a-z]";
           else if (ch >= "a" && ch <= "z") src += ch;
         }
         var re = new RegExp("^" + src + "$");
