@@ -975,11 +975,16 @@
     return !!(state.longWords && state.longWords[w]);
   }
 
-  /** 连字符标记长音：常规读出来的尾拍补上 ー（已经有长音符就不动） */
+  /**
+   * 连字符标记长音：常规读出来的尾拍补上 ー（已经有长音符就不动）。
+   *
+   * 补出来之后**标成确定**：这是用户点名的规则（`ZO` ゾー、`KYO` キョー），
+   * 不能让模型按句语境改回去 —— 用户截图里那两个音就是被模型的 ズ / キョ 盖掉的。
+   */
   function withLongVowel(word, r) {
     if (!r || !r.kana || !isLongVowelWord(word)) return r;
-    if (/\u30FC$/.test(r.kana)) return r;
-    return { kana: r.kana + "\u30FC", source: r.source, confident: r.confident };
+    if (/\u30FC$/.test(r.kana)) return { kana: r.kana, source: r.source, confident: true };
+    return { kana: r.kana + "\u30FC", source: r.source, confident: true };
   }
 
   /**
