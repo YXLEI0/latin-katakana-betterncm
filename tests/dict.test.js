@@ -104,3 +104,32 @@ test("常见歌词词都能「确定地」读出纯片假名（不许掉进猜�
   }
   assert.deepStrictEqual(bad, [], "这些常见词没被确定地读出来");
 });
+
+test("官方歌名读音（seed-words-sekai.js）都在词典里，且没被别的来源盖掉", () => {
+  // tools/seed-words-sekai.js 是 build-sekai 从 vendor/sekai/musics.json 生成的
+  // （Project Sekai 官方歌名的官方读音）。它比我们自己的英文规则可信：
+  // 不要求"跟规则不一样"，但要求**生成物真的进了词典**（忘了 build:dict 时要报出来），
+  // 而且人工词表里的词不许被它顶掉（人工 > 官方歌名）。
+  const seed = require(path.join(ROOT, "tools", "seed-words-sekai.js"));
+  assert.ok(Array.isArray(seed) && seed.length > 20, "官方歌名读音表不该是空的：" + seed.length);
+  const hand = {};
+  for (const r of require(path.join(ROOT, "tools", "seed-words.js"))) hand[String(r.en).toLowerCase()] = r.kana;
+  const bad = [];
+  for (const r of seed) {
+    if (!RE_EN.test(r.en) || !RE_KANA.test(r.kana)) {
+      bad.push(r.en + " 格式不对 -> " + r.kana);
+      continue;
+    }
+    if (hand[r.en] !== undefined) {
+      bad.push(r.en + " 在人工词表里也有（人工优先，不该进官方表）");
+      continue;
+    }
+    if (DICT[r.en] !== r.kana) bad.push(r.en + " 应该是 " + r.kana + "，词典里是 " + DICT[r.en] + "（跑 npm run build:dict）");
+  }
+  assert.deepStrictEqual(bad.slice(0, 10), [], "官方歌名读音没进词典或被人抢了：" + bad.length + " 条");
+  // 抽查几条规则层会读错的（这些就是这张表存在的理由）
+  assert.strictEqual(DICT.nostalogic, "ノスタロジック");
+  assert.strictEqual(DICT.chaos, "カオス");
+  assert.strictEqual(DICT.needle, "ニードル");
+  assert.strictEqual(DICT.oneself, "ワンセルフ");
+});

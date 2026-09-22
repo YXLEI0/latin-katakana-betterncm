@@ -14,7 +14,9 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const vm = require("node:vm");
+const { JSDOM } = require("jsdom");
 const { applyPatch, revertPatch, isPatched, isPatchedV1, MARK, MARK_V1 } = require("../tools/patch-jp-furigana.js");
+const JF = require("../tools/patch-japanese-fonts.js");
 
 /*
  * 样本：五处锚点原文必须逐字节一致。
@@ -266,4 +268,86 @@ test("MARK 是补丁的唯一判据，且不会误伤正常源码", () => {
   assert.ok(MARK.length > 0);
   assert.strictEqual(isPatched(FIXTURE), false, "原始源码不该被判成已打补丁");
   assert.strictEqual(isPatched(FIXTURE + MARK), true);
+});
+
+// ============================================================ JapaneseFonts 补丁
+
+/*
+ * 样本：照抄 JapaneseFonts 1.0.3（MuttonString/Furigana）main.js 的 pronounce()。
+ * 它用"整行 innerHTML 里有没有假名"判断这是不是日文歌 —— 我们的片假名注音就在
+ * innerHTML 里，于是外语歌也被当成日文歌（用户报的那条）。
+ */
+const JF_FIXTURE = [
+  "/**",
+  " * 给歌词注音",
+  " * @param {Element[]} lyricElem 多句歌词的DOM元素",
+  " */",
+  "function pronounce(lyricElem) {",
+  "    // const markStr = '<furigana></furigana>';",
+  "",
+  "    // 判断该歌是否为日文歌",
+  "    let isJapanese = false;",
+  "    for (const elem of lyricElem) {",
+  "        if (elem.querySelector('furigana') || /[ぁ-ヿ]/g.test(elem.innerHTML)) {",
+  "            isJapanese = true;",
+  "            break;",
+  "        }",
+  "    }",
+  "",
+  "    if (isJapanese) {",
+  "        if (config['use_jpn_font'] && !head.querySelector('#furigana-font')) {",
+  "            const style = document.createElement('style');",
+  "            style.id = 'furigana-font';",
+  "            head.appendChild(style);",
+  "        }",
+  "    } else {",
+  "        const style = head.querySelector('#furigana-font');",
+  "        if (style) head.removeChild(style);",
+  "        return;",
+  "    }",
+  "}",
+].join("\n");
+
+test("JapaneseFonts：补丁把「整行有没有假名」换成「剔掉别家注音再看」", () => {
+  const r = JF.applyPatch(JF_FIXTURE);
+  assert.ok(!r.error, "应该能打上：" + JSON.stringify(r.error));
+  assert.ok(r.src.indexOf(JF.ANCHOR_NEW) > 0, "判据要换成 __wkPlainText(elem)");
+  assert.strictEqual(r.src.indexOf(JF.ANCHOR_ORIG), -1, "老判据不该还在");
+  assert.strictEqual(JF.isPatched(r.src), true);
+  // 补丁后仍要是合法 JS（不能把别人的插件弄坏）
+  new vm.Script(r.src, { filename: "JapaneseFonts/main.js" });
+  // 幂等 / 还原
+  assert.ok(JF.applyPatch(r.src).error, "重复打补丁应当被拒");
+  assert.strictEqual(JF.revertPatch(r.src).src, JF_FIXTURE, "还原要逐字节回到原样");
+});
+
+test("JapaneseFonts：补丁后的判据不再把我们的片假名当成日文歌", () => {
+  /*
+   * 真的把那两个 helper 拿出来跑（不是另抄一份实现）：样本是外语行 + 我们的 ruby，
+   * 以及一行真日语（对方插件自己的 ruby 没有类名，必须照旧算数）。
+   */
+  const sandbox = { document: new JSDOM("<!doctype html><body></body></html>").window.document };
+  vm.createContext(sandbox);
+  vm.runInContext(JF.HELPER + "\n;this.__plain = __wkPlainText;", sandbox);
+  const plain = sandbox.__plain;
+  assert.strictEqual(typeof plain, "function");
+
+  const dom = new JSDOM(`<!doctype html><body>
+    <ul>
+      <li id="de">Ich <ruby class="wk-ruby">liebe<rt class="wk-rt">リーベ</rt></ruby> dich</li>
+      <li id="lat">Vindicia <ruby class="lt-ruby">dolor<rt class="lt-rt">ドロル</rt></ruby></li>
+      <li id="jp">今日は<ruby>歌<rt>うた</rt></ruby>う</li>
+      <li id="kt">Hello <ruby class="kt-ruby">world<rt class="kt-rt">ワールド</rt></ruby></li>
+    </ul></body>`);
+  const doc = dom.window.document;
+  const hasKana = (id) => /[ぁ-ヿ]/.test(plain(doc.getElementById(id)));
+
+  // 外语行 + 我们的注音：判据必须看不到假名（否则会被当成日文歌套日文字体）
+  assert.strictEqual(hasKana("de"), false, "德文行 + wk-ruby：" + plain(doc.getElementById("de")));
+  assert.strictEqual(hasKana("lat"), false, "拉丁文行 + lt-ruby（改名前的前缀）");
+  assert.strictEqual(hasKana("kt"), false, "片假名终结者的 kt-ruby");
+  // 反面：真的日文歌照旧认得出来（对方插件自己的 ruby 没有类名）
+  assert.strictEqual(hasKana("jp"), true, "日文行不能被误伤");
+  // 而且 innerHTML 里确实还留着假名（证明测的是补丁后的判据，不是"注音没插进去"）
+  assert.ok(/[ぁ-ヿ]/.test(doc.getElementById("de").innerHTML));
 });

@@ -282,6 +282,34 @@ console.log("[4.5/7] 借词表");
   }
 }
 
+// ---------------------------------------------------------------- 4.6 官方歌名读音
+
+console.log("[4.6/7] 官方歌名读音");
+{
+  const SEKAI_VENDOR = path.join(__dirname, "vendor", "sekai", "musics.json");
+  const SEKAI_SEED = path.join(__dirname, "seed-words-sekai.js");
+  if (!fs.existsSync(SEKAI_VENDOR)) {
+    warn("没有 tools/vendor/sekai/musics.json（官方歌名读音只剩已生成的那份）");
+  } else if (!fs.existsSync(SEKAI_SEED)) {
+    fail("缺少 tools/seed-words-sekai.js（跑 npm run build:sekai）");
+  } else {
+    let want = null;
+    try {
+      // 生成器不写盘，只返回内容 —— 和提交进去的那份逐字节比
+      want = require("./build-sekai.js").generate().content;
+    } catch (e) {
+      fail("tools/build-sekai.js 跑不动：" + e.message);
+    }
+    if (want !== null) {
+      if (want !== fs.readFileSync(SEKAI_SEED, "utf8")) {
+        fail("tools/seed-words-sekai.js 与 vendor/sekai/musics.json 不一致（跑 npm run build:sekai）");
+      } else {
+        ok("官方歌名读音与 tools/vendor/sekai/musics.json 一致（" + require(SEKAI_SEED).length + " 条）");
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------- 5. 元信息一致性
 
 console.log("[5/7] 元信息与仓库地址");

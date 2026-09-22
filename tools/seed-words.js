@@ -1227,4 +1227,30 @@ module.exports = [
    * 但歌词里出现德语 `mit` 的概率远高于学院缩写，按这一侧收。
    */
   { en: "mit", kana: "ミット" },
+  /*
+   * 日语来源的英文词（用户给的 https://www.sljfaq.org/afaq/japanese-in-english.html）。
+   *
+   * 这一类词在日语歌词里写成拉丁字母时，读的是**日语原词**，不是英文音译：
+   * `kudzu` 是 クズ（葛）、`honcho` 是 ハンチョウ（班長）、`rickshaw` 是 ジンリキシャ（人力車）。
+   * 我们自己的英文规则读不对（クダズ / ホンチョ / リックシオー），罗马音层也接不住
+   * （这些拼法不是日语罗马字），所以按项目惯例人工钉死。
+   *
+   * 只收**英语里没有别的常用义**的那一批；剩下 30 多个实测本来就对
+   * （sushi スシ、tempura テンプラ、manga マンガ…），靠罗马音层就够。故意不收的：
+   *   go（英语"去"）、sake（英语"缘故"）、soy（英语"大豆"）—— 收进去会把常见英文词读歪。
+   * ginkgo / noh / tycoon 按日语原词读（イチョウ / ノウ / タイクン）—— 日语歌词里就是这个意思。
+   */
+  { en: "adzuki", kana: "アズキ" },
+  { en: "bokeh", kana: "ボケ" },
+  { en: "ginkgo", kana: "イチョウ" },
+  { en: "honcho", kana: "ハンチョウ" },
+  { en: "kombucha", kana: "コンブチャ" },
+  { en: "kudzu", kana: "クズ" },
+  { en: "moxa", kana: "モグサ" },
+  { en: "noh", kana: "ノウ" },
+  { en: "rickshaw", kana: "ジンリキシャ" },
+  { en: "shoji", kana: "ショウジ" },
+  { en: "sudoku", kana: "スードク" },
+  { en: "tycoon", kana: "タイクン" },
+  { en: "zori", kana: "ゾウリ" },
 ];

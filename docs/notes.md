@@ -111,7 +111,7 @@
 
 | 默认顺序 | 来源 | 例子 | 可信度 / 行为 |
 | --- | --- | --- | --- |
-| 1 | **离线词典** (`src/core/dict.js`, 6829 条) | `clover` → クローバー | 确定对, 直接用 |
+| 1 | **离线词典** (`src/core/dict.js`, 6892 条) | `clover` → クローバー | 确定对, 直接用 |
 | 1.5 | **学会的词** (运行期由模型答案沉淀, 见下) | `serendipity` → セレンディピティ | 排在**离线词典后面** (人工 > 沉淀 > 大模型, 和 build-dict 同一个口径): 词典里有的词以词典为准, 词典里没有的才用它; 不对就 `WK.learn.forget()` |
 | 2 | **罗马音切分** (歌词里官方写的罗马音) | `sekai` → セカイ | 切得干净就算确定; 但**在英文词表里的词标成"没把握"** (`shake` → シャケ), 交给在线层仲裁 |
 | 3 | **大模型校正** (配了 key 时, **带整句歌词当语境**) | `kaleidoscope` → カレイドスコープ | 很准; 等待期间先用低优先那层的读音当暂定值 (注音淡一点), 结果回来就地改写 |
@@ -119,6 +119,15 @@
 | 5 | **英文音译规则** (垫底) | `blorf` → ブローフ | 猜的; 只有 3 / 4 给不出、失败或没配时才用 |
 
 **这一层有个已知的天花板**: 罗马音层只认拼写 —— 一个词只要切得成日语音节就算"确定", 于是**没进过任何词表的英文词会被它抢读**, 而且层序里它排在在线层前面, 大模型也没机会纠 (用户五张截图: `daze` ダゼ、`Shone` ショネ、`rime` リメ、`boon` ボオン、`Hoo~` ホオ —— 全是蓝色)。挡它的唯一办法是**让词表认识这些词**: ① 在英文词表 (`core/enwords.js`) 里的 → 标成"没把握"交给模型; ② 人工/沉淀进离线词典的 → 直接给确定答案 (`daze` **デイズ**、`shone` **ショーン**、`rime` **ライム**、`boon` **ブーン**、`hoo` **フー** 就是这么钉的, 连同 `-aze` / `-ime` / `-oo` 那几族一起)。模型纠正过的词会被「学会的词」自动沉淀, 再经 `promote:learned` 进词典 —— 这类词会越用越少
+
+### 两批"外来权威读音"(用户给的两个来源)
+
+| 来源 | 收什么 | 进哪张表 |
+| --- | --- | --- |
+| [Project Sekai 主数据库](https://pjsekai.moe/#/music/803) (`sekai-world/sekai-master-db-diff` 的 `musics.json`) | **单个西文词**的歌名的官方读音 (`Nostalogic` → ノスタロジック、`CHAOS` → カオス、`ONESELF` → ワンセルフ) | `tools/seed-words-sekai.js` (生成物, `npm run build:sekai`) |
+| [sci.lang.japan FAQ: English words from Japanese](https://www.sljfaq.org/afaq/japanese-in-english.html) | 日语来源的英文词在日语歌词里的读法 (`kudzu` → クズ、`honcho` → ハンチョウ、`rickshaw` → ジンリキシャ) | `tools/seed-words.js` 的人工段 |
+
+两批都是"人工/官方核过"的性质, 所以排在我们自己的英文音译规则前面 (`build-dict` 的优先级: 人工 > 官方歌名 > 运行期沉淀 > 大模型批量)。多词歌名 (如 `the EmpErroR` 官方读 ジエンペラー) **故意不收**: 官方读音是整首歌名的, 没法反推哪一拍属于哪个词, 硬拆会把标题里的梗当成通用读音
 
 
 ### 顺序为什么默认是「词典 > 罗马音 > 在线 > 规则」
@@ -342,6 +351,23 @@ npm run patch:furigana -- --force # 以备份为基准重打
 补丁打在**别人的包**上, jp-furigana 一升级就没了; 补丁工具本身也会变。症状是歌词抽搐、或某个词反复闪 —— `--check` 会告诉你包里的补丁**是不是当前这一版**, 不一致就重跑 `npm run patch:furigana -- --force`
 
 反过来, 本插件也认另外两家的注音节点: `isSkippable()` 会整棵跳过 `kt-ruby` / `fg-ruby` 里面。片假名终结者的注音里装的偏偏是**英文原词** (`<rt class="kt-rt">dream</rt>`), 正是本插件要标的对象
+
+### JapaneseFonts (MuttonString/Furigana) 的额外一处: "这是不是日文歌"
+
+[Leleawa/jp-furigana](https://github.com/Leleawa/jp-furigana) 之外, [MuttonString/Furigana](https://github.com/MuttonString/Furigana) (插件名 **JapaneseFonts**, 只做"给日文歌换日文字体") 也要打一处补丁。它的 `pronounce()` 这样判"这是不是日文歌":
+
+```js
+if (elem.querySelector('furigana') || /[ぁ-ヿ]/g.test(elem.innerHTML)) {
+```
+
+判据是**整行 innerHTML 里有没有假名** —— 而本插件的读音就写在 `<rt>` 里的**片假名**, 于是德语/拉丁语/俄语歌只要被本插件注了音, 它就当成日文歌、把日文字体套上去 (用户报的「不要让这个插件把本插件的片假名当成日文歌」)。补丁把判据换成 `__wkPlainText(elem)`: 遍历自己的文字, **跳过别家插的注音整块** (`kt-*` / `lt-*` / `wk-*`), 再找假名。它自己的 `<ruby>/<rt>` 没有类名, 照旧算数, 所以真的日文歌不受影响
+
+```bash
+npm run patch:fonts              # 自动找 C:\betterncm\plugins 里的 JapaneseFonts*.plugin
+npm run patch:fonts -- --check   # 已打补丁? 打的是不是当前这一版?
+```
+
+补丁打的是 `.plugin` 包 (BetterNCM 每次启动都从包里重新解包), 备份是 `<原名>.wk-bak`; 打完删掉 `plugins_runtime\JapaneseFonts` 再重启才会生效。细节与锚点见 `tools/patch-japanese-fonts.js`
 
 ## 设置
 
@@ -609,6 +635,9 @@ tools/
   build-enwords.js    生成英文常用词表
   build-loan.js       由 tools/vendor/loan/*.txt 生成 core/loan.js
   vendor/loan/*.txt   sljfaq 借词表原始数据 (带来源 URL 与抓取日期)
+  build-sekai.js      由 tools/vendor/sekai/musics.json 生成官方歌名读音
+  vendor/sekai/*.json Project Sekai 主数据库里含西文字母的歌名 (带来源)
+  patch-japanese-fonts*.js  JapaneseFonts 共存补丁 (它把我们的片假名当成日文歌)
   promote-learned.js  运行期素材筛选 (→ seed-words-learned.js)
   seed-words.js       人工种子词表
   seed-words-llm.js   大模型批量生成的词表

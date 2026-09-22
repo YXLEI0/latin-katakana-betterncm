@@ -60,6 +60,29 @@ if (problems.length) {
 const handCount = Object.keys(words).length;
 
 /*
+ * 第二份数据源：tools/seed-words-sekai.js —— **官方歌名读音**（Project Sekai 主数据库里
+ * 单个西文词的歌名，由 tools/build-sekai.js 生成）。优先级夹在人工和沉淀之间：
+ * 官方读音比我们自己的英文音译规则和"按词频让大模型生成"都可信，但人工核过的
+ * 词条仍旧最高（同一个词两边都有时保留人工那份）。
+ */
+const SEKAI_SEED = path.join(__dirname, "seed-words-sekai.js");
+let sekaiAdded = 0;
+let sekaiSkipped = 0;
+if (fs.existsSync(SEKAI_SEED)) {
+  for (const row of require(SEKAI_SEED) || []) {
+    const en = String((row && row.en) || "").trim().toLowerCase();
+    const kana = String((row && row.kana) || "").trim();
+    if (!RE_EN.test(en) || !RE_KANA.test(kana)) continue;
+    if (words[en] !== undefined) {
+      sekaiSkipped++;
+      continue;
+    }
+    words[en] = kana;
+    sekaiAdded++;
+  }
+}
+
+/*
  * 第二份数据源：tools/seed-words-llm.js —— 由 tools/expand-dict-llm.js 让大模型
  * 按词频批量生成的读音（几千条）。**人工核过的 seed-words.js 优先**：同一个词
  * 两边都有时保留人工那份，生成物不许覆盖人工判断。
@@ -147,7 +170,9 @@ const out = `/*
  * 两份数据源，由 tools/build-dict.js 合并（跑 npm run build:dict 重新生成）：
  *   1. tools/seed-words.js      —— 人工核过（其中大部分是从 katakana-terminator 的
  *      离线词典反转来的真实外来语写法，那份本来就是"片假名外来语 -> 英文原词"）；
- *   2. tools/seed-words-llm.js  —— 大模型按英文词频批量生成的读音（${llmAdded} 条），
+ *   2. tools/seed-words-sekai.js —— 官方歌名读音（Project Sekai 主数据库里单个西文词的歌名）；
+ *   3. tools/seed-words-learned.js —— 运行期沉淀；
+ *   4. tools/seed-words-llm.js  —— 大模型按英文词频批量生成的读音（${llmAdded} 条），
  *      由 tools/expand-dict-llm.js 生成，人工词表优先。
  *
  * 读音查找顺序见 core/reading.js：本词典 -> 罗马音切分 -> 英文音译规则
@@ -173,6 +198,6 @@ ${body}
 
 fs.writeFileSync(OUT, out);
 console.log("已生成 " + path.relative(ROOT, OUT) + "：" + keys.length + " 条" +
-  "（人工 " + handCount + " 条 + 沉淀 " + learnedAdded + " 条 + 大模型 " + llmAdded + " 条，生成物里被人工覆盖 " +
-  (llmSkipped + learnedSkipped) + " 条" +
+  "（人工 " + handCount + " 条 + 官方歌名 " + sekaiAdded + " 条 + 沉淀 " + learnedAdded + " 条 + 大模型 " + llmAdded + " 条，生成物里被人工覆盖 " +
+  (llmSkipped + learnedSkipped + sekaiSkipped) + " 条" +
   (llmBlocked ? "，黑名单拦下 " + llmBlocked + " 条" : "") + "）");

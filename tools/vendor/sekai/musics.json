@@ -1,0 +1,787 @@
+[
+ {
+  "id": 1,
+  "title": "Tell Your World",
+  "pronunciation": "てるゆあわーるど"
+ },
+ {
+  "id": 6,
+  "title": "ヒバナ -Reloaded-",
+  "pronunciation": "ひばなりろーでっど"
+ },
+ {
+  "id": 13,
+  "title": "Nostalogic",
+  "pronunciation": "のすたろじっく"
+ },
+ {
+  "id": 15,
+  "title": "drop pop candy",
+  "pronunciation": "どろっぷぽっぷきゃんでぃ"
+ },
+ {
+  "id": 27,
+  "title": "Just Be Friends",
+  "pronunciation": "じゃすとびーふれんず"
+ },
+ {
+  "id": 44,
+  "title": "Hand in Hand",
+  "pronunciation": "はんどいんはんど"
+ },
+ {
+  "id": 50,
+  "title": "Blessing",
+  "pronunciation": "ぶれっしんぐ"
+ },
+ {
+  "id": 52,
+  "title": "potatoになっていく",
+  "pronunciation": "ぽてとになっていく"
+ },
+ {
+  "id": 54,
+  "title": "Ready Steady",
+  "pronunciation": "れでぃすてでぃ"
+ },
+ {
+  "id": 55,
+  "title": "Forward",
+  "pronunciation": "ふぉわーど"
+ },
+ {
+  "id": 63,
+  "title": "needLe",
+  "pronunciation": "にーどる"
+ },
+ {
+  "id": 82,
+  "title": "alive",
+  "pronunciation": "あらいぶ"
+ },
+ {
+  "id": 83,
+  "title": "Gimme×Gimme",
+  "pronunciation": "ぎみぎみ"
+ },
+ {
+  "id": 85,
+  "title": "Leia - Remind",
+  "pronunciation": "れいありまいんど"
+ },
+ {
+  "id": 86,
+  "title": "on the rocks",
+  "pronunciation": "おんざろっくす"
+ },
+ {
+  "id": 89,
+  "title": "Color of Drops",
+  "pronunciation": "からーおぶどろっぷす"
+ },
+ {
+  "id": 96,
+  "title": "from Y to Y",
+  "pronunciation": "ふろむわいとぅわい"
+ },
+ {
+  "id": 100,
+  "title": "ECHO",
+  "pronunciation": "えこー"
+ },
+ {
+  "id": 101,
+  "title": "RAD DOGS",
+  "pronunciation": "らっどどっぐす"
+ },
+ {
+  "id": 104,
+  "title": "サンドリヨン 10th Anniversary",
+  "pronunciation": "さんどりよんてんすあにばーさりー"
+ },
+ {
+  "id": 117,
+  "title": "ODDS＆ENDS",
+  "pronunciation": "おっずあんどえんず"
+ },
+ {
+  "id": 128,
+  "title": "Brand New Day",
+  "pronunciation": "ぶらんどにゅーでい"
+ },
+ {
+  "id": 138,
+  "title": "KING",
+  "pronunciation": "きんぐ"
+ },
+ {
+  "id": 148,
+  "title": "ray",
+  "pronunciation": "れい"
+ },
+ {
+  "id": 153,
+  "title": "Miku",
+  "pronunciation": "みく"
+ },
+ {
+  "id": 156,
+  "title": "Beat Eater",
+  "pronunciation": "びーといーたー"
+ },
+ {
+  "id": 159,
+  "title": "STAGE OF SEKAI",
+  "pronunciation": "すてーじおぶせかい"
+ },
+ {
+  "id": 161,
+  "title": "magic number",
+  "pronunciation": "まじっくなんばー"
+ },
+ {
+  "id": 163,
+  "title": "the EmpErroR",
+  "pronunciation": "じえんぺらー"
+ },
+ {
+  "id": 164,
+  "title": "Don't Fight The Music",
+  "pronunciation": "どんとふぁいとざみゅーじっく"
+ },
+ {
+  "id": 166,
+  "title": "Glory Steady Go!",
+  "pronunciation": "ぐろーりーすてでぃごー"
+ },
+ {
+  "id": 172,
+  "title": "Happy Halloween",
+  "pronunciation": "はっぴーはろうぃん"
+ },
+ {
+  "id": 182,
+  "title": "Flyer!",
+  "pronunciation": "ふらいやー"
+ },
+ {
+  "id": 184,
+  "title": "Hello,world!",
+  "pronunciation": "はろーわーるど"
+ },
+ {
+  "id": 195,
+  "title": "PaⅢ.SENSATION",
+  "pronunciation": "ぱっしょねーとすりーどっとせんせーしょん"
+ },
+ {
+  "id": 202,
+  "title": "Q",
+  "pronunciation": "きゅー"
+ },
+ {
+  "id": 207,
+  "title": "Peaky Peaky",
+  "pronunciation": "ぴーきーぴーきー"
+ },
+ {
+  "id": 227,
+  "title": "ONESELF",
+  "pronunciation": "わんせるふ"
+ },
+ {
+  "id": 228,
+  "title": "Goodbye",
+  "pronunciation": "ぐっどばい"
+ },
+ {
+  "id": 235,
+  "title": "Journey",
+  "pronunciation": "じゃーにー"
+ },
+ {
+  "id": 236,
+  "title": "Voices",
+  "pronunciation": "ヴぉいしーず"
+ },
+ {
+  "id": 243,
+  "title": "Calc.",
+  "pronunciation": "かるく"
+ },
+ {
+  "id": 244,
+  "title": "Awake Now",
+  "pronunciation": "あうぇいくなう"
+ },
+ {
+  "id": 247,
+  "title": "Copycat",
+  "pronunciation": "こぴーきゃっと"
+ },
+ {
+  "id": 249,
+  "title": "ぼくらの16bit戦争",
+  "pronunciation": "ぼくらのしっくすてぃーんびっとうぉーず"
+ },
+ {
+  "id": 252,
+  "title": "DREAM PLACE",
+  "pronunciation": "どりーむぷれいす"
+ },
+ {
+  "id": 253,
+  "title": "DAYBREAK FRONTLINE",
+  "pronunciation": "でいぶれいくふろんとらいん"
+ },
+ {
+  "id": 259,
+  "title": "the WALL",
+  "pronunciation": "ざうぉーる"
+ },
+ {
+  "id": 263,
+  "title": "Highlight",
+  "pronunciation": "はいらいと"
+ },
+ {
+  "id": 265,
+  "title": "Change me",
+  "pronunciation": "ちぇんじみー"
+ },
+ {
+  "id": 266,
+  "title": "YY",
+  "pronunciation": "わいわい"
+ },
+ {
+  "id": 278,
+  "title": "Bad ∞ End ∞ Night",
+  "pronunciation": "ばっどえんどないと"
+ },
+ {
+  "id": 285,
+  "title": "ÅMARA(大未来電脳)",
+  "pronunciation": "あまらだいみらいでんのう"
+ },
+ {
+  "id": 286,
+  "title": "Hello, Worker",
+  "pronunciation": "はろーわーかー"
+ },
+ {
+  "id": 297,
+  "title": "p.h.",
+  "pronunciation": "ぺーはー"
+ },
+ {
+  "id": 304,
+  "title": "Iなんです",
+  "pronunciation": "あいなんです"
+ },
+ {
+  "id": 309,
+  "title": "Afterglow",
+  "pronunciation": "あふたーぐろう"
+ },
+ {
+  "id": 310,
+  "title": "Flyway",
+  "pronunciation": "ふらいうぇい"
+ },
+ {
+  "id": 313,
+  "title": "FREELY TOMORROW",
+  "pronunciation": "ふりーりーとぅもろー"
+ },
+ {
+  "id": 315,
+  "title": "What's up? Pop!",
+  "pronunciation": "わっつあっぷぽっぷ"
+ },
+ {
+  "id": 318,
+  "title": "Sharing The World",
+  "pronunciation": "しぇありんぐざわーるど"
+ },
+ {
+  "id": 319,
+  "title": "Decade",
+  "pronunciation": "でぃけいど"
+ },
+ {
+  "id": 320,
+  "title": "Booo!",
+  "pronunciation": "ぶー"
+ },
+ {
+  "id": 325,
+  "title": "豚になってyeah yeah",
+  "pronunciation": "ぶたになっていえいいえい"
+ },
+ {
+  "id": 327,
+  "title": "SnowMix♪",
+  "pronunciation": "すのうみっくす"
+ },
+ {
+  "id": 333,
+  "title": "Mr. Showtime",
+  "pronunciation": "みすたーしょうたいむ"
+ },
+ {
+  "id": 334,
+  "title": "Vampire's ∞ pathoS",
+  "pronunciation": "ヴぁんぱいあずぱとす"
+ },
+ {
+  "id": 336,
+  "title": "Be The MUSIC!",
+  "pronunciation": "びーざみゅーじっく"
+ },
+ {
+  "id": 337,
+  "title": "METEOR",
+  "pronunciation": "みーてぃあ"
+ },
+ {
+  "id": 338,
+  "title": "Where shall we go?",
+  "pronunciation": "うぇあしゃるうぃーごー"
+ },
+ {
+  "id": 339,
+  "title": "glow",
+  "pronunciation": "ぐろう"
+ },
+ {
+  "id": 342,
+  "title": "Blue Star",
+  "pronunciation": "ぶるーすたー"
+ },
+ {
+  "id": 362,
+  "title": "Wonder Style",
+  "pronunciation": "わんだーすたいる"
+ },
+ {
+  "id": 363,
+  "title": "UNDERWATER",
+  "pronunciation": "あんだーうぉーたー"
+ },
+ {
+  "id": 366,
+  "title": "NEO",
+  "pronunciation": "ねお"
+ },
+ {
+  "id": 383,
+  "title": "purpose",
+  "pronunciation": "ぱーぱす"
+ },
+ {
+  "id": 387,
+  "title": "Hello Builder",
+  "pronunciation": "はろーびるだー"
+ },
+ {
+  "id": 390,
+  "title": "Dear",
+  "pronunciation": "でぃあー"
+ },
+ {
+  "id": 393,
+  "title": "Un-Lock",
+  "pronunciation": "あんろっく"
+ },
+ {
+  "id": 398,
+  "title": "Beyond the way",
+  "pronunciation": "びよんどざうぇい"
+ },
+ {
+  "id": 399,
+  "title": "Disco No.39",
+  "pronunciation": "でぃすこなんばーさーてぃーないん"
+ },
+ {
+  "id": 404,
+  "title": "blender",
+  "pronunciation": "ぶれんだー"
+ },
+ {
+  "id": 405,
+  "title": "MOTTO!!!",
+  "pronunciation": "もっと"
+ },
+ {
+  "id": 406,
+  "title": "ARQETYPE",
+  "pronunciation": "あーきたいぷ"
+ },
+ {
+  "id": 408,
+  "title": "CIRCUS PANIC!!!",
+  "pronunciation": "さーかすぱにっく"
+ },
+ {
+  "id": 414,
+  "title": "HERO",
+  "pronunciation": "ひーろー"
+ },
+ {
+  "id": 416,
+  "title": "limbo",
+  "pronunciation": "りんぼ"
+ },
+ {
+  "id": 420,
+  "title": "imaginary love story",
+  "pronunciation": "いまじなりーらぶすとーりー"
+ },
+ {
+  "id": 421,
+  "title": "CR詠ZY",
+  "pronunciation": "くれいじー"
+ },
+ {
+  "id": 422,
+  "title": "JUMPIN’ OVER !",
+  "pronunciation": "じゃんぴんおーばー"
+ },
+ {
+  "id": 425,
+  "title": "Cool Me Down",
+  "pronunciation": "くーるみーだうん"
+ },
+ {
+  "id": 426,
+  "title": "On&On",
+  "pronunciation": "おんあんどおん"
+ },
+ {
+  "id": 427,
+  "title": "幽光、1/fのゆらめき",
+  "pronunciation": "ゆうこうえふぶんのいちのゆらめき"
+ },
+ {
+  "id": 431,
+  "title": "flos",
+  "pronunciation": "ふろーす"
+ },
+ {
+  "id": 444,
+  "title": "心泥夢(syndrome)",
+  "pronunciation": "しんどろーむ"
+ },
+ {
+  "id": 445,
+  "title": "Twilight Melody",
+  "pronunciation": "とわいらいとめろでぃ"
+ },
+ {
+  "id": 447,
+  "title": "folern",
+  "pronunciation": "ふぉれん"
+ },
+ {
+  "id": 448,
+  "title": "Sage",
+  "pronunciation": "さげ"
+ },
+ {
+  "id": 449,
+  "title": "MarbleBlue.",
+  "pronunciation": "まーぶるぶるー"
+ },
+ {
+  "id": 457,
+  "title": "Supernova",
+  "pronunciation": "すーぱーのゔぁ"
+ },
+ {
+  "id": 460,
+  "title": "LEADER",
+  "pronunciation": "りーだー"
+ },
+ {
+  "id": 464,
+  "title": "Intergalactic Bound",
+  "pronunciation": "いんたーぎゃらくてぃっく ばうんど"
+ },
+ {
+  "id": 471,
+  "title": "ULTRA C",
+  "pronunciation": "うるとらしー"
+ },
+ {
+  "id": 472,
+  "title": "成敗いたAAAAAす！",
+  "pronunciation": "せいばいいたあああああす"
+ },
+ {
+  "id": 476,
+  "title": "Shadow Shadow",
+  "pronunciation": "しゃどうしゃどう"
+ },
+ {
+  "id": 477,
+  "title": "モザイクロール (Reloaded)",
+  "pronunciation": "もざいくろーるりろーでっど"
+ },
+ {
+  "id": 484,
+  "title": "Henceforth",
+  "pronunciation": "へんすふぉーす"
+ },
+ {
+  "id": 501,
+  "title": "Bad Apple!! feat.SEKAI",
+  "pronunciation": "ばっどあっぷるふぃーちゃりんぐせかい"
+ },
+ {
+  "id": 502,
+  "title": "Help me, ERINNNNNN!!",
+  "pronunciation": "へるぷみーえーりん"
+ },
+ {
+  "id": 504,
+  "title": "I know 愛脳.",
+  "pronunciation": "あいのーあいのう"
+ },
+ {
+  "id": 506,
+  "title": "QUEEN",
+  "pronunciation": "くいーん"
+ },
+ {
+  "id": 513,
+  "title": "CH4NGE",
+  "pronunciation": "ちぇんじ"
+ },
+ {
+  "id": 522,
+  "title": "WAVE",
+  "pronunciation": "うぇーぶ"
+ },
+ {
+  "id": 527,
+  "title": "Unpoison",
+  "pronunciation": "あんぽいずん"
+ },
+ {
+  "id": 534,
+  "title": "ワールド・ランプシェード [reunion]",
+  "pronunciation": "わーるど らんぷしぇーど りゆにおん"
+ },
+ {
+  "id": 536,
+  "title": "Fire◎Flower (Rerec)",
+  "pronunciation": "ふぁいあふらわー"
+ },
+ {
+  "id": 542,
+  "title": "Blackjack",
+  "pronunciation": "ぶらっくじゃっく"
+ },
+ {
+  "id": 550,
+  "title": "shake it!",
+  "pronunciation": "しぇいくいっと"
+ },
+ {
+  "id": 552,
+  "title": "M@GICAL☆CURE! LOVE ♥ SHOT!",
+  "pronunciation": "まじかるきゅあらぶしょっと"
+ },
+ {
+  "id": 554,
+  "title": "snooze",
+  "pronunciation": "すぬーず"
+ },
+ {
+  "id": 574,
+  "title": "SToRY",
+  "pronunciation": "すとーりー"
+ },
+ {
+  "id": 575,
+  "title": "FUN!!",
+  "pronunciation": "ふぁん"
+ },
+ {
+  "id": 579,
+  "title": "Worlders",
+  "pronunciation": "わーるだーず"
+ },
+ {
+  "id": 584,
+  "title": "IMAWANOKIWA",
+  "pronunciation": "いまわのきわ"
+ },
+ {
+  "id": 594,
+  "title": "Call!!",
+  "pronunciation": "こーる"
+ },
+ {
+  "id": 596,
+  "title": "D/N/A",
+  "pronunciation": "でぃー・えぬ・えー"
+ },
+ {
+  "id": 604,
+  "title": "Packaged",
+  "pronunciation": "ぱっけーじど"
+ },
+ {
+  "id": 605,
+  "title": "Sympathy",
+  "pronunciation": "しんぱしー"
+ },
+ {
+  "id": 610,
+  "title": "Polar Star",
+  "pronunciation": "ぽーらーすたー"
+ },
+ {
+  "id": 612,
+  "title": "Snow Fairy Story",
+  "pronunciation": "すのうふぇありーすとーりー"
+ },
+ {
+  "id": 618,
+  "title": "Fondant Step",
+  "pronunciation": "ふぉんだんすてっぷ"
+ },
+ {
+  "id": 619,
+  "title": "Connecting",
+  "pronunciation": "こねくてぃんぐ"
+ },
+ {
+  "id": 626,
+  "title": "フィッシュアンドTips",
+  "pronunciation": "ふぃっしゅあんどちっぷす"
+ },
+ {
+  "id": 632,
+  "title": "Surges",
+  "pronunciation": "さーじず"
+ },
+ {
+  "id": 643,
+  "title": "About me",
+  "pronunciation": "あばうとみー"
+ },
+ {
+  "id": 647,
+  "title": "SAN値直葬",
+  "pronunciation": "さんちちょくそう"
+ },
+ {
+  "id": 648,
+  "title": "Life Will Change",
+  "pronunciation": "らいふうぃるちぇんじ"
+ },
+ {
+  "id": 666,
+  "title": "少女A",
+  "pronunciation": "しょうじょえー"
+ },
+ {
+  "id": 674,
+  "title": "MASTER高難易度楽曲メドレー",
+  "pronunciation": "ますたーこうなんいどがっきょくめどれー"
+ },
+ {
+  "id": 675,
+  "title": "プロセカULTIMATE楽曲メドレー",
+  "pronunciation": "ぷろせかあるてぃめっとがっきょくめどれー"
+ },
+ {
+  "id": 679,
+  "title": "CRASH THE PARTY",
+  "pronunciation": "くらっしゅ ざ ぱーてぃ"
+ },
+ {
+  "id": 680,
+  "title": "Who?",
+  "pronunciation": "ふー？"
+ },
+ {
+  "id": 693,
+  "title": "erase or zero",
+  "pronunciation": "いれーすおあぜろ"
+ },
+ {
+  "id": 697,
+  "title": "Internet Junk Junkie",
+  "pronunciation": "いんたーねっとじゃんくじゃんきー"
+ },
+ {
+  "id": 698,
+  "title": "鎖の少女-Re Alive-",
+  "pronunciation": "くさりのしょうじょりあらいぶ"
+ },
+ {
+  "id": 699,
+  "title": "Catch the Wave",
+  "pronunciation": "きゃっちざうぇーぶ"
+ },
+ {
+  "id": 713,
+  "title": "Nyanyanyanyanyanyanya!",
+  "pronunciation": "にゃにゃにゃにゃにゃにゃにゃ"
+ },
+ {
+  "id": 717,
+  "title": "Ribbon",
+  "pronunciation": "りぼん"
+ },
+ {
+  "id": 719,
+  "title": "SHIAWASE FOR YOU!",
+  "pronunciation": "しあわせふぉーゆー"
+ },
+ {
+  "id": 727,
+  "title": "T氏の話を信じるな",
+  "pronunciation": "てぃーしのはなしをしんじるな"
+ },
+ {
+  "id": 744,
+  "title": "CHAOS",
+  "pronunciation": "かおす"
+ },
+ {
+  "id": 745,
+  "title": "ANiMA",
+  "pronunciation": "あにま"
+ },
+ {
+  "id": 746,
+  "title": "Masquerade",
+  "pronunciation": "ますかれーど"
+ },
+ {
+  "id": 747,
+  "title": "SAIRAI",
+  "pronunciation": "さいらい"
+ },
+ {
+  "id": 748,
+  "title": "Saika",
+  "pronunciation": "さいか"
+ },
+ {
+  "id": 749,
+  "title": "99 Glooms",
+  "pronunciation": "ないんてぃないんぐるーむず"
+ },
+ {
+  "id": 756,
+  "title": "Gimme more!",
+  "pronunciation": "ぎみーもあ"
+ }
+]
