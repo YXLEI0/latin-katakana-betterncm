@@ -904,6 +904,19 @@
   };
 
   /*
+   * 单字母 + **小写假名**：作者拿拉丁字母当假名用（`ズチCゃ` = ズチチャ、`洒ツKゃ` = ツキャ、
+   * `ラR ァ` = ラリア）—— 用户逐条点名 C 读チ、K 读キ、R 读リ。所以这种"字母 + 小写假名"
+   * 读的是那个音的**辅音那一拍**（チ/キ/リ…），不是字母名。
+   */
+  var LETTER_CONSONANT_KANA = {
+    b: "\u30D3", c: "\u30C1", d: "\u30C7\u30A3", f: "\u30D5", g: "\u30AE", h: "\u30D2", j: "\u30B8",
+    k: "\u30AD", l: "\u30EA", m: "\u30DF", n: "\u30CB", p: "\u30D4", q: "\u30AF", r: "\u30EA", s: "\u30B7",
+    t: "\u30C6\u30A3", v: "\u30F4", z: "\u30B8",
+  };
+  /** 小写假名（ゃゅょ / ァィゥェォ 这种，用来跟前面的辅音拼一拍） */
+  var SMALL_KANA = /[\u3083\u3085\u3087\u3041\u3043\u3045\u3047\u3049\u30E3\u30E5\u30E7\u30A1\u30A3\u30A5\u30A7\u30A9]/;
+
+  /*
    * 有固定读法的**记号**（点号写的词）：`p.h.` = 化学的 pH，日语读 ペーハー
    * （用户截图 `p.h.って、胃酸を`，官方翻译那行写着"靠着 p.h."）。
    * 标记见 letters.js 的 notationWord。
@@ -1312,6 +1325,18 @@
         EMOTICON_LETTER_KANA[emoLow] ||
         (typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[emoLow] : null);
       if (emoKana) return { kana: emoKana, source: "letters", confident: true };
+    }
+    /*
+     * 字母当假名用：`ズチCゃ` 的 C（读 チ）、`洒ツKゃ` 的 K（读 キ）、`ラR ァ` 的 R（读 リ）
+     * —— 判据是"这个单字母后面（可以夹空格）紧跟一个小写假名"（ゃゅょ / ァィゥェォ）。
+     */
+    if (/^[A-Za-z]$/.test(String(word == null ? "" : word)) && token && line && typeof token.end === "number") {
+      var tailAfter = String(line).slice(token.end);
+      var sm = /^\s*([\s\S])/.exec(tailAfter);
+      if (sm && SMALL_KANA.test(sm[1])) {
+        var consKana = LETTER_CONSONANT_KANA[String(word).toLowerCase()];
+        if (consKana) return { kana: consKana, source: "letters", confident: true };
+      }
     }
     /*
      * 小写单字母 `a` 紧贴日文（`aとaが混ざり合って、`）：那是**字母 A 的名字**，
