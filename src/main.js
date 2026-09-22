@@ -808,6 +808,7 @@
     wa: "\u30A6\u30A7", // ウェ
     ar: "\u30A2", // ア
     ni: "\u30CD", // ネ
+    hy: "\u30A8", // エ（`as thy- hy - hy -` 里那几个 hy-）
   };
 
   /*
@@ -1394,6 +1395,19 @@
       if (cyr) return { kana: cyr, source: "letters", confident: true };
     }
     /*
+     * 被连字符**切断**的片段（`wa-` ウェ / `ar-` ア / `ni-` ネ / `hy-` エ）：
+     * 用户逐条点名的读法。判据是"这个短片段后面（可以夹空格）紧跟着连字符"，
+     * 也就是它没写完 —— `hy - hy - hy -` 那种带空格的写法也认。
+     */
+    if (token && line && typeof token.end === "number" && /^[A-Za-z]{1,3}$/.test(String(word == null ? "" : word))) {
+      var afterFrag = String(line).slice(token.end);
+      var cutOff = /^\s*[-\u2010-\u2015]/.test(afterFrag) || token.chain === true;
+      if (cutOff) {
+        var fragKana = DASH_FRAGMENT_KANA[String(word).toLowerCase()];
+        if (fragKana) return { kana: fragKana, source: "dict", confident: true };
+      }
+    }
+    /*
      * 连字符串里的一段（`Ex-Otogibanashi`、`Looser-Krankheit-Was`）：
      *   ① 罗马音层切得干净就按罗马字读 —— 用户点名 `Ex-Otogibanashi` 的**后半进罗马音**
      *      （`Otogibanashi` → オトギバナシ，规则层会读成 …スヒ）；
@@ -1402,10 +1416,6 @@
      */
     if (token && token.chain === true) {
       var chainWord = String(word == null ? "" : word);
-      // 用户点名的"被连字符串起来的重复音"（`wa-` ウェ / `ar-` ア / `ni-` ネ）：
-      // 与语种无关，命中就按表读
-      var fragKana = DASH_FRAGMENT_KANA[chainWord.toLowerCase()];
-      if (fragKana) return { kana: fragKana, source: "dict", confident: true };
       var chainLang = lineLang(line);
       // 真正的语种行（德 / 法 / 俄…）不插队：那些片段归语种引擎管；
       // 拉丁语和斯瓦希里语的判定对"罗马字标题"太容易命中，放它们进来
