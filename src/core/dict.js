@@ -2317,6 +2317,7 @@
     "fc": "エフシー",
     "fe": "エフイー",
     "fear": "フィアー",
+    "feat": "フィーチャリング",
     "feature": "フィーチャー",
     "featured": "フィーチャード",
     "features": "フィーチャーズ",
@@ -6916,6 +6917,6 @@
 
   return {
     words: words,
-    count: 6892,
+    count: 6893,
   };
 });

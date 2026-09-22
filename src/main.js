@@ -573,7 +573,12 @@
     KV: "\u30AD\u30ED\u30DC\u30EB\u30C8", // キロボルト
   };
 
-  /** 这一行里的单字母全是单位符号（`（V, W, A）` ✓、`(A, B)` ✗ —— B 不是单位） */
+  /**
+   * 这一行里的单字母全是单位符号（`（V, W, A）` ✓、`(A, B)` ✗ —— B 不是单位）。
+   *
+   * 还要有**两种以上不同的**单位符号：`A A A A A` 那种同一个字母重复的读字母名
+   * （用户截图：`A A A A A じゃないか` 里的 A 被读成了 アンペア）。
+   */
   var unitLineCache = new Map();
   function lineAllUnitSymbols(line) {
     var s = String(line == null ? "" : line);
@@ -581,6 +586,8 @@
     if (unitLineCache.has(s)) return unitLineCache.get(s);
     var ok = false;
     var n = 0;
+    var kinds = {};
+    var distinct = 0;
     try {
       var toks = WKMatcher.scan(s);
       ok = true;
@@ -591,12 +598,16 @@
           ok = false;
           break;
         }
+        if (!kinds[t]) {
+          kinds[t] = true;
+          distinct++;
+        }
         n++;
       }
     } catch (e) {
       ok = false;
     }
-    var out = ok && n >= 2; // 孤零零一个字母不算（那多半是冠词/字母，不是单位表）
+    var out = ok && n >= 2 && distinct >= 2; // 孤零零一个字母、或同一个字母重复，都不算单位表
     if (unitLineCache.size > 500) unitLineCache.clear();
     unitLineCache.set(s, out);
     return out;
@@ -724,6 +735,16 @@
     hp: "\u30A8\u30A4\u30C1\u30D4\u30FC", // エイチピー
     pc: "\u30D4\u30FC\u30B7\u30FC", // ピーシー
     sf: "\u30A8\u30B9\u30A8\u30D5", // エスエフ
+  };
+
+  /*
+   * 全大写缩写里，日语习惯读法**不是字母名**的那几个。
+   *
+   * 用户截图：`LVあげすぎて` 的 `LV` 被逐字母读成 エルブイ —— 日语里 LV 就是 "level"，
+   * 读 レベル。这类词按字母名念反而听不懂，所以单独钉一张小表（排在缩写规则前面）。
+   */
+  var ACRONYM_WORD = {
+    lv: "\u30EC\u30D9\u30EB", // レベル
   };
 
   /*
@@ -1259,10 +1280,18 @@
       if (capsKana) return { kana: capsKana, source: "letters", confident: true };
     }
     /*
+     * 缩写里那几个"日语读法不是字母名"的（`LV` レベル）：排在缩写/字母名前。
+     * 大小写都收 —— 歌词里 `LV` / `lv` 都是 level。
+     */
+    var acronymWord = ACRONYM_WORD[String(word == null ? "" : word).toLowerCase()];
+    if (acronymWord) return { kana: acronymWord, source: "dict", confident: true };
+    /*
      * 西里尔全大写缩写逐字母读（`СССР` エスエスエスエル）—— 见 CYRILLIC_LETTER_KANA。
      * 排在俄语引擎前面：引擎会按正字法把 `СССР` 的三个 С 并成一个，读成 スル。
+     * 单个西里尔字母也走这条（用户截图 `Я らりぱっぱ…` 里的 Я 一个注音都没有）——
+     * 那不是俄语行（行里有假名），按字母名读 ヤー。
      */
-    if (cyrillicAcronym(word)) {
+    if (cyrillicAcronym(word) || (/^[\u0400-\u04FF]$/.test(String(word == null ? "" : word)) && !(line && lineLang(line) === "ru"))) {
       var cyr = "";
       var cw = String(word).toLowerCase();
       for (var ci = 0; ci < cw.length; ci++) {

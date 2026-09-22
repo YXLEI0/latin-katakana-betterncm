@@ -1253,4 +1253,9 @@ module.exports = [
   { en: "sudoku", kana: "スードク" },
   { en: "tycoon", kana: "タイクン" },
   { en: "zori", kana: "ゾウリ" },
+  /*
+   * 音乐圈写法：`feat.` 是 featuring 的缩写，日语歌词/署名里读 フィーチャリング
+   * （用户截图 `“feat. きみ”を ねえ` 里被规则层读成了 フェアット）。
+   */
+  { en: "feat", kana: "フィーチャリング" },
 ];

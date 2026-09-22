@@ -790,6 +790,48 @@ test("整首专属读音：歌名里含假名/汉字/符号的也按表读（pot
   assert.ok(!/bit/.test(ps[1].innerHTML) || !/wk-src-song/.test(ps[1].innerHTML), "别的歌里 bit 不该吃整首表：" + ps[1].innerHTML);
 });
 
+test("缩写与单字母的四张截图：LV レベル / Я ヤー / A A A A A エー / feat. フィーチャリング", async () => {
+  // 四张用户截图：
+  //   ① `LVあげすぎて` 的 LV 被逐字母读成 エルブイ —— 日语里 LV 就是 level，读 レベル；
+  //   ② `Я らりぱっぱ…` 的 Я（西里尔）一个注音都没有 —— 不是俄语行，按字母名读 ヤー；
+  //   ③ `A A A A A じゃないか` 的每个 A 被读成 アンペア —— 单位那条判据要的是
+  //      "两种以上不同的单位符号"（`（V, W, A）` ✓），同一个字母重复是字母名 エー；
+  //   ④ `“feat. きみ”を ねえ` 的 feat. 被规则层读成 フェアット —— 该读 フィーチャリング。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>LVあげすぎて スラ</p></li>
+  <li class="line"><p>Я らりぱっぱらっぱっぱらっぱ</p></li>
+  <li class="line"><p>A A A A A じゃないか</p></li>
+  <li class="line"><p>“feat. きみ”を ねえ</p></li>
+  <li class="line"><p>100V と 5A と 30W</p></li>
+  <li class="line"><p>（V, W, A）</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+
+  assert.strictEqual(pairsOf(ps[0]).get("LV"), "レベル", "LV 该读 レベル：" + ps[0].innerHTML);
+  assert.strictEqual(pairsOf(ps[1]).get("Я"), "ヤー", "单个西里尔字母按字母名读：" + ps[1].innerHTML);
+  const aa = [...ps[2].querySelectorAll("ruby.wk-ruby")].map((r) => r.querySelector(".wk-rt").textContent);
+  assert.deepStrictEqual(aa, ["エー", "エー", "エー", "エー", "エー"], "重复的 A 是字母名：" + ps[2].innerHTML);
+  assert.strictEqual(pairsOf(ps[3]).get("feat"), "フィーチャリング", "feat. 该读 フィーチャリング：" + ps[3].innerHTML);
+  // 反面：数字后面的单位字母、以及"几种不同的单位符号排成一串"照旧读单位名
+  const unit = pairsOf(ps[4]);
+  assert.strictEqual(unit.get("V"), "ボルト", "100V 仍是 ボルト：" + ps[4].innerHTML);
+  assert.strictEqual(unit.get("A"), "アンペア", "5A 仍是 アンペア：" + ps[4].innerHTML);
+  assert.strictEqual(unit.get("W"), "ワット", "30W 仍是 ワット：" + ps[4].innerHTML);
+  const list = pairsOf(ps[5]);
+  assert.strictEqual(list.get("V"), "ボルト", "（V, W, A）仍是单位名：" + ps[5].innerHTML);
+  assert.strictEqual(list.get("W"), "ワット");
+  assert.strictEqual(list.get("A"), "アンペア");
+});
+
 test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {
   // 用户三张截图：`T氏にすべてを捧げましょう` 和 `T Is My Everything` 里的单字母 T
   // 一个注音都没有（该 ティー）；`半径300mmの体で必死に鳴いてる` 的 `mm` 没注音
