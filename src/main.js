@@ -748,6 +748,14 @@
   };
 
   /*
+   * 颜文字里的字母读的是**表情的音**，不是字母名 —— `:-b`（吐舌头）读 ボ（用户点名，
+   * 不要长音）。表里没有的字母退回字母名。
+   */
+  var EMOTICON_LETTER_KANA = {
+    b: "\u30DC", // ボ
+  };
+
+  /*
    * 孤零零一个希腊字母（不在希腊语行上时）：读日语里通行的字母名 / 单位读法。
    *
    * 用户截图 `無限増幅回路（Ω）` 里的 Ω 是电阻单位，日语读 オーム（不是 オメガ）。大写 Ω 按单位，
@@ -1182,8 +1190,9 @@
      * 别的（`B`、`C`…）没法判，还是留白（返回 null 表示"这词不标"）。
      */
     /*
-     * 颜文字里的那个单字母（`:-b ;-b boy, :-b ;-b` 的 b）：用户点名要标。
-     * 只在"这一行还有别的西文词"时读字母名（那种行是歌词，不是纯颜文字行）。
+     * 颜文字里的那个单字母（`:-b ;-b boy, :-b ;-b` 的 b）：用户点名要标，
+     * 而且读的是**表情的音**（`b` → ボー），不是字母名 ビー —— 所以先查这张小表。
+     * 只在"这一行还有别的西文词"时标（那种行是歌词，不是纯颜文字行）。
      */
     if (
       token &&
@@ -1192,8 +1201,10 @@
       line &&
       lineHasOtherWord(word, line)
     ) {
+      var emoLow = String(word).toLowerCase();
       var emoKana =
-        typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[String(word).toLowerCase()] : null;
+        EMOTICON_LETTER_KANA[emoLow] ||
+        (typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[emoLow] : null);
       if (emoKana) return { kana: emoKana, source: "letters", confident: true };
     }
     if (/^[A-Z]$/.test(String(word == null ? "" : word))) {

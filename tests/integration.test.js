@@ -863,8 +863,8 @@ test("拆行 DOM 里的单字母 / 颜文字里的 b / 点号记法是罗马字�
   const bs = [...ps[1].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
   assert.deepStrictEqual(
     bs,
-    [["b", "ビー"], ["b", "ビー"], ["boy", "ボーイ"], ["b", "ビー"], ["b", "ビー"]],
-    "颜文字里的 b 要注音：" + ps[1].innerHTML
+    [["b", "ボ"], ["b", "ボ"], ["boy", "ボーイ"], ["b", "ボ"], ["b", "ボ"]],
+    "颜文字里的 b 要注音（读表情的音 ボ，不带长音）：" + ps[1].innerHTML
   );
   assert.strictEqual(pairsOf(ps[2]).get("K・A・I・S・A・N"), "カイサン", "整串是罗马字单词：" + ps[2].innerHTML);
   const midi = [...ps[3].querySelectorAll("ruby.wk-ruby")].map((r) => r.querySelector(".wk-rt").textContent);
