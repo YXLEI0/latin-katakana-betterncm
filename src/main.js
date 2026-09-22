@@ -878,6 +878,17 @@
     return !/[\u0410\u0415\u0401\u0418\u041E\u0423\u042B\u042D\u042E\u042F]/.test(w);
   }
 
+  /*
+   * 两个字母的**英文/缩写**常用词：它们在词典里有确定读音（`no` ノー、`me` ミー…），
+   * 别被"全大写不确定 → 交给大模型"那条抢走（那条是给 `KRO` / `NE` 这种
+   * "可能是日语罗马字"的词准备的）。
+   */
+  var EN_TWO_LETTER = {
+    am: 1, an: 1, as: 1, at: 1, be: 1, by: 1, do: 1, go: 1, he: 1, hi: 1, if: 1, in: 1, is: 1, it: 1,
+    me: 1, my: 1, no: 1, of: 1, oh: 1, ok: 1, on: 1, or: 1, so: 1, to: 1, up: 1, us: 1, we: 1, ye: 1,
+    ah: 1, uh: 1, id: 1, tv: 1, cd: 1, dj: 1, mc: 1, pc: 1, pm: 1, se: 1, mv: 1, pv: 1, bg: 1,
+  };
+
   /**
    * 整首 / 整句专属读音：这首歌（或这一句歌词）里的这个词就这么读。两个作用域，都是
    * 人工核过、不许别的层改的读音。
@@ -1452,6 +1463,35 @@
         asRomaji = null;
       }
       if (asRomaji) return { kana: asRomaji, source: "romaji" };
+    }
+    /*
+     * 英文行里全大写、2~4 个字母、不在英文常用词表里的词（`KRO` / `NE`）：
+     * 它可能是缩写，也可能是**日语罗马字** —— 用户截图 `Don't I second bet in the KRO NE`
+     * 就是 クロネ（官方翻译那行写着「我不在那"KRO NE"里再次押注」）。本地分不出来，
+     * 缩写的字母名和罗马字读音都说得通，所以标成**没把握**：先按罗马音（`NE` → ネ）
+     * 或字母名（`KRO` → ケーアールオー）顶着，整句交给大模型判（用户要求"交给大模型"）。
+     * 日语行里的 `SOS` / `QTE` / `BGM` 不在此列：那些就是缩写，照旧逐字母念；
+     * 两个字母的英文词（`no` / `me` …）也不在此列，它们在词典里有确定读音。
+     */
+    if ((!line || !RE_KANA_ANY.test(String(line))) && !(line && lineLooksRomaji(line))) {
+      var capsWord = String(word == null ? "" : word);
+      if (/^[A-Z]{2,4}$/.test(capsWord) && !EN_TWO_LETTER[capsWord.toLowerCase()]) {
+        var capsLow = capsWord.toLowerCase();
+        var enTable = typeof WKEnWords !== "undefined" ? WKEnWords.words : null;
+        if (!(enTable && enTable[capsLow])) {
+          var guessRomaji = null;
+          if (typeof WKReading !== "undefined" && WKReading.romajiToKatakana) {
+            try {
+              var gr = WKReading.romajiToKatakana(capsLow);
+              guessRomaji = gr && (typeof gr === "string" ? gr : gr.kana);
+            } catch (e) {
+              guessRomaji = null;
+            }
+          }
+          var guessKana = guessRomaji || letterNames(capsWord);
+          if (guessKana) return { kana: guessKana, source: guessRomaji ? "romaji" : "rule", confident: false };
+        }
+      }
     }
     var r = state.reader ? state.reader.read(word) : null;
     /*
