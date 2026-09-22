@@ -1,5 +1,5 @@
 /*
- * 集成测试：像 BetterNCM 那样把 7 个文件注入到一个页面里，
+ * 集成测试：像 BetterNCM 那样把 core 下的模块 + main.js 注入到一个页面里，
  * 提供 plugin / betterncm 全局桩，然后观察插件是否真的开始工作。
  *
  * 这是最接近真机的一层：manifest 的 injects 顺序、main.js 里的生命周期注册、
@@ -141,7 +141,7 @@ function baseText(el) {
 const PAIRS = (p) =>
   [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
 
-test("注入 7 个文件后，插件注册了 onLoad / onConfig 并导出 API", async () => {
+test("注入全部模块后，插件注册了 onLoad / onConfig 并导出 API", async () => {
   const env = bootPlugin();
   assert.strictEqual(env.listeners.load.length, 1, "应该注册了 onLoad");
   assert.strictEqual(env.listeners.config.length, 1, "应该注册了 onConfig");

@@ -1,5 +1,5 @@
-/*
- * Latin Katakana for BetterNCM —— 读音引擎
+﻿/*
+ * 西文字母片假名注音 (western-katakana) —— 读音引擎
  *
  * 把歌词里的拉丁字母转成片假名读音。两条完全不同的路子：
  *

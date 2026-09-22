@@ -3,7 +3,7 @@
 
 ---
 
-# 西文字母片假名注音 · Latin Katakana for BetterNCM
+# 西文字母片假名注音 · BetterNCM 插件
 
 在日语歌的歌词里, 给西文字母 (拉丁 / 西里尔 / 希腊) 上方标注片假名读音。
 
@@ -345,15 +345,16 @@ npm run build            # 产出 builds/western-katakana.plugin
 npm run install:plugin   # 顺便复制到 C:\betterncm\plugins
 ```
 
-## 三个插件一起用
+## 几个注音插件一起用
 
 | 插件 | 标什么 |
 | --- | --- |
 | [jp-furigana](https://github.com/Leleawa/jp-furigana) | 汉字 → 振假名 |
 | [片假名终结者](https://github.com/YXLEI0/katakana-terminator-betterncm) | 片假名 → 英文 |
+| [JapaneseFonts](https://github.com/MuttonString/Furigana) | 给日文歌换日文字体 |
 | 本插件 | 西文字母 → 片假名读音 |
 
-三者都会往同一行插节点, 所以 jp-furigana 需要打共存补丁 (同一份补丁三个插件共用)
+四家都会往同一行插节点（JapaneseFonts 是不插节点的例外，但它要判断"这是不是日文歌"），所以 jp-furigana 与 JapaneseFonts 各需要一处共存补丁
 
 补丁有两个版本, 我们注入的节点类名前缀跟着插件改名走过一轮:
 

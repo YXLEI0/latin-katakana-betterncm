@@ -1,5 +1,5 @@
-/*
- * Latin Katakana for BetterNCM —— 在线接口用量统计
+﻿/*
+ * 西文字母片假名注音 (western-katakana) —— 在线接口用量统计
  *
  * 单独记一份的原因：两层在线接口都会烧钱或吃配额（大模型按 token 计费、免费接口
  * 按次数限流），而它们各自的 stats() 只在内存里，重启就归零，也不记 token。
