@@ -745,7 +745,50 @@
    */
   var ACRONYM_WORD = {
     lv: "\u30EC\u30D9\u30EB", // レベル
+    // 用户点名：`OMG 情けない` 的 OMG 要展开成 oh my god（不是逐字母 オーエムジー）
+    omg: "\u30AA\u30FC\u30DE\u30A4\u30B4\u30C3\u30C9", // オーマイゴッド
   };
+
+  /*
+   * 掩码词（`T○itter`）：`○` 是**一个字被涂掉**，整串仍是一个词。
+   * 按"一个字母的通配"去词典里找，只有一个候选就按它读（t○itter → twitter →
+   * ツイッター）；找不出或不止一个就退回普通读法。
+   */
+  var maskCache = {};
+  function maskedReading(word) {
+    var raw = String(word == null ? "" : word);
+    if (!/[\u25CB\u25CF]/.test(raw)) return null;
+    if (maskCache[raw] !== undefined) return maskCache[raw];
+    var out = null;
+    try {
+      var dict = typeof WKDict !== "undefined" ? WKDict.words : null;
+      if (dict) {
+        var low = raw.toLowerCase();
+        var src = "";
+        for (var ci = 0; ci < low.length; ci++) {
+          var ch = low.charAt(ci);
+          if (/[\u25CB\u25CF]/.test(ch)) src += "[a-z]";
+          else if (ch >= "a" && ch <= "z") src += ch;
+        }
+        var re = new RegExp("^" + src + "$");
+        var hit = null;
+        var keys = Object.keys(dict);
+        for (var i = 0; i < keys.length; i++) {
+          if (!re.test(keys[i])) continue;
+          if (hit !== null && hit !== dict[keys[i]]) {
+            hit = null; // 不止一个候选：不猜
+            break;
+          }
+          hit = dict[keys[i]];
+        }
+        out = hit;
+      }
+    } catch (e) {
+      out = null;
+    }
+    maskCache[raw] = out;
+    return out;
+  }
 
   /*
    * 颜文字里的字母读的是**表情的音**，不是字母名 —— `:-b`（吐舌头）读 ボ（用户点名，
@@ -1323,6 +1366,9 @@
      */
     var acronymWord = ACRONYM_WORD[String(word == null ? "" : word).toLowerCase()];
     if (acronymWord) return { kana: acronymWord, source: "dict", confident: true };
+    // 掩码词（`T○itter`）：按通配去词典里找一个确定答案
+    var maskedKana = maskedReading(word);
+    if (maskedKana) return { kana: maskedKana, source: "dict", confident: true };
     /*
      * 西里尔全大写缩写逐字母读（`СССР` エスエスエスエル）—— 见 CYRILLIC_LETTER_KANA。
      * 排在俄语引擎前面：引擎会按正字法把 `СССР` 的三个 С 并成一个，读成 スル。

@@ -921,6 +921,27 @@ test("连字符串：被切断的重复音（wa- ウェ / ar- ア / ni- ネ）�
   );
 });
 
+test("缩写展开与掩码词：OMG オーマイゴッド、被涂掉一个字的 T○itter ツイッター", async () => {
+  // 用户两张截图：
+  //   ① `OMG 情けない 最早` 的 OMG 要**展开**成 oh my god，不是逐字母 オーエムジー；
+  //   ② `君へのT○itter` 的 `○` 是"一个字被涂掉"，整串仍是一个词 —— 按一个字母的通配
+  //      去词典里找（t○itter → twitter 唯一命中）→ ツイッター，而不是拆成 T + itter。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>OMG 情けない 最早</p></li>
+  <li class="line"><p>君へのT○itter</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(500);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const rubies = (p) => [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
+
+  assert.deepStrictEqual(rubies(ps[0]), [["OMG", "オーマイゴッド"]], "OMG 要展开：" + ps[0].innerHTML);
+  assert.deepStrictEqual(rubies(ps[1]), [["T○itter", "ツイッター"]], "掩码词整串读：" + ps[1].innerHTML);
+});
+
 test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {
   // 用户三张截图：`T氏にすべてを捧げましょう` 和 `T Is My Everything` 里的单字母 T
   // 一个注音都没有（该 ティー）；`半径300mmの体で必死に鳴いてる` 的 `mm` 没注音
