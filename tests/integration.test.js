@@ -871,6 +871,51 @@ test("拆行 DOM 里的单字母 / 颜文字里的 b / 点号记法是罗马字�
   assert.deepStrictEqual(midi, ["エム", "アイ", "ディー", "アイ"], "短的记号照旧逐字母：" + ps[3].innerHTML);
 });
 
+test("混排歌词：字母夹在假名中间读默认音；逐字 / 原文+翻译的 DOM 也要注上", async () => {
+  // 用户两张截图：
+  //   ① `三日月の舟で(らLa ラR ア 羅rA 乱)`：这几个字母是在给前面的假名配罗马字
+  //      （`らLa` = ララ、`ラR` = ララ、`羅rA` = ララ），所以 `ラR ア` 里的 R 读 ラ，
+  //      不是字母名 アール；
+  //   ② 另一首歌整页一个注音都没有：原文和中文翻译在同一个 <li> 的两个 <p> 里，
+  //      语境取长的那个（两块拼起来），翻译里那几个全角标点就把整行凑成了
+  //      "ASCII 图案"（符号 ≥ 6 个），于是 `ズ干Cャ` 整行被跳过。逐字歌词
+  //      （一个字一个 `<span>`）本来也因为语境退化成宿主自己那一两个字而漏标。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>三日月の舟で(らLa ラR ア 羅rA 乱)</p></li>
+  <li class="line"><p>(十枚)：、ズ干Cャ</p><p>（十枚）…、ズ干Cャ</p></li>
+  <li class="line"><p>タイプRの車 / のRって何だっけ</p></li>
+</ul></div>
+<div class="lyric"><div class="rnp-lyrics">
+  <div class="rnp-lyrics-line-karaoke"><span>(</span><span>十</span><span>枚</span><span>)</span><span>：</span><span>、</span><span>ズ</span><span>干</span><span>C</span><span>ャ</span></div>
+</div></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (el) =>
+    new Map(
+      [...el.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+
+  const first = pairsOf(ps[0]);
+  assert.strictEqual(first.get("La"), "ラ", "`らLa` 的 La 读 ラ：" + ps[0].innerHTML);
+  assert.strictEqual(first.get("R"), "ラ", "`ラR ア` 的 R 当假名用，读 ラ（不是 アール）：" + ps[0].innerHTML);
+  assert.strictEqual(first.get("rA"), "ラ", "`羅rA` 的 rA 读 ラ：" + ps[0].innerHTML);
+
+  assert.strictEqual(pairsOf(ps[1]).get("C"), "チ", "原文 + 翻译拼出来的语境别当成图案：" + ps[1].innerHTML);
+
+  const karaoke = env.document.querySelector("div.rnp-lyrics-line-karaoke");
+  assert.strictEqual(pairsOf(karaoke).get("C"), "チ", "逐字歌词（一个字一个 span）也要注上：" + karaoke.innerHTML);
+
+  // 反面：正常的型号写法不能被这条规则吃掉（`タイプRの車` 是 アール）
+  const third = [...env.document.querySelectorAll("ul.lyric li")[2].querySelectorAll("ruby.wk-ruby")].map(
+    (r) => r.querySelector(".wk-rt").textContent
+  );
+  assert.deepStrictEqual(third, ["アール", "アール"], "型号 / 单独的 R 仍是字母名：" + ps[3].innerHTML);
+});
+
 test("连字符串：被切断的重复音（wa- ウェ / ar- ア / ni- ネ）与 Ex-Otogibanashi 的分工", async () => {
   // 用户逐条点名：
   //   ① `wa-wa-wait` 里的 `wa-` 是在重复 wait 的开头音 → ウェ（不是单独一个 wa 的 ワ）；

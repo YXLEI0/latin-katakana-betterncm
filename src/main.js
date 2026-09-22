@@ -642,6 +642,38 @@
     return new RegExp("(?:" + CJK + esc + "|" + esc + CJK + ")").test(s);
   }
 
+  /*
+   * 单字母左右两边各是什么字（以及中间有没有空格）。
+   *
+   * 邻字优先用注音层从 DOM 上现取的（`token.after` / `token.before`）：逐字歌词
+   * 把一个字拆进各自的 `<span>`，`line`（整行文本）配 `token.end` 这种偏移量
+   * 根本对不上。控制台和测试直接调读音层时没有这些字段，退回行文本。
+   */
+  function letterAround(line, token) {
+    var out = { before: "", beforeSpaced: false, after: "", afterSpaced: false };
+    if (token && typeof token.after === "string") {
+      out.after = token.after;
+      out.afterSpaced = token.afterSpaced === true;
+      out.before = typeof token.before === "string" ? token.before : "";
+      out.beforeSpaced = token.beforeSpaced === true;
+      return out;
+    }
+    var s = String(line == null ? "" : line);
+    if (!s || !token || typeof token.end !== "number") return out;
+    var m = /^(\s*)([\s\S])/.exec(s.slice(token.end));
+    if (m) {
+      out.afterSpaced = m[1].length > 0;
+      out.after = m[2];
+    }
+    var head = s.slice(0, typeof token.start === "number" ? token.start : 0);
+    var m2 = /([\s\S])(\s*)$/.exec(head);
+    if (m2) {
+      out.beforeSpaced = m2[2].length > 0;
+      out.before = m2[1];
+    }
+    return out;
+  }
+
   /** 同一行里还有没有别的西文词（长度 ≥2）—— `T Is My Everything` 里的 T 是句子里的字母 */
   function lineHasOtherWord(word, line) {
     var s = String(line == null ? "" : line);
@@ -668,7 +700,16 @@
    * 是画用的，不是词。判据故意收得很紧，宁可漏判也不能把正常歌词整行跳过：① 这一行的西文词
    * 全是单个字母（正常歌词里几乎不会这样）；② 符号字符（非字母、非假名、非汉字、非空白）
    * 有 6 个以上。`(A, B)`（符号 3 个）和 `（V, W, A）`（符号 4 个）都不够，那两种照旧注音。
+   *
+   * 全角标点（`（）：、《》…`）不算符号：它们本来就是日文 / 中文正文里的标点，
+   * 而这里的 `line` 常常是"原文 + 中文翻译"拼起来的整行（网易云一个 `<li>` 里两个 `<p>`，
+   * 语境取长的那个）——翻译那一行随便几个括号顿号就能凑够 6 个符号，于是
+   * `ズ干Cャ` 这种"字母当假名用"的正经歌词被整行当成图案，一个注音都不给
+   * （用户截图里那首歌整页空白，就是这一条吃掉的）。ASCII 那一套（`( ) , . ! ?`）
+   * 照旧算符号，所以纯图案行和颜文字行不受影响。
    */
+  var JP_PUNCT = /[\u3000\u3001\u3002\uFF01\uFF08\uFF09\uFF0C\uFF0E\uFF1A\uFF1B\uFF1F\u300C\u300D\u300E\u300F\u3010\u3011\u3014\u3015\u300A\u300B\u3008\u3009\uFF3B\uFF3D\uFF5B\uFF5D\u2026\u2025\u30FB\uFF5E\u301C\uFF0D]/;
+
   function looksLikeAsciiArt(line) {
     var s = String(line == null ? "" : line);
     if (!s || typeof WKMatcher === "undefined") return false;
@@ -692,6 +733,7 @@
       // 数字也算"正文"（`100V と 5A と 30W の電源` 不能被当成图案）
       if (/[0-9\uFF10-\uFF19]/.test(ch)) continue;
       if (/[\u3041-\u3096\u30A1-\u30FA\u4E00-\u9FFF\u3005\u3006\u30FC]/.test(ch)) continue;
+      if (JP_PUNCT.test(ch)) continue;
       sym++;
     }
     return sym >= 6;
@@ -915,12 +957,17 @@
   };
   /** 小写假名（ゃゅょ / ァィゥェォ 这种，用来跟前面的辅音拼一拍） */
   var SMALL_KANA = /[\u3083\u3085\u3087\u3041\u3043\u3045\u3047\u3049\u30E3\u30E5\u30E7\u30A1\u30A3\u30A5\u30A7\u30A9]/;
+  /** 一个假名字（平假名 / 片假名 / 半角片假名） */
+  var KANA_CHAR = /[\u3041-\u3096\u30A1-\u30FA\uFF66-\uFF9D]/;
 
   /*
-   * 字母和小写假名**之间有空格**时（`ラR ァ`）：字母自己算一拍，读它的默认音 ——
-   * 用户点名 `R` 读 **ラ**（`Cゃ` / `Kゃ` 那种贴着的才读辅音那一拍 チ / キ）。
+   * 字母当假名用、但**不是**贴着写时候的默认音：`ラR ア` 的 R 读 **ラ**。
+   *
+   * 用户点名：`らLa ラR ア 羅rA 乱` 里那几个字母是在给前面的假名配罗马字
+   * （`ラR` = ララ），`R` 不该读字母名 アール。贴着写的那种（`Cゃ` / `Kゃ`）
+   * 另走 LETTER_CONSONANT_KANA 读辅音那一拍。
    */
-  var SPACED_LETTER_KANA = {
+  var LETTER_AS_KANA_DEFAULT = {
     r: "\u30E9", // ラ
     l: "\u30E9", // ラ
   };
@@ -1336,16 +1383,33 @@
       if (emoKana) return { kana: emoKana, source: "letters", confident: true };
     }
     /*
-     * 字母当假名用：`ズチCゃ` 的 C（读 チ）、`洒ツKゃ` 的 K（读 キ）、`ラR ァ` 的 R（读 リ）
-     * —— 判据是"这个单字母后面（可以夹空格）紧跟一个小写假名"（ゃゅょ / ァィゥェォ）。
+     * 字母当假名用：`ズチCゃ` 的 C（读 チ）、`洒ツKゃ` 的 K（读 キ）、`ラR ア` 的 R（读 ラ）
+     * —— 混排歌词里作者是拿拉丁字母给前面的假名配罗马字，不是在写英文单词。
+     *
+     * 两条判据：
+     *   ① 字母后面（可以夹空格）紧跟一个小写假名（ゃゅょ / ァィゥェォ）：
+     *      贴着的读辅音那一拍（`Cゃ` → チ），隔了空格的读默认音（`R ァ` → ラ）；
+     *   ② 字母夹在两个假名中间（`ラR ア`）：同样是当假名用，读默认音。
+     *      ② 只在"这一行还另有西文词"且字母至少一侧挨着空格时才认 —— 免得把
+     *      `タイプRの車` 这种正常的型号写法读成 ラ。
      */
-    if (/^[A-Za-z]$/.test(String(word == null ? "" : word)) && token && line && typeof token.end === "number") {
-      var tailAfter = String(line).slice(token.end);
-      var sm = /^(\s*)([\s\S])/.exec(tailAfter);
-      if (sm && SMALL_KANA.test(sm[2])) {
-        var lowLetter = String(word).toLowerCase();
-        var kanaForLetter = sm[1].length > 0 ? SPACED_LETTER_KANA[lowLetter] : LETTER_CONSONANT_KANA[lowLetter];
+    if (/^[A-Za-z]$/.test(String(word == null ? "" : word)) && token) {
+      var lowLetter = String(word).toLowerCase();
+      var around = letterAround(line, token);
+      if (around.after && SMALL_KANA.test(around.after)) {
+        var kanaForLetter = around.afterSpaced ? LETTER_AS_KANA_DEFAULT[lowLetter] : LETTER_CONSONANT_KANA[lowLetter];
         if (kanaForLetter) return { kana: kanaForLetter, source: "letters", confident: true };
+      }
+      if (
+        around.before &&
+        around.after &&
+        (around.afterSpaced || around.beforeSpaced) &&
+        KANA_CHAR.test(around.before) &&
+        KANA_CHAR.test(around.after) &&
+        lineHasOtherWord(word, line)
+      ) {
+        var defaultKana = LETTER_AS_KANA_DEFAULT[lowLetter];
+        if (defaultKana) return { kana: defaultKana, source: "letters", confident: true };
       }
     }
     /*

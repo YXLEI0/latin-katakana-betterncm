@@ -695,12 +695,21 @@
       }
     }
 
-    /** 往上找到"这一行"的元素（`li` 或 `.rnp-lyrics-line`） */
+    /**
+     * 往上找到"这一行"的元素（`li` 或 `.rnp-lyrics-line`）。
+     *
+     * RNP 的行 class 是带尾巴的（`rnp-lyrics-line-original` / `-romaji` /
+     * `-translated`，逐字歌词那块是 `rnp-lyrics-line-karaoke`），以前只认
+     * 光秃秃的 `rnp-lyrics-line`，于是**逐字歌词**里宿主找不到"这一行"，
+     * 语境退化成宿主自己那一两个字（逐字行一个字就是一个 `<span>`），
+     * `ズ干Cャ` 的 C 既看不出前面是假名、也看不出后面跟着 ャ，整行一个注音都没有
+     * （用户截图）。所以这里按前缀认，尾巴随便是什么。
+     */
     function lineElementOf(el) {
       var best = null;
       for (var p = el, d = 0; p && p.nodeType === 1 && d < 6; p = p.parentNode, d++) {
         var cls = typeof p.className === "string" ? p.className : "";
-        if (p.tagName === "LI" || /(^|\s)rnp-lyrics-line(\s|$)/.test(cls)) best = p;
+        if (p.tagName === "LI" || /(^|\s)rnp-lyrics-line[-\w]*(\s|$)/.test(cls)) best = p;
       }
       return best;
     }
@@ -785,6 +794,74 @@
       return "";
     }
 
+    /**
+     * 从 node 的 offset 处往后拼出**原始**文字（不跳空白，最多取 8 个字，可跨节点）。
+     *
+     * 和 charAfterToken 的区别：那个只回答"下一个非空白字是什么"，这里要连
+     * "中间有没有空格"一起回答 —— 读音层要分"贴着的 `Cゃ`"和"隔空格的 `R ァ`"。
+     * 逐字歌词里 `ズ干Cャ` 的 ャ 跟 C 不在同一个文本节点，只有跨节点拼才看得到。
+     */
+    function rawAfterText(node, offset) {
+      var out = "";
+      var n = node;
+      var at = offset;
+      for (var guard = 0; n && out.length < 8 && guard < 16; guard++) {
+        if (n.nodeType === 3) {
+          out += String(n.nodeValue || "").slice(at);
+        } else if (n.nodeType === 1 && !isSkippable(n)) {
+          out += visibleText(n);
+        }
+        if (out.length >= 8) break;
+        if (n.nextSibling) {
+          n = n.nextSibling;
+          at = 0;
+          continue;
+        }
+        var up = n.parentNode;
+        if (!up || up.nodeType !== 1 || up.tagName === "LI" || up.tagName === "P") break;
+        n = up.nextSibling;
+        at = 0;
+      }
+      return out;
+    }
+
+    /** rawAfterText 的反方向：往前拼**原始**文字（同样不跳空白、可跨节点） */
+    function rawBeforeText(node, offset) {
+      var out = "";
+      var n = node;
+      var at = offset;
+      for (var guard = 0; n && out.length < 8 && guard < 16; guard++) {
+        if (n.nodeType === 3) {
+          out = String(n.nodeValue || "").slice(0, at) + out;
+        } else if (n.nodeType === 1 && !isSkippable(n)) {
+          out = visibleText(n) + out;
+        }
+        if (out.length >= 8) break;
+        if (n.previousSibling) {
+          n = n.previousSibling;
+          at = n.nodeType === 3 ? String(n.nodeValue || "").length : 0;
+          continue;
+        }
+        var up = n.parentNode;
+        if (!up || up.nodeType !== 1 || up.tagName === "LI" || up.tagName === "P") break;
+        n = up.previousSibling;
+        at = n && n.nodeType === 3 ? String(n.nodeValue || "").length : 0;
+      }
+      return out;
+    }
+
+    /** 取一段原始文字里第一个非空白字；没有就返回空串 */
+    function firstVisible(s) {
+      var m = /\S/.exec(String(s == null ? "" : s));
+      return m ? m[0] : "";
+    }
+
+    /** 取一段原始文字里最后一个非空白字；没有就返回空串 */
+    function lastVisible(s) {
+      var str = String(s == null ? "" : s).replace(/\s+$/, "");
+      return str ? str.charAt(str.length - 1) : "";
+    }
+
     function annotateNode(node, region) {
       var text = node.nodeValue;
       // 长度 1 的文本节点也要看：逐字歌词/别的插件拆行时，单个字母就是它自己的节点
@@ -827,6 +904,23 @@
           if (charAfterToken(node, tokens[i].end) === ":" || charAfterToken(node, tokens[i].end) === "\uFF1A") {
             tokens[i].label = true;
           }
+        }
+        /*
+         * 单字母左右两边的字，连同"中间有没有空格"一起带给读音层（token.after /
+         * token.afterSpaced / token.before / token.beforeSpaced）。
+         *
+         * 为什么要在注音层算：`ズ干Cャ` = ズ干チャ、`ラR ア` = ララ 这类
+         * "拿字母当假名用"的写法，判据就是字母紧挨着什么字。而逐字歌词把每个字
+         * 拆进各自的 `<span>`，读音层拿到的 `line`（整行文本）+ 偏移量根本对不上，
+         * 只能由这里跨节点现取（用户截图：逐字歌词那几行一个注音都没有）。
+         */
+        if (tokens[i].text.length === 1) {
+          var afterRaw = rawAfterText(node, tokens[i].end);
+          var beforeRaw = rawBeforeText(node, tokens[i].start);
+          tokens[i].after = firstVisible(afterRaw);
+          tokens[i].afterSpaced = /^\s/.test(afterRaw);
+          tokens[i].before = lastVisible(beforeRaw);
+          tokens[i].beforeSpaced = /\s$/.test(beforeRaw);
         }
         if (matcher.looksReadable(tokens[i])) {
           /*
