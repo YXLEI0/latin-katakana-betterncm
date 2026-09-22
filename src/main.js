@@ -434,6 +434,8 @@
     lastResult: null,
     error: null,
     betterncmVersion: "",
+    // 整首专属读音表（见 SONG_READINGS，每轮扫描开始时按歌名/歌词重算）
+    songWords: null,
   };
 
   // ------------------------------------------------------------ 读音
@@ -821,13 +823,27 @@
   }
 
   /**
-   * **整句专属读音**：只有这一句歌词里的这个词这么读。
+   * **整首 / 整句专属读音**：这首歌（或这一句歌词）里的这个词就这么读。
    *
-   * 用户点名：`Xだけの"人マニア"` 的 X 指的是 Twitter（那首歌官方翻译那行写着
-   * `X(Twitter)`），要读 **ツイッター**；但"日语行里孤零零一个 X 一律读 Twitter"
-   * 太宽了 —— 用户要求**只在这一句歌词命中**，别处的 X 该是字母名（`X線` エックス線）
-   * 或者留白。所以按"词 + 整句形状"配对，命中才换读音。
+   * 两个作用域，都是"人工核过、不许别的层改"的读音：
+   *
+   * 1. **整首**（`SONG_READINGS`，用户要求"按这一首歌名做"）：按**歌名**（播放栏那行）
+   *    或者整首歌词里的识别词命中，命中后这首歌里的这些词一律按表读。
+   *    例：`夢現妄想世界`（夢限大みゅーたいぷ）把日语词写成罗马字，短横线是长音 ——
+   *    `MO-SO` モーソー（妄想）、`SO-ZO` ソーゾー（創造）、`KYO-SO` キョーソー（競争）、
+   *    `YUME` ユメ（夢）。没有这张表时：`ZO` 走罗马音层读成 ゾ、`KYO` 读成 キョ
+   *    （那个 ZO 还被换行拆到了下一行，模型也只看得到 `ZOは海をこえ`）。
+   *
+   * 2. **整句**（`LINE_READINGS`）：只有这一句歌词里的这个词这么读。
+   *    用户点名：`Xだけの"人マニア"` 的 X 指的是 Twitter（那首歌官方翻译那行写着
+   *    `X(Twitter)`），要读 **ツイッター**；但"日语行里孤零零一个 X 一律读 Twitter"
+   *    太宽了 —— 只在这一句歌词命中，别处的 X 该是字母名（`X線` エックス線）或者留白。
+   *
+   * 两处都按"词 + 形状"配对，命中才换读音；返回的读音带自己的来源名 `song`，
+   * 层序里它排在**所有层前面**（`layerRank("song")` 是 -1，在线层不会被咨询）。
    */
+  var SONG_READINGS = (typeof WKSongs !== "undefined" && WKSongs.list) || [];
+
   var LINE_READINGS = [{ word: "X", line: /X\s*だけの/, kana: "\u30C4\u30A4\u30C3\u30BF\u30FC" }];
 
   /** 这一句里有没有为这个词指定的专属读音（见 LINE_READINGS） */
@@ -840,6 +856,48 @@
       if (LINE_READINGS[i].line.test(s)) return LINE_READINGS[i].kana;
     }
     return null;
+  }
+
+  /** 歌名或整首歌词命中哪一条整首专属读音（都没有返回 null） */
+  function matchSongReading(title, lyrics) {
+    var t = String(title == null ? "" : title);
+    var l = String(lyrics == null ? "" : lyrics);
+    for (var i = 0; i < SONG_READINGS.length; i++) {
+      var e = SONG_READINGS[i];
+      if (e.title && t && e.title.test(t)) return e.words;
+      if (e.marker && l && e.marker.test(l)) return e.words;
+    }
+    return null;
+  }
+
+  /**
+   * 这一轮扫描时"整首专属读音"表是哪一张（换歌要重新算）。
+   *
+   * 歌名取播放栏那行（复用注音层认的那套选择器，见 annotate.js 的 TARGET_SELECTORS）；
+   * 拿不到歌名就只靠歌词里的识别词。结果按"歌名 + 歌词开头"缓存，避免每轮都重算。
+   */
+  function updateSongScope() {
+    if (!state.annotator) return;
+    var title = "";
+    var lyrics = "";
+    try {
+      var ts = state.annotator.findRegions("titles");
+      if (ts && ts.length) title = ts[0].textContent || "";
+    } catch (e) {
+      title = "";
+    }
+    try {
+      var ls = state.annotator.findRegions("lyrics");
+      var buf = [];
+      for (var i = 0; i < (ls ? ls.length : 0); i++) buf.push(ls[i].textContent || "");
+      lyrics = buf.join("\n");
+    } catch (e2) {
+      lyrics = "";
+    }
+    var key = title + "\u0000" + lyrics.slice(0, 4000);
+    if (songScopeCache.key === key) return;
+    songScopeCache = { key: key, words: matchSongReading(title, lyrics) };
+    state.songWords = songScopeCache.words;
   }
 
   /**
@@ -1062,6 +1120,15 @@
      * 那些字母是画图案用的（见 looksLikeAsciiArt 的说明）。
      */
     if (line && looksLikeAsciiArt(line)) return null;
+    /*
+     * **整首专属读音**（见 SONG_READINGS）：这首歌里这个词就这么读。
+     * 排在所有层前面 —— 它是人工核过的（`夢現妄想世界` 的 `ZO` 是 ゾー、
+     * `KYO` 是 キョー），连大模型也不该改（来源 `song` 的层序是 -1，在线层不被咨询）。
+     */
+    if (state.songWords) {
+      var songKana = state.songWords[String(word == null ? "" : word).toLowerCase()];
+      if (songKana) return { kana: songKana, source: "song", confident: true };
+    }
     /*
      * 大写单字母：成串的读字母名（`(A, B)` -> エー / ビー），**段标**（`A:` / `B:`）留白，
      * 孤零零一个的照旧 —— `A` 是冠词（ア）、`I` 是代词（アイ），
@@ -1393,6 +1460,8 @@
    * 结论按歌词文本缓存：同一首歌每轮扫描都要问一次，没必要每次重算。
    */
   var japaneseSongCache = { key: "", value: true };
+  /** 整首专属读音（见 SONG_READINGS）的缓存：同一首歌不必每轮重算 */
+  var songScopeCache = { key: null, words: null };
   function songLooksJapanese() {
     if (!state.annotator || !state.annotator.findRegions) return true;
     var regions = [];
@@ -1443,6 +1512,11 @@
     }
     var t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
+      /*
+       * 先定"整首专属读音"是哪一张（见 SONG_READINGS）：换歌之后这一句会重算，
+       * 之后注音层查到的 `state.songWords` 就是这首歌的。
+       */
+      updateSongScope();
       var regions = null;
       if (config.scope === "lyrics") regions = state.annotator.findRegions("lyrics");
       else if (config.scope === "titles") regions = state.annotator.findRegions("titles");

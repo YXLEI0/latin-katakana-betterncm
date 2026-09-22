@@ -19,6 +19,7 @@
 			{ "file": "core/enwords.js" },
 			{ "file": "core/reading.js" },
 			{ "file": "core/loan.js" },
+			{ "file": "core/songs.js" },
 			{ "file": "core/langs.js" },
 			{ "file": "core/correct.js" },
 			{ "file": "core/llm.js" },

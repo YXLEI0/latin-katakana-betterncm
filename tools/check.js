@@ -169,6 +169,7 @@ const WANT_ORDER = [
   "core/enwords.js",
   "core/reading.js",
   "core/loan.js",
+  "core/songs.js",
   "core/langs.js",
   "core/correct.js",
   "core/llm.js",
@@ -305,6 +306,32 @@ console.log("[4.6/7] 官方歌名读音");
         fail("tools/seed-words-sekai.js 与 vendor/sekai/musics.json 不一致（跑 npm run build:sekai）");
       } else {
         ok("官方歌名读音与 tools/vendor/sekai/musics.json 一致（" + require(SEKAI_SEED).length + " 条）");
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------- 4.7 整首专属读音
+
+console.log("[4.7/7] 整首专属读音");
+{
+  const SONGS = path.join(SRC, "core", "songs.js");
+  if (!fs.existsSync(SONGS)) {
+    fail("缺少 src/core/songs.js（跑 npm run build:songs）");
+  } else {
+    let want = null;
+    try {
+      const g = require("./build-song-readings.js").generate();
+      want = require("./build-song-readings.js").content(g.entries);
+    } catch (e) {
+      fail("tools/build-song-readings.js 跑不动：" + e.message);
+    }
+    if (want !== null) {
+      if (want !== fs.readFileSync(SONGS, "utf8")) {
+        fail("src/core/songs.js 与 tools/song-readings-hand.js + vendor/sekai 不一致（跑 npm run build:songs）");
+      } else {
+        const mod = require(SONGS);
+        ok("整首专属读音与手工表 + tools/vendor/sekai/musics.json 一致（" + mod.count + " 条）");
       }
     }
   }

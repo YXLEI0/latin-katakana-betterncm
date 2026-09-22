@@ -133,3 +133,35 @@ test("官方歌名读音（seed-words-sekai.js）都在词典里，且没被别�
   assert.strictEqual(DICT.needle, "ニードル");
   assert.strictEqual(DICT.oneself, "ワンセルフ");
 });
+
+test("整首专属读音表（core/songs.js）：键值格式、切分与手工条目", () => {
+  // 这张表是"这一首歌里这些词就这么读"，由 tools/build-song-readings.js 生成
+  // （vendored 官方歌名切开 + tools/song-readings-hand.js 手工条目）。
+  // 纪律：键是小写（可带撇号 / 连字符）、值是纯片假名；每条都得有 title 或 marker，
+  // 否则它永远命不中（等于白写）。
+  const songs = require(path.join(ROOT, "src", "core", "songs.js"));
+  assert.ok(songs && Array.isArray(songs.list) && songs.list.length > 5, "整首读音表不该是空的");
+  assert.strictEqual(songs.count, songs.list.length);
+  const bad = [];
+  for (const e of songs.list) {
+    if (!(e.title instanceof RegExp) && !(e.marker instanceof RegExp)) {
+      bad.push("既没 title 也没 marker：" + JSON.stringify(e.words));
+      continue;
+    }
+    const keys = Object.keys(e.words || {});
+    if (!keys.length) bad.push("空词表：" + e.title);
+    for (const k of keys) {
+      if (!/^[a-z][a-z'\-]*$/.test(k)) bad.push("键不是小写英文：" + k + "（" + e.title + "）");
+      if (!RE_KANA.test(e.words[k])) bad.push("读音不是纯片假名：" + k + " -> " + e.words[k]);
+    }
+  }
+  assert.deepStrictEqual(bad.slice(0, 5), [], "整首读音表有格式问题：" + bad.length + " 条");
+
+  // 用户截图那首歌：整首表命中的是"日语词写成罗马字 + 短横线是长音"
+  const mugen = songs.list.find((e) => e.marker && e.marker.test("夢限大 MO-SOは風にのり"));
+  assert.ok(mugen, "夢現妄想世界 那条应当在表里（按歌词识别词）");
+  assert.strictEqual(mugen.words.mo, "モー");
+  assert.strictEqual(mugen.words.zo, "ゾー", "ZO 是 ゾー（罗马音层会给 ゾ）");
+  assert.strictEqual(mugen.words.kyo, "キョー", "KYO 是 キョー");
+  assert.strictEqual(mugen.words.yume, "ユメ");
+});

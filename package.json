@@ -14,6 +14,7 @@
     "test:serial": "node tests/letters.test.js && node tests/reading.test.js && node tests/langs.test.js && node tests/sljfaq-words.test.js && node tests/dict.test.js && node tests/annotate.test.js && node tests/correct.test.js && node tests/llm.test.js && node tests/usage.test.js && node tests/learn.test.js && node tests/promote.test.js && node tests/integration.test.js && node tests/patch.test.js",
     "build:loan": "node tools/build-loan.js",
     "build:sekai": "node tools/build-sekai.js",
+    "build:songs": "node tools/build-song-readings.js",
     "patch:fonts": "node tools/patch-japanese-fonts-plugin.js",
     "promote:learned": "node tools/promote-learned.js",
     "build:dict:llm": "node tools/expand-dict-llm.js",

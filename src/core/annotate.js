@@ -2018,6 +2018,7 @@
       colorBySource
         ? [
             "ruby.wk-src-dict > .wk-rt { color: #46d17e !important; }", // 离线词典：最可信，绿
+            "ruby.wk-src-song > .wk-rt { color: #2fd6a8 !important; }", // 整首/整句专属读音（人工核过）：青绿
             "ruby.wk-src-learned > .wk-rt { color: #2fae7a !important; }", // 模型答案沉淀成的词条：深绿（同属"离线词条"）
             "ruby.wk-src-letters > .wk-rt { color: #3fb6d8 !important; }", // 记号 / 字母名：青
             "ruby.wk-src-romaji > .wk-rt { color: #6f8ff0 !important; }", // 罗马音：蓝

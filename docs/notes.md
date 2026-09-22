@@ -127,7 +127,18 @@
 | [Project Sekai 主数据库](https://pjsekai.moe/#/music/803) (`sekai-world/sekai-master-db-diff` 的 `musics.json`) | **单个西文词**的歌名的官方读音 (`Nostalogic` → ノスタロジック、`CHAOS` → カオス、`ONESELF` → ワンセルフ) | `tools/seed-words-sekai.js` (生成物, `npm run build:sekai`) |
 | [sci.lang.japan FAQ: English words from Japanese](https://www.sljfaq.org/afaq/japanese-in-english.html) | 日语来源的英文词在日语歌词里的读法 (`kudzu` → クズ、`honcho` → ハンチョウ、`rickshaw` → ジンリキシャ) | `tools/seed-words.js` 的人工段 |
 
-两批都是"人工/官方核过"的性质, 所以排在我们自己的英文音译规则前面 (`build-dict` 的优先级: 人工 > 官方歌名 > 运行期沉淀 > 大模型批量)。多词歌名 (如 `the EmpErroR` 官方读 ジエンペラー) **故意不收**: 官方读音是整首歌名的, 没法反推哪一拍属于哪个词, 硬拆会把标题里的梗当成通用读音
+两批都是"人工/官方核过"的性质, 所以排在我们自己的英文音译规则前面 (`build-dict` 的优先级: 人工 > 官方歌名 > 运行期沉淀 > 大模型批量)。多词歌名 (如 `the EmpErroR` 官方读 ジエンペラー) **不进通用词典**: 官方读音是整首歌名的, 没法反推哪一拍属于哪个词, 硬拆会把标题里的梗当成通用读音 —— 它们走下面那一档 (只在那一首歌里生效)
+
+### 整首 / 整句专属读音 (`src/core/songs.js` + main.js 的 `LINE_READINGS`)
+
+有些读音**只在这一首歌里成立**, 放进通用词典会污染别的歌; 反过来, 单看一行也判不出来 (歌词把词换行拆开了)。这一档就是为它们准备的:
+
+| 作用域 | 判据 | 例子 |
+| --- | --- | --- |
+| **整首** (`WKSongs.list` / `core/songs.js`) | 歌名 (播放栏那行) 命中, 或整首歌词里出现识别词 | `夢現妄想世界` (夢限大みゅーたいぷ): 歌词把日语词写成罗马字、短横线是长音 —— `MO-SO` モーソー (妄想) / `SO-ZO` ソーゾー (創造) / `KYO-SO` キョーソー (競争) / `YUME` ユメ (夢)。没有这条时 `ZO` 被罗马音层读成 ゾ、`KYO` 读成 キョ, 而且 `SO-ZO` 被换行拆开 (上一行结尾 `SO-` / 下一行 `ZOは海をこえ`), 单行判不出来 |
+| **整句** (main.js 的 `LINE_READINGS`) | 词 + 整句形状 | `Xだけの"人マニア"` 的 X 读 ツイッター (官方翻译那行写着 `X(Twitter)`) |
+
+命中后的读音来源是 `song` (`layerRank("song")` 是 -1, 排在**所有层前面**, 大模型也不会被咨询), 排障着色是青绿。表格由 `npm run build:songs` 生成: 一部分来自 `tools/vendor/sekai/musics.json` 里**多词歌名**的官方读音 (DP + 假名编辑距离按词切开, 切分不可信的整条不要), 一部分来自手工的 `tools/song-readings-hand.js` (同一条歌名以手工为准)。切错的代价被限制在**那一首歌**里 —— 这也是它单独一档、而不并进词典的原因
 
 
 ### 顺序为什么默认是「词典 > 罗马音 > 在线 > 规则」
@@ -637,6 +648,8 @@ tools/
   vendor/loan/*.txt   sljfaq 借词表原始数据 (带来源 URL 与抓取日期)
   build-sekai.js      由 tools/vendor/sekai/musics.json 生成官方歌名读音
   vendor/sekai/*.json Project Sekai 主数据库里含西文字母的歌名 (带来源)
+  build-song-readings.js  生成 src/core/songs.js (整首专属读音: 官方多词歌名切分 + 手工)
+  song-readings-hand.js   手工的整首/整句专属读音条目
   patch-japanese-fonts*.js  JapaneseFonts 共存补丁 (它把我们的片假名当成日文歌)
   promote-learned.js  运行期素材筛选 (→ seed-words-learned.js)
   seed-words.js       人工种子词表
