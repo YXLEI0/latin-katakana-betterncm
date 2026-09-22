@@ -152,6 +152,29 @@
   }
 
   /**
+   * 这个单字母是不是**颜文字里的那个字母**（`:-b` / `;-b` / `:o`）—— 眼睛符号在它前面。
+   *
+   * 用户截图：`:-b ;-b boy, :-b ;-b` 里的 `b` 希望照样注音（ビー）。它和 `A.` 那种
+   * "句尾粘着句号的单字母不标"拼写上都叫"粘着分隔符"，区别在粘的是什么：
+   * 冒号/分号是表情符号的眼睛，这种字母是歌词里唱出来的；句号/引号那种是排版符号。
+   * 这里只标出"是颜文字字母"，标不标、读什么还是交给 main.js 按整行判。
+   */
+  function isEmoticonLetter(text, start, end) {
+    var before = start > 0 ? text.charAt(start - 1) : "";
+    var before2 = start > 1 ? text.charAt(start - 2) : "";
+    var after = end < text.length ? text.charAt(end) : "";
+    var after2 = end + 1 < text.length ? text.charAt(end + 1) : "";
+    var EYES = ":\uFF1A;\uFF1B";
+    // `:-b`（眼睛 + 一道横线 + 字母）和 `:b` 都算；注意别用空字符串去 indexOf（那会返回 0）
+    return (
+      (!!before && EYES.indexOf(before) >= 0) ||
+      (!!before2 && EYES.indexOf(before2) >= 0) ||
+      (!!after && EYES.indexOf(after) >= 0) ||
+      (!!after2 && EYES.indexOf(after2) >= 0)
+    );
+  }
+
+  /**
    * 切成一个个词，返回 [{ text, start, end, norm, glued, notation }]。
    *
    * norm 是拿去查读音的形式：小写、去掉撇号连字符，查表和音译都用它。保留原始
@@ -206,6 +229,40 @@
        * 因为记号在 `'` 前面就切断了，剩下一个孤零零的 `m` 没人管。
        */
       if (RE_NOTATION_WHOLE.test(raw)) {
+        /*
+         * 有些点号记法其实是**罗马字单词**拆开写的：`K・A・I・S・A・N` 唱的是 カイサン
+         * （官方罗马音那行写的正是 KAISAN，用户截图）。这种整串交给罗马音层，不逐字母念。
+         * 判据：拼起来全是字母、≥5 个字母、罗马音层切得出 ≥3 拍 ——
+         * 短的（`M・I・D・I` / `D/N/A` / `A.B.C`）照旧逐字母读字母名。
+         */
+        var flat = raw.replace(/[^A-Za-z]/g, "");
+        if (flat.length >= 5 && typeof WKReading !== "undefined" && WKReading.romajiToKatakana) {
+          var asRomaji = null;
+          try {
+            var rr = WKReading.romajiToKatakana(flat.toLowerCase());
+            asRomaji = rr && (typeof rr === "string" ? rr : rr.kana);
+          } catch (e) {
+            asRomaji = null;
+          }
+          if (asRomaji && asRomaji.length >= 3) {
+            out.push({
+              text: raw,
+              start: start,
+              end: end,
+              norm: normalize(raw),
+              glued: false,
+              emoticon: false,
+              notation: false,
+              afterDigit: start > 0 && /[0-9\uFF10-\uFF19]/.test(text.charAt(start - 1)),
+              label: false,
+              script: scriptOf(raw),
+              diacritic: /[^\x00-\x7F]/.test(raw),
+              romajiWord: true,
+            });
+            i = end;
+            continue;
+          }
+        }
         var tail = "";
         var tm = /^['\u2019](?:m|s|re|ll|ve|d)(?![A-Za-z])/i.exec(text.slice(end));
         if (tm) tail = tm[0];
@@ -274,6 +331,8 @@
         // 单字母且粘着分隔符：只有没组成记号时才会走到（句尾那个孤零零的
         // `A.` 就是），那种不标
         glued: raw.length === 1 ? isGluedLetter(text, start, end) : false,
+        // 颜文字里的字母（`:-b` 的 b）：粘的分隔符是表情的眼睛，别按"A. 那种"挡掉
+        emoticon: raw.length === 1 ? isEmoticonLetter(text, start, end) : false,
         notation: false,
         // 紧跟在数字后面（`300mm` 的 mm），多半是单位词，见 looksReadable
         afterDigit: start > 0 && /[0-9\uFF10-\uFF19]/.test(text.charAt(start - 1)),
@@ -376,8 +435,11 @@
       return /^[BCDFGHJKLMNPQRSTVWXYZ]{2,3}$/.test(token.text);
     }
     if (token.norm.length === 1) {
-      // 粘在分隔符上的单字母还是不算词（`&A&`、`A.`）
-      if (token.glued === true) return false;
+      // 粘在分隔符上的单字母还是不算词（`&A&`、`A.`）；颜文字里的那个字母除外
+      // （`:-b` 的 b —— 用户点名要它注音，见 isEmoticonLetter）
+      if (token.glued === true && token.emoticon !== true) return false;
+      // 颜文字里的那个字母（`:-b` 的 b）：交给读音层按整行判
+      if (token.emoticon === true) return true;
       /*
        * 大写的单个字母（`(A, B)` / `B面` / `O型`）可能是字母名，也可能是英文冠词 A，
        * 光看这个词分不出来，所以这里放行，由读音层按整行判：同一行里成串的大写

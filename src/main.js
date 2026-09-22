@@ -1181,6 +1181,21 @@
      * 孤零零一个的照旧 —— `A` 是冠词（ア）、`I` 是代词（アイ），
      * 别的（`B`、`C`…）没法判，还是留白（返回 null 表示"这词不标"）。
      */
+    /*
+     * 颜文字里的那个单字母（`:-b ;-b boy, :-b ;-b` 的 b）：用户点名要标。
+     * 只在"这一行还有别的西文词"时读字母名（那种行是歌词，不是纯颜文字行）。
+     */
+    if (
+      token &&
+      token.emoticon === true &&
+      /^[A-Za-z]$/.test(String(word == null ? "" : word)) &&
+      line &&
+      lineHasOtherWord(word, line)
+    ) {
+      var emoKana =
+        typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[String(word).toLowerCase()] : null;
+      if (emoKana) return { kana: emoKana, source: "letters", confident: true };
+    }
     if (/^[A-Z]$/.test(String(word == null ? "" : word))) {
       /*
        * 呼语 `O`（`O Chrysalis` / `O love`）读 オー。
@@ -1303,6 +1318,21 @@
         cyr += ck;
       }
       if (cyr) return { kana: cyr, source: "letters", confident: true };
+    }
+    /*
+     * 点号记法里的**罗马字单词**（`K・A・I・S・A・N` = カイサン，标记见 letters.js 的
+     * romajiWord）：整串交给罗马音层，不按记号逐字母念字母名。
+     */
+    if (token && token.romajiWord === true && typeof WKReading !== "undefined" && WKReading.romajiToKatakana) {
+      var flatWord = String(word == null ? "" : word).replace(/[^A-Za-z]/g, "").toLowerCase();
+      var asRomaji = null;
+      try {
+        var rr = WKReading.romajiToKatakana(flatWord);
+        asRomaji = rr && (typeof rr === "string" ? rr : rr.kana);
+      } catch (e) {
+        asRomaji = null;
+      }
+      if (asRomaji) return { kana: asRomaji, source: "romaji" };
     }
     var r = state.reader ? state.reader.read(word) : null;
     /*

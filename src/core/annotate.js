@@ -705,6 +705,22 @@
       return best;
     }
 
+    /**
+     * 判断语境用哪段文字：宿主自己的可见原文，宿主太短就用**整行**的。
+     *
+     * 为什么要退到整行：网易云把一行歌词按词/字拆成好几个 `<span>`（逐字歌词、
+     * 或者别的注音插件给某个字包了 `<ruby>`），这时单个词的宿主可能就是 `T` 自己 ——
+     * 语境里没有假名，"T氏" 这类**贴日文才读字母名**的判据就全失效了
+     * （用户截图：`T氏にすべてを捧げましょう` 的 T 一直没注音）。
+     * 注音与 relabel 两边都走这个函数，语境才会一致（大模型那层按「词 + 语境」缓存）。
+     */
+    function contextOf(host, fallbackText) {
+      var own = host && host.isConnected ? visibleText(host) : "";
+      var line = host ? enclosingLineText(host) : null;
+      if (line && line.length > own.length) return line;
+      return own || fallbackText || "";
+    }
+
     /*
      * 这一行是不是夹在署名块中间的一行（前后紧挨着的都是署名行）。
      *
@@ -739,7 +755,9 @@
 
     function annotateNode(node, region) {
       var text = node.nodeValue;
-      if (!text || text.length < 2) return false;
+      // 长度 1 的文本节点也要看：逐字歌词/别的插件拆行时，单个字母就是它自己的节点
+      // （`T氏` 的 T），按"太短就跳过"会把它整段漏掉。
+      if (!text) return false;
       if (!matcher.hasReadable(text)) return false;
 
       var tokens = matcher.scan(text);
@@ -763,7 +781,7 @@
        * 宿主的可见原文在注音前后不变（我们的注音不算底字），拿它当语境最稳，
        * 而且对模型来说信息更全（整行而不是半截）。
        */
-      var context = hostMaybe && hostMaybe.isConnected ? visibleText(hostMaybe) : text;
+      var context = contextOf(hostMaybe, text);
       for (var i = 0; i < tokens.length; i++) {
         var g = null;
         var src = null;
@@ -1256,7 +1274,7 @@
              * 语境要和注音时用的一致（那次用的是宿主的可见原文）——
              * 换别的东西当语境会让缓存键对不上、白白重问一次。
              */
-            var got = lookup(word, visibleText(host), tokenAt(el, word));
+            var got = lookup(word, contextOf(host, word), tokenAt(el, word));
             if (typeof got === "string") {
               gloss = got;
             } else if (got && got.kana) {
@@ -1796,7 +1814,10 @@
 
         // 每次重新读值：上面可能刚把原文写回来
         var text = node.nodeValue || "";
-        if (text.length < 2) continue;
+        // 单个字母的节点也要看（逐字歌词、别的插件拆行时 `T氏` 的 T 就是这种），
+        // 只把"连一个可读词都没有"的短节点挡掉
+        if (!text) continue;
+        if (text.length < 2 && !matcher.hasReadable(text)) continue;
         if (RE_CREDIT.test(text) || RE_CREDIT_HARD.test(text)) continue; // 制作信息行跳过
         /*
          * 制作信息行被拆成好几个节点时（RNP 常见），碎片本身不像制作信息 ——

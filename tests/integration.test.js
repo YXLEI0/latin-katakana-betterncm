@@ -832,6 +832,45 @@ test("缩写与单字母的四张截图：LV レベル / Я ヤー / A A A A A �
   assert.strictEqual(list.get("A"), "アンペア");
 });
 
+test("拆行 DOM 里的单字母 / 颜文字里的 b / 点号记法是罗马字单词", async () => {
+  // 用户三张截图：
+  //   ① `T氏にすべてを捧げましょう` 的 T 一直没注音 —— 真机上行被拆成了好几个节点
+  //      （逐字歌词，或者别的注音插件给 `氏` 包了 `<ruby>`），T 自己成了一个长度 1 的
+  //      文本节点，被"太短就跳过"那条挡掉了，而且语境里也没有假名；
+  //   ② `:-b ;-b boy, :-b ;-b` 里的 b 没注音 —— 它算"粘着分隔符的单字母"，被当成
+  //      `A.` 那种排版噪声；用户要它标（ビー）；
+  //   ③ `K・A・I・S・A・N!` 被逐字母念成 ケーエー…，官方罗马音那行写的是 KAISAN ——
+  //      拼起来是罗马字单词的记法整串交给罗马音层（カイサン），短的（`M・I・D・I`）
+  //      照旧逐字母。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p><span class="fg-line">T<ruby class="fg-ruby">氏<rt>し</rt></ruby>にすべてを捧げましょう</span></p></li>
+  <li class="line"><p>:-b ;-b boy, :-b ;-b</p></li>
+  <li class="line"><p>K・A・I・S・A・N!</p></li>
+  <li class="line"><p>M・I・D・I</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const pairsOf = (p) =>
+    new Map(
+      [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
+    );
+
+  assert.strictEqual(pairsOf(ps[0]).get("T"), "ティー", "拆行之后 T 也要注上：" + ps[0].innerHTML);
+  const bs = [...ps[1].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
+  assert.deepStrictEqual(
+    bs,
+    [["b", "ビー"], ["b", "ビー"], ["boy", "ボーイ"], ["b", "ビー"], ["b", "ビー"]],
+    "颜文字里的 b 要注音：" + ps[1].innerHTML
+  );
+  assert.strictEqual(pairsOf(ps[2]).get("K・A・I・S・A・N"), "カイサン", "整串是罗马字单词：" + ps[2].innerHTML);
+  const midi = [...ps[3].querySelectorAll("ruby.wk-ruby")].map((r) => r.querySelector(".wk-rt").textContent);
+  assert.deepStrictEqual(midi, ["エム", "アイ", "ディー", "アイ"], "短的记号照旧逐字母：" + ps[3].innerHTML);
+});
+
 test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {
   // 用户三张截图：`T氏にすべてを捧げましょう` 和 `T Is My Everything` 里的单字母 T
   // 一个注音都没有（该 ティー）；`半径300mmの体で必死に鳴いてる` 的 `mm` 没注音
