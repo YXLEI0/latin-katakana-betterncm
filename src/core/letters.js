@@ -315,7 +315,10 @@
             end: segStart + seg.text.length,
             norm: normalize(seg.text),
             glued: false,
+            emoticon: false,
             notation: false,
+            // 连字符串里的一段（`Ex-Otogibanashi` 的 Ex）：读音层要靠它决定"逐字母还是罗马音"
+            chain: true,
             script: scriptOf(seg.text),
             diacritic: /[^\x00-\x7F]/.test(seg.text),
           });

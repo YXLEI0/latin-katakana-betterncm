@@ -871,6 +871,56 @@ test("拆行 DOM 里的单字母 / 颜文字里的 b / 点号记法是罗马字�
   assert.deepStrictEqual(midi, ["エム", "アイ", "ディー", "アイ"], "短的记号照旧逐字母：" + ps[3].innerHTML);
 });
 
+test("连字符串：被切断的重复音（wa- ウェ / ar- ア / ni- ネ）与 Ex-Otogibanashi 的分工", async () => {
+  // 用户逐条点名：
+  //   ① `wa-wa-wait` 里的 `wa-` 是在重复 wait 的开头音 → ウェ（不是单独一个 wa 的 ワ）；
+  //   ② `ar-ar-ar-ar` 里的 `ar-` → ア（不是字母名 アール）；
+  //   ③ `Ni-ni-ni-ni-ni-` 里的 `ni-` → ネ；
+  //   ④ `Ex-Otogibanashi`：`Ex` 罗马音层切不出来 → 逐字母 イーエックス，
+  //      后半 `Otogibanashi` 交给罗马音层 → オトギバナシ（规则层会读成 …スヒ）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>the process (wa-wa-wait)</p></li>
+  <li class="line"><p>Up, up, ar-ar-ar-ar</p></li>
+  <li class="line"><p>"go", why night? Ni-ni-ni-ni-ni-</p></li>
+  <li class="line"><p>Ex-Otogibanashi</p></li>
+  <li class="line"><p>Looser-Krankheit-Was</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const rubies = (p) => [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
+
+  assert.deepStrictEqual(
+    rubies(ps[0]).slice(-3),
+    [["wa", "ウェ"], ["wa", "ウェ"], ["wait", "ウェイト"]],
+    "wa- 是在重复 wait 的开头音：" + ps[0].innerHTML
+  );
+  assert.deepStrictEqual(
+    rubies(ps[1]).slice(-4),
+    [["ar", "ア"], ["ar", "ア"], ["ar", "ア"], ["ar", "ア"]],
+    "ar- 读 ア：" + ps[1].innerHTML
+  );
+  assert.deepStrictEqual(
+    rubies(ps[2]).slice(-5),
+    [["Ni", "ネ"], ["ni", "ネ"], ["ni", "ネ"], ["ni", "ネ"], ["ni", "ネ"]],
+    "ni- 读 ネ：" + ps[2].innerHTML
+  );
+  assert.deepStrictEqual(
+    rubies(ps[3]),
+    [["Ex", "イーエックス"], ["Otogibanashi", "オトギバナシ"]],
+    "Ex 逐字母、后半走罗马音：" + ps[3].innerHTML
+  );
+  // 反面：整行是德语时，连字符串归德语引擎管（别被罗马音/字母名那条抢走）
+  const de = rubies(ps[4]).map((r) => r[1]);
+  assert.ok(
+    de.indexOf("ワス") < 0 && de.indexOf("ダブリューエーエス") < 0,
+    "德语行照旧走德语引擎：" + ps[4].innerHTML
+  );
+});
+
 test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {
   // 用户三张截图：`T氏にすべてを捧げましょう` 和 `T Is My Everything` 里的单字母 T
   // 一个注音都没有（该 ティー）；`半径300mmの体で必死に鳴いてる` 的 `mm` 没注音

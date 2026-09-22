@@ -756,6 +756,18 @@
   };
 
   /*
+   * 连字符**切断**的片段读法（`wa-wa-wait` 的 `wa-`、`ar-ar-ar-ar` 的 `ar-`、
+   * `Ni-ni-ni-ni-ni-` 的 `ni-`）：用户逐条点名 —— 这些片段不是在念字母或单词，
+   * 是在重复那个音的开头，所以 `wa-` ウェ、`ar-` ア、`ni-` ネ
+   * （单独一个 `wa` 还是 ワ、`ar` 还是 アール，只有被连字符切断时才按这张表读）。
+   */
+  var DASH_FRAGMENT_KANA = {
+    wa: "\u30A6\u30A7", // ウェ
+    ar: "\u30A2", // ア
+    ni: "\u30CD", // ネ
+  };
+
+  /*
    * 孤零零一个希腊字母（不在希腊语行上时）：读日语里通行的字母名 / 单位读法。
    *
    * 用户截图 `無限増幅回路（Ω）` 里的 Ω 是电阻单位，日语读 オーム（不是 オメガ）。大写 Ω 按单位，
@@ -1329,6 +1341,41 @@
         cyr += ck;
       }
       if (cyr) return { kana: cyr, source: "letters", confident: true };
+    }
+    /*
+     * 连字符串里的一段（`Ex-Otogibanashi`、`Looser-Krankheit-Was`）：
+     *   ① 罗马音层切得干净就按罗马字读 —— 用户点名 `Ex-Otogibanashi` 的**后半进罗马音**
+     *      （`Otogibanashi` → オトギバナシ，规则层会读成 …スヒ）；
+     *   ② 切不出来的短片段（`Ex`）逐字母读字母名 → イーエックス。
+     * 外语行（德语那种）不插队：那些片段归语种引擎管。
+     */
+    if (token && token.chain === true) {
+      var chainWord = String(word == null ? "" : word);
+      // 用户点名的"被连字符串起来的重复音"（`wa-` ウェ / `ar-` ア / `ni-` ネ）：
+      // 与语种无关，命中就按表读
+      var fragKana = DASH_FRAGMENT_KANA[chainWord.toLowerCase()];
+      if (fragKana) return { kana: fragKana, source: "dict", confident: true };
+      var chainLang = lineLang(line);
+      // 真正的语种行（德 / 法 / 俄…）不插队：那些片段归语种引擎管；
+      // 拉丁语和斯瓦希里语的判定对"罗马字标题"太容易命中，放它们进来
+      if (!chainLang || chainLang === "la" || chainLang === "sw") {
+        var chainRomaji = null;
+        if (typeof WKReading !== "undefined" && WKReading.romajiToKatakana) {
+          try {
+            var cr = WKReading.romajiToKatakana(chainWord.toLowerCase());
+            chainRomaji = cr && (typeof cr === "string" ? cr : cr.kana);
+          } catch (e) {
+            chainRomaji = null;
+          }
+        }
+        if (chainRomaji) return { kana: chainRomaji, source: "romaji" };
+        // 罗马音层切不出来的**短片段**（`Ex` イーエックス）逐字母读；
+        // 别把正常的词（`Was`）拼成字母名
+        if (/^([A-Za-z]{1,2}|[A-Z]{2,3})$/.test(chainWord)) {
+          var chainNames = letterNames(chainWord);
+          if (chainNames) return { kana: chainNames, source: "letters", confident: true };
+        }
+      }
     }
     /*
      * 点号记法里的**罗马字单词**（`K・A・I・S・A・N` = カイサン，标记见 letters.js 的
