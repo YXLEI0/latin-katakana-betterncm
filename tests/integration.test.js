@@ -949,6 +949,25 @@ test("缩写展开与掩码词：OMG オーマイゴッド、被涂掉一个字�
   assert.deepStrictEqual(rubies(ps[1]), [["T○itter", "ツイッター"]], "掩码词整串读：" + ps[1].innerHTML);
 });
 
+test("段标的冒号被拆到下一个节点时，A / B 仍然留白", async () => {
+  // 用户截图：`Vindicia (A: Vanitatum sentio) (B: Sentio dolor, ah dolores)` 里
+  // 的 A / B 被注成了 ア / ビー。真机上这一行被拆成了好几个节点（逐字/分段），
+  // token 自己看不到冒号，段标判定失效 —— 现在会跨节点往后瞟一眼。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p><span>Vindicia (</span><span>A</span><span>: Vanitatum sentio) (</span><span>B</span><span>: Sentio dolor)</span></p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(500);
+  const p = env.document.querySelector("ul.lyric li p");
+  const got = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
+  const bases = got.map((g) => g[0]);
+  assert.ok(bases.indexOf("A") < 0 && bases.indexOf("B") < 0, "段标 A / B 不该注音：" + JSON.stringify(got));
+  assert.ok(bases.indexOf("Vanitatum") >= 0, "同行的词照常标：" + JSON.stringify(got));
+});
+
 test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {
   // 用户三张截图：`T氏にすべてを捧げましょう` 和 `T Is My Everything` 里的单字母 T
   // 一个注音都没有（该 ティー）；`半径300mmの体で必死に鳴いてる` 的 `mm` 没注音

@@ -753,6 +753,38 @@
       }
     }
 
+    /**
+     * 从 node 的 offset 处往后找第一个非空白字符，**可以跨文本节点**
+     * （段标的冒号常被拆到下一个节点里）。找不到就返回空串。
+     */
+    function charAfterToken(node, offset) {
+      var n = node;
+      var at = offset;
+      for (var guard = 0; n && guard < 16; guard++) {
+        if (n.nodeType === 3) {
+          var s = String(n.nodeValue || "").slice(at);
+          var m = /\S/.exec(s);
+          if (m) return s.charAt(m.index);
+        } else if (n.nodeType === 1 && !isSkippable(n)) {
+          // 元素节点：直接看它里面第一段可见文字（`<span>: Vanitatum …</span>`）
+          var t = visibleText(n);
+          var m2 = /\S/.exec(t);
+          if (m2) return t.charAt(m2.index);
+        }
+        if (n.nextSibling) {
+          n = n.nextSibling;
+          at = 0;
+          continue;
+        }
+        // 这一层到头了：爬到上一层，从它的下一个兄弟继续
+        var up = n.parentNode;
+        if (!up || up.nodeType !== 1 || up.tagName === "LI" || up.tagName === "P") return "";
+        n = up.nextSibling;
+        at = 0;
+      }
+      return "";
+    }
+
     function annotateNode(node, region) {
       var text = node.nodeValue;
       // 长度 1 的文本节点也要看：逐字歌词/别的插件拆行时，单个字母就是它自己的节点
@@ -785,6 +817,17 @@
       for (var i = 0; i < tokens.length; i++) {
         var g = null;
         var src = null;
+        /*
+         * 段标（`(A:` / `B：`）在真机上可能被拆成不同节点：`A` 在它自己的节点里，
+         * 冒号落在**下一个**文本节点 —— token 自己看不到冒号，段标判定就失效了
+         * （用户截图 `Vindicia (A: Vanitatum sentio)` 的 A、B 被注上了 ア / ビー）。
+         * 这里跨节点往后瞟一眼（跳过空白），是冒号就补上 label 标记。
+         */
+        if (tokens[i].text.length === 1 && tokens[i].label !== true) {
+          if (charAfterToken(node, tokens[i].end) === ":" || charAfterToken(node, tokens[i].end) === "\uFF1A") {
+            tokens[i].label = true;
+          }
+        }
         if (matcher.looksReadable(tokens[i])) {
           /*
            * 传原始写法（tk.text）而不是 tk.norm：
