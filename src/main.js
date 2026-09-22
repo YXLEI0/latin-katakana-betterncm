@@ -1313,6 +1313,13 @@
         (typeof WKReading !== "undefined" && WKReading.LETTER_KANA ? WKReading.LETTER_KANA[emoLow] : null);
       if (emoKana) return { kana: emoKana, source: "letters", confident: true };
     }
+    /*
+     * 小写单字母 `a` 紧贴日文（`aとaが混ざり合って、`）：那是**字母 A 的名字**，
+     * 用户点名读 エイ —— 不是英文冠词的 ア，也不是字母名表里的 エー。
+     */
+    if (String(word) === "a" && line && gluedToJapanese(word, line)) {
+      return { kana: "\u30A8\u30A4", source: "letters", confident: true };
+    }
     if (/^[A-Z]$/.test(String(word == null ? "" : word))) {
       /*
        * 呼语 `O`（`O Chrysalis` / `O love`）读 オー。
