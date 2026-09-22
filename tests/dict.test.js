@@ -151,17 +151,26 @@ test("整首专属读音表（core/songs.js）：键值格式、切分与手工�
     const keys = Object.keys(e.words || {});
     if (!keys.length) bad.push("空词表：" + e.title);
     for (const k of keys) {
-      if (!/^[a-z][a-z'\-]*$/.test(k)) bad.push("键不是小写英文：" + k + "（" + e.title + "）");
+      if (!/^[a-z][a-z'\u2019\-]*$/.test(k)) bad.push("键不是小写英文：" + k + "（" + e.title + "）");
       if (!RE_KANA.test(e.words[k])) bad.push("读音不是纯片假名：" + k + " -> " + e.words[k]);
     }
   }
   assert.deepStrictEqual(bad.slice(0, 5), [], "整首读音表有格式问题：" + bad.length + " 条");
 
-  // 用户截图那首歌：整首表命中的是"日语词写成罗马字 + 短横线是长音"
-  const mugen = songs.list.find((e) => e.marker && e.marker.test("夢限大 MO-SOは風にのり"));
-  assert.ok(mugen, "夢現妄想世界 那条应当在表里（按歌词识别词）");
-  assert.strictEqual(mugen.words.mo, "モー");
-  assert.strictEqual(mugen.words.zo, "ゾー", "ZO 是 ゾー（罗马音层会给 ゾ）");
-  assert.strictEqual(mugen.words.kyo, "キョー", "KYO 是 キョー");
-  assert.strictEqual(mugen.words.yume, "ユメ");
+  // 抽查两条官方读音切出来的（一条纯西文、一条"西文 + 假名"）
+  const emperror = songs.list.find((e) => e.title && e.title.test("the EmpErroR"));
+  assert.ok(emperror, "the EmpErroR 应当在表里（官方 ジエンペラー）");
+  assert.strictEqual(emperror.words.the, "ジ", "这首里 the 是 ジ（默认层会给 ザ）");
+  assert.strictEqual(emperror.words.emperror, "エンペラー");
+  const potato = songs.list.find((e) => e.title && e.title.test("potatoになっていく"));
+  assert.ok(potato, "potatoになっていく 应当在表里（西文 + 假名混排也能切）");
+  assert.strictEqual(potato.words.potato, "ポテト");
+
+  /*
+   * 手工条目必须有**官方来源**（vendor/sekai 那份主数据，或别的查得到的官方读法），
+   * 自己按词义猜的不许进表 —— 用户点名 `夢現妄想世界`（夢限大みゅーたいぷ，
+   * 不在那份主数据里）不要放进这一档。
+   */
+  const wrong = songs.list.find((e) => e.title && e.title.test("夢現妄想世界"));
+  assert.strictEqual(wrong, undefined, "夢現妄想世界 不该进整首专属读音表");
 });

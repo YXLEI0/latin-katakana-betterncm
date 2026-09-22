@@ -671,23 +671,19 @@ test("ツイッター只在 `Xだけの…` 那一句命中；别的 X 照旧字
   assert.strictEqual(pairsOf(ps[5]).get("X"), "エックス", "英文句子里的 X 读字母名：" + ps[5].innerHTML);
 });
 
-test("整首专属读音：`夢現妄想世界` 里 MO-SO モーソー / ZO ゾー / KYO キョー", async () => {
-  // 用户截图：这首歌把日语词写成罗马字，短横线是长音 —— MO-SO 妄想(モーソー)、
-  // SO-ZO 創造(ソーゾー)、KYO-SO 競争(キョーソー)、YUME 夢(ユメ)。
-  // 没有这张表时 `ZO` 走罗马音层读成 ゾ、`KYO` 读成 キョ；而且 `SO-ZO` 被换行拆成
-  // 两行，`ZO` 那一行（`ZOは海をこえ`）自己看不出这是哪个词 —— 所以判据必须是**整首**，
-  // 不是单行（单行专属读音那套在这里不够用）。
+test("整首专属读音：`the EmpErroR` 里 the 读 ジ（官方 ジエンペラー）", async () => {
+  // 这一档的读音来自官方歌名读音（tools/vendor/sekai/musics.json），按词切开后
+  // **只在这一首里**生效：`the EmpErroR` 官方读 ジエンペラー —— 标题里的 `the` 就是 ジ，
+  // 而默认层会给 ザ（词典）。判据两条：歌名命中（播放栏那行），
+  // 或者歌名读不到时靠歌词里的识别词（这里用歌名里独特的 `EmpErroR` 写法）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">
   <div class="m-playbar"><div class="words">
-    <span class="name"><a href="#">夢現妄想世界</a></span>
-    <span class="by"><a href="#">夢限大みゅーたいぷ</a></span>
+    <span class="name"><a href="#">the EmpErroR</a></span>
+    <span class="by"><a href="#">sasakure.UK</a></span>
   </div></div>
   <div class="m-lyric"><ul class="lyric">
-    <li class="line"><p>夢限大 MO-SOは風にのり</p></li>
-    <li class="line"><p>夢限大 SO-ZOは海をこえ</p></li>
-    <li class="line"><p>ZOは海をこえ</p></li>
-    <li class="line"><p>夢限大 KYO-SOは宇宙行き YUMEって自由だ</p></li>
+    <li class="line"><p>the EmpErroR が笑う</p></li>
   </ul></div>
 </div></body></html>`;
   const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
@@ -698,31 +694,24 @@ test("整首专属读音：`夢現妄想世界` 里 MO-SO モーソー / ZO ゾ�
     new Map(
       [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
     );
-
   const l0 = pairsOf(ps[0]);
-  assert.strictEqual(l0.get("MO"), "モー", "MO-SO 的 MO：" + ps[0].innerHTML);
-  assert.strictEqual(l0.get("SO"), "ソー", "MO-SO 的 SO");
-  const l1 = pairsOf(ps[1]);
-  assert.strictEqual(l1.get("ZO"), "ゾー", "SO-ZO 的 ZO（罗马音层会读成 ゾ）：" + ps[1].innerHTML);
-  // 换行拆开的那一行也吃整首表（这就是"整首"的意义）
-  assert.strictEqual(pairsOf(ps[2]).get("ZO"), "ゾー", "单独一行的 ZO 也按整首读：" + ps[2].innerHTML);
-  const l3 = pairsOf(ps[3]);
-  assert.strictEqual(l3.get("KYO"), "キョー", "KYO-SO 的 KYO：" + ps[3].innerHTML);
-  assert.strictEqual(l3.get("YUME"), "ユメ", "YUME");
-  // 来源是专属读音表（不是罗马音 / 模型），而且不许是"暂定"
-  assert.ok(/wk-src-song/.test(ps[1].innerHTML), "来源应当是 song：" + ps[1].innerHTML);
-  assert.ok(!/wk-pending/.test(ps[1].innerHTML), "人工核过的读音不该是暂定");
+  assert.strictEqual(l0.get("the"), "ジ", "这首里 the 是 ジ：" + ps[0].innerHTML);
+  assert.strictEqual(l0.get("EmpErroR"), "エンペラー", "EmpErroR 是 エンペラー：" + ps[0].innerHTML);
+  // 来源是专属读音表（不是词典 / 模型），而且不许是"暂定"
+  assert.ok(/wk-src-song/.test(ps[0].innerHTML), "来源应当是 song：" + ps[0].innerHTML);
+  assert.ok(!/wk-pending/.test(ps[0].innerHTML), "官方读音不该是暂定");
 });
 
-test("整首专属读音只在那一首里生效：别的歌里 ZO 照旧读 ゾ", async () => {
+test("整首专属读音只在那一首里生效：别的歌里 No 照旧读 ノー", async () => {
+  // 同一行歌词，换个歌名就不该吃那张表（`Disco No.39` 官方把 No. 读成 ナンバー）
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">
   <div class="m-playbar"><div class="words">
-    <span class="name"><a href="#">別の歌</a></span>
-    <span class="by"><a href="#">別の人</a></span>
+    <span class="name"><a href="#">Disco No.39</a></span>
+    <span class="by"><a href="#">sasakure.UK</a></span>
   </div></div>
   <div class="m-lyric"><ul class="lyric">
-    <li class="line"><p>ZOは海をこえ</p></li>
+    <li class="line"><p>No.39 のディスコ</p></li>
   </ul></div>
 </div></body></html>`;
   const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
@@ -730,7 +719,39 @@ test("整首专属读音只在那一首里生效：别的歌里 ZO 照旧读 ゾ
   await sleep(500);
   const p = env.document.querySelector("ul.lyric li p");
   const got = [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
-  assert.deepStrictEqual(got, [["ZO", "ゾ"]], "别的歌里 ZO 不许跟着变 ゾー：" + p.innerHTML);
+  assert.deepStrictEqual(got, [["No", "ナンバー"]], "这一首里 No. 是 ナンバー：" + p.innerHTML);
+
+  const HTML2 = HTML.replace("Disco No.39", "別の歌");
+  const env2 = bootPlugin(HTML2, { config: { online: false, llmEnabled: false } });
+  await env2.runLoad();
+  await sleep(500);
+  const p2 = env2.document.querySelector("ul.lyric li p");
+  const got2 = [...p2.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
+  assert.deepStrictEqual(got2, [["No", "ノー"]], "别的歌里 No 不许跟着变 ナンバー：" + p2.innerHTML);
+});
+
+test("整首专属读音：歌名里含假名/汉字/符号的也按表读（potato ポテト / bit ビット）", async () => {
+  // 官方读音是**整首歌名**的，遇到"西文 + 假名汉字"混排时，切分靠假名段锚定
+  // （假名的读音就是它自己），汉字/数字/符号当通配段。这两条就是自动切出来的。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root">
+  <div class="m-playbar"><div class="words">
+    <span class="name"><a href="#">potatoになっていく</a></span>
+    <span class="by"><a href="#">Neru</a></span>
+  </div></div>
+  <div class="m-lyric"><ul class="lyric">
+    <li class="line"><p>potatoになっていく</p></li>
+    <li class="line"><p>bit の話</p></li>
+  </ul></div>
+</div></body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(500);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const p0 = [...ps[0].querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent]);
+  assert.deepStrictEqual(p0, [["potato", "ポテト"]], "potato 该按整首表读：" + ps[0].innerHTML);
+  // 别的歌名不命中时，bit 照旧走词典/规则（不是这张表的事）
+  assert.ok(!/bit/.test(ps[1].innerHTML) || !/wk-src-song/.test(ps[1].innerHTML), "别的歌里 bit 不该吃整首表：" + ps[1].innerHTML);
 });
 
 test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {
