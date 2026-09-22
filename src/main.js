@@ -879,6 +879,15 @@
   }
 
   /*
+   * 全大写未知词的**本地兜底读音**：罗马音层读不出来的那几个（`KRO` 这种 kr 连缀），
+   * 先按这里给的读法顶着（标成"没把握"，配了 key 时大模型仍然可以改），
+   * 表里也没有的就先空着、只交给大模型。
+   */
+  var UNCERTAIN_FALLBACK = {
+    kro: "\u30AF\u30ED", // クロ
+  };
+
+  /*
    * 有固定读法的**记号**（点号写的词）：`p.h.` = 化学的 pH，日语读 ペーハー
    * （用户截图 `p.h.って、胃酸を`，官方翻译那行写着"靠着 p.h."）。
    * 标记见 letters.js 的 notationWord。
@@ -1508,9 +1517,11 @@
           var guessKana = guessRomaji;
           if (guessKana) return { kana: guessKana, source: "romaji", confident: false };
           /*
-           * 罗马音也读不出来（`KRO`）：**先不显字**（用户要求：别先按字母名 ケーアールオー
-           * 显示），只把这个词记进大模型的待问队列 —— 模型答了什么再补上注音。
+           * 罗马音也读不出来（`KRO`）：先用表里的**本地兜底**顶着（クロ，标成没把握，
+           * 大模型仍可改）；表里也没有才空着、只把这个词记进大模型的待问队列。
            */
+          var fallbackKana = UNCERTAIN_FALLBACK[capsWord.toLowerCase()];
+          if (fallbackKana) return { kana: fallbackKana, source: "rule", confident: false };
           if (state.llm && state.llm.want) {
             try {
               state.llm.want(capsWord, line);
