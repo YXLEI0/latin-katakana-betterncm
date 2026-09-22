@@ -1,5 +1,5 @@
 /*
- * 英文 -> 片假名读音词典（**自动生成，勿手改**）。
+ * 英文 -> 片假名读音词典（自动生成，勿手改）。
  *
  * 两份数据源，由 tools/build-dict.js 合并（跑 npm run build:dict 重新生成）：
  *   1. tools/seed-words.js      —— 人工核过（其中大部分是从 katakana-terminator 的

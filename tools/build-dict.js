@@ -1,10 +1,7 @@
 /*
  * 生成离线读音词典：tools/seed-words.js + tools/seed-words-llm.js -> src/core/dict.js
  *
- * 这一份**不联网**（生成过程本身也不联网，只是把两份现成的表合成一个文件）：
- *   1. tools/seed-words.js      人工核过的词（反转来的真实外来语写法 + 手工补充）
- *   2. tools/seed-words-llm.js  由 tools/expand-dict-llm.js 让大模型按词频批量生成的读音
- * 人工的优先，同一个词两边都有时保留人工那份。
+ * 生成过程不联网，只是把几份现成的表合成一个文件，人工的优先，同一个词几边都有时保留人工那份。
  *
  * 用法：npm run build:dict
  */
@@ -60,10 +57,9 @@ if (problems.length) {
 const handCount = Object.keys(words).length;
 
 /*
- * 第二份数据源：tools/seed-words-sekai.js —— **官方歌名读音**（Project Sekai 主数据库里
- * 单个西文词的歌名，由 tools/build-sekai.js 生成）。优先级夹在人工和沉淀之间：
- * 官方读音比我们自己的英文音译规则和"按词频让大模型生成"都可信，但人工核过的
- * 词条仍旧最高（同一个词两边都有时保留人工那份）。
+ * 官方歌名读音：Project Sekai 主数据库里单个西文词的歌名，由 tools/build-sekai.js
+ * 生成 tools/seed-words-sekai.js。优先级夹在人工和沉淀之间 —— 官方读音比我们自己的
+ * 英文音译规则可信，但人工核过的词条仍旧最高（同一个词两边都有时保留人工那份）。
  */
 const SEKAI_SEED = path.join(__dirname, "seed-words-sekai.js");
 let sekaiAdded = 0;
@@ -83,12 +79,9 @@ if (fs.existsSync(SEKAI_SEED)) {
 }
 
 /*
- * 第二份数据源：tools/seed-words-llm.js —— 由 tools/expand-dict-llm.js 让大模型
- * 按词频批量生成的读音（几千条）。**人工核过的 seed-words.js 优先**：同一个词
- * 两边都有时保留人工那份，生成物不许覆盖人工判断。
- *
- * 为什么要有这一层：纯拼写规则读不对 hello / question / shining 这类词，
- * 而歌词里高频词其实是有限的一批。构建期问一次，运行期就是纯离线查表。
+ * tools/seed-words-llm.js：由 tools/expand-dict-llm.js 让大模型按词频批量生成的读音
+ * （几千条）。纯拼写规则读不对 hello / question / shining 这类词，而歌词里的高频词
+ * 其实是有限的一批，构建期问一次、运行期就是纯离线查表。
  */
 const LLM_SEED = path.join(__dirname, "seed-words-llm.js");
 let llmWords = {};
@@ -104,7 +97,7 @@ let llmAdded = 0;
 let llmSkipped = 0;
 let llmBlocked = 0;
 /*
- * 生成词表里"读错义项"的黑名单 —— 见 tools/dict-blocklist.js（和测试共用一份）。
+ * 生成词表里"读错义项"的黑名单，见 tools/dict-blocklist.js（和测试共用一份）。
  */
 const BLOCK_LLM = require(path.join(__dirname, "dict-blocklist.js"));
 for (const en of Object.keys(llmWords).sort()) {
@@ -114,7 +107,7 @@ for (const en of Object.keys(llmWords).sort()) {
     continue;
   }
   if (words[en] !== undefined) {
-    llmSkipped++; // 人工词表里有，保留人工的
+    llmSkipped++; // 人工词表或官方歌名里已经有这个读音了
     continue;
   }
   if (BLOCK_LLM[en]) {
@@ -129,12 +122,10 @@ if (llmProblems) {
 }
 
 /*
- * 第三份数据源：tools/seed-words-learned.js —— **运行期沉淀下来的词**
- * （面板「操作 → 导出词库素材」导出的 JSON，经 tools/promote-learned.js 筛选）。
- *
- * 优先级夹在中间：人工核过的 seed-words.js **高于**它，它**高于**大模型批量生成的
- * seed-words-llm.js —— 那些词来自真机听歌的上下文（同一个词在两个句子里读音一致
- * 才收），比"按词频一次生成"更可信。
+ * 运行期沉淀下来的词：面板「操作 → 导出词库素材」导出的 JSON，经
+ * tools/promote-learned.js 筛选。优先级夹在中间，人工核过的 seed-words.js 高于它，
+ * 它高于大模型批量生成的 seed-words-llm.js —— 那些词来自真机听歌的上下文
+ * （同一个词在两个句子里读音一致才收），比按词频一次生成更可信。
  */
 const LEARNED_SEED = path.join(__dirname, "seed-words-learned.js");
 let learnedAdded = 0;
@@ -152,7 +143,7 @@ if (fs.existsSync(LEARNED_SEED)) {
     const kana = String((row && row.kana) || "").trim();
     if (!RE_EN.test(en) || !RE_KANA.test(kana)) continue;
     if (words[en] !== undefined) {
-      learnedSkipped++; // 人工词表里有，人工优先
+      learnedSkipped++; // 前面几份已经有这个词了
       continue;
     }
     words[en] = kana;
@@ -165,7 +156,7 @@ const keys = Object.keys(words).sort();const body = keys
   .join("\n");
 
 const out = `/*
- * 英文 -> 片假名读音词典（**自动生成，勿手改**）。
+ * 英文 -> 片假名读音词典（自动生成，勿手改）。
  *
  * 两份数据源，由 tools/build-dict.js 合并（跑 npm run build:dict 重新生成）：
  *   1. tools/seed-words.js      —— 人工核过（其中大部分是从 katakana-terminator 的

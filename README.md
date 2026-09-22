@@ -6,8 +6,8 @@
 
 ## 环境
 
-- 网易云音乐 **3.x** (在 3.1.39 上实测)
-- [BetterNCM](https://github.com/std-microblock/BetterNCM) **1.3.0+**
+- 网易云音乐 3.x (在 3.1.39 上实测)
+- [BetterNCM](https://github.com/std-microblock/BetterNCM) 1.3.0+
 
 ## 安装
 
@@ -23,23 +23,23 @@ npm run install:plugin   # 顺便复制到 C:\betterncm\plugins
 
 ## 说明
 
-- 读音按五层顺序取: **离线词典** (6892 条) > **日式罗马音** > **大模型校正** > **免费接口** > **英文音译规则**, 顺序可以在设置面板里上下调
-- 推荐填一个大模型 API Key (默认 DeepSeek, 任何 OpenAI 兼容接口都行): **只存本机 localStorage**, 留空则这一层不工作、自动退回免费接口。按「词 + 它所在的那句歌词」缓存, 所以同一个词在不同句子里会分别判断
-- 模型答过两次、读音一致的词会**自动沉淀成离线词条**, 以后不再问模型; 面板「操作 → 导出词库素材」可以把攒下来的词筛进离线词典 (`npm run promote:learned`)
-- 记号 (`D/N/A` / `R&B` / `X-Y` / `M・I・D・I`) 按**字母名**逐字母读, 而且**一个字母一个注音** (`&` 读 アンド, 分隔符不发音); 紧贴假名的缩写按字母名 (`ATフィールド` → エーティー), 单个希腊字母读字母名 (`Ω` 按单位读 **オーム**); 颜文字里的字符不标 (`(#^ω^)`); 缩写 (`you're` / `I'll` / `don't`) 拆成"词干 + 尾巴"; 不发音字母也认 (`knock` ノック, `climb` クライム, `subtle` サトル)
-- **西文各语种另有各自的拼读**: 德语 / 拉丁语 / 葡萄牙语 / 荷兰语 / 斯瓦希里语 / 汉语拼音 / 法语 / 俄语(西里尔) / 希腊语。按**整行**判定语种, 所以同一首歌里的英文行照旧按英语读 —— `die Ruinenstadt` ディー・ルイーネンスタト, `Novum mundum` ノヴム・ムンドゥム, `Shambulia` シャンブリア, `Виват Анастасия` ヴィヴァト・アナスタシヤ
-- 另有 [sljfaq](https://www.sljfaq.org/afaq/gairaigo.html) 的**法语 / 德语 / 荷兰语 / 葡萄牙语 / 俄语**借词表 (`tools/vendor/loan/`, `npm run build:loan`, 共 314 条), 记的是**日语通行写法** (`Lied` リート, `bier` ビール, `pao` パン, `норма` ノルマ), 只在该语言的行上生效 —— `rose` 在法语行是 ロゼ、英文行仍是 ローズ; 另外收了两批**官方读音**: [Project Sekai 主数据库](https://pjsekai.moe/#/music/803) 里单词歌名的官方读法 (`Nostalogic` ノスタロジック、`CHAOS` カオス) 和 [sljfaq「English words from Japanese」](https://www.sljfaq.org/afaq/japanese-in-english.html) 那批日语来源英文词 (`kudzu` クズ、`rickshaw` ジンリキシャ)
+- 读音按五层顺序取: 离线词典 (6892 条) > 日式罗马音 > 大模型校正 > 免费接口 > 英文音译规则。顺序可以在设置面板里上下调
+- 推荐填一个大模型 API Key (默认 DeepSeek, 任何 OpenAI 兼容接口都行), 只存在本机 localStorage。留空则这一层不工作, 自动退回免费接口。按「词 + 它所在的那句歌词」缓存, 所以同一个词在不同句子里会分别判断
+- 模型答过两次、读音一致的词会自动沉淀成离线词条, 以后不再问模型; 面板「操作 → 导出词库素材」可以把攒下来的词筛进离线词典 (`npm run promote:learned`)
+- 记号 (`D/N/A` / `R&B` / `X-Y` / `M・I・D・I`) 按字母名逐字母读, 而且一个字母一个注音 (`&` 读 アンド, 分隔符不发音); 紧贴假名的缩写按字母名 (`ATフィールド` → エーティー), 单个希腊字母读字母名 (`Ω` 按单位读 オーム); 颜文字里的字符不标 (`(#^ω^)`); 缩写 (`you're` / `I'll` / `don't`) 拆成"词干 + 尾巴"; 不发音字母也认 (`knock` ノック, `climb` クライム, `subtle` サトル)
+- 西文各语种另有各自的拼读: 德语 / 拉丁语 / 葡萄牙语 / 荷兰语 / 斯瓦希里语 / 汉语拼音 / 法语 / 俄语(西里尔) / 希腊语。按整行判定语种, 所以同一首歌里的英文行照旧按英语读 —— `die Ruinenstadt` ディー・ルイーネンスタト, `Novum mundum` ノヴム・ムンドゥム, `Shambulia` シャンブリア, `Виват Анастасия` ヴィヴァト・アナスタシヤ
+- 另有 [sljfaq](https://www.sljfaq.org/afaq/gairaigo.html) 的法语 / 德语 / 荷兰语 / 葡萄牙语 / 俄语借词表 (`tools/vendor/loan/`, `npm run build:loan`, 共 314 条), 记的是日语通行写法 (`Lied` リート, `bier` ビール, `pao` パン, `норма` ノルマ), 只在该语言的行上生效 —— `rose` 在法语行是 ロゼ、英文行仍是 ローズ; 另外收了两批官方读音: [Project Sekai 主数据库](https://pjsekai.moe/#/music/803) 里单词歌名的官方读法 (`Nostalogic` ノスタロジック、`CHAOS` カオス) 和 [sljfaq「English words from Japanese」](https://www.sljfaq.org/afaq/japanese-in-english.html) 那批日语来源英文词 (`kudzu` クズ、`rickshaw` ジンリキシャ)
 - 只标歌词原文行和播放栏标题, 含汉字的行也照标; 中文翻译层、罗马音层、制作信息行 (作词/作曲/编曲/演唱/曲绘…) 和版权行 (`Copyright` / `©` / `℗`) 跳过
-- **RNP 的「复制模式」(总览视图) 整块不注音**, 复制歌词时不会带上注音文字
-- **非日语歌** (整首歌词一个假名都没有的纯英文 / 西文各语种 / 中文歌) 可选是否标注, 见设置面板「范围」
-- **连字符标记长音**: 全大写、形如罗马字音节、被短横线串起来的词每一节都读长音 (`MO-SO` モーソー、`KYO-SO` キョーソー), 而且**整首歌词一起看** —— 这种词常被换行拆开 (上一行结尾 `SO-`、下一行开头 `ZO`), 只看一行判不出来。德语复合词 (`Looser-Krankheit-Was`)、小写词、记号里的单字母 (`X-Y`) 不受影响
-- **整首 / 整句专属读音** (`src/core/songs.js`, `npm run build:songs`): 有些读音只在这一首歌里成立 —— 歌名命中 (或歌词里出现识别词) 时, 这首歌里的这些词按表读 (`the EmpErroR` 的 `the` 是 ジ、`Disco No.39` 的 `No.` 是 ナンバー、`potatoになっていく` 的 `potato` 是 ポテト), 别的歌一点不受影响; 单句专属的走 `Xだけの…` 里的 X 读 ツイッター 那种。进表的前提是**有官方读音可查** (Sekai 主数据或别的官方读法), 自己按词义猜的不进表
-- 可以和 [片假名终结者](https://github.com/YXLEI0/katakana-terminator-betterncm)、[jp-furigana](https://github.com/Leleawa/jp-furigana)、[JapaneseFonts](https://github.com/MuttonString/Furigana) 同时开着; jp-furigana 要先打共存补丁 `npm run patch:furigana`, JapaneseFonts 要打 `npm run patch:fonts` (否则它会把本插件注出来的片假名当成"这是日文歌"的证据)
+- RNP 的「复制模式」(总览视图) 整块不注音, 复制歌词时不会带上注音文字
+- 非日语歌 (整首歌词一个假名都没有的纯英文 / 西文各语种 / 中文歌) 可选是否标注, 见设置面板「范围」
+- 连字符标记长音: 全大写、形如罗马字音节、被短横线串起来的词每一节都读长音 (`MO-SO` モーソー、`KYO-SO` キョーソー)。这种词要整首歌词一起看, 因为它常被换行拆开 (上一行结尾 `SO-`、下一行开头 `ZO`), 只看一行判不出来。德语复合词 (`Looser-Krankheit-Was`)、小写词、记号里的单字母 (`X-Y`) 不受影响
+- 整首 / 整句专属读音 (`src/core/songs.js`, `npm run build:songs`): 有些读音只在这一首歌里成立, 歌名命中 (或歌词里出现识别词) 时按表读 (`the EmpErroR` 的 `the` 是 ジ、`Disco No.39` 的 `No.` 是 ナンバー、`potatoになっていく` 的 `potato` 是 ポテト), 别的歌不受影响; 单句专属的走 `Xだけの…` 里的 X 读 ツイッター 那种。进表的前提是有官方读音可查 (Sekai 主数据或别的官方读法), 自己按词义猜的不进表
+- 可以和 [片假名终结者](https://github.com/YXLEI0/katakana-terminator-betterncm)、[jp-furigana](https://github.com/Leleawa/jp-furigana)、[JapaneseFonts](https://github.com/MuttonString/Furigana) 同时开着; jp-furigana 要先打共存补丁 `npm run patch:furigana`, JapaneseFonts 要打 `npm run patch:fonts`。后者不打的话, 它会把本插件注出来的片假名当成"这是日文歌"的证据
 - 桌面歌词无效, 那是原生窗口而不是网页
 - 读音来源、规则依据、词典怎么生成、排障、实现要点、已知限制见 [docs/notes.md](docs/notes.md)
 
 ## 许可
 
-插件自身的代码采用 **MIT** 协议, 见 [LICENSE](LICENSE)
+插件自身的代码采用 MIT 协议, 见 [LICENSE](LICENSE)
 
 读音词典的数据来源与分发注意事项见 [NOTICE.md](NOTICE.md)

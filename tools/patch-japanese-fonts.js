@@ -1,31 +1,26 @@
 /*
  * 给 JapaneseFonts（MuttonString/Furigana，网易云插件「日文字体」）打共存补丁。
  *
- * 问题
- * ----
- * 它的 pronounce() 里用**整行 innerHTML 里有没有假名**判断"这是不是日文歌"：
+ * 它的 pronounce() 里用整行 innerHTML 里有没有假名判断"这是不是日文歌"：
  *
  *     if (elem.querySelector('furigana') || /[ぁ-ヿ]/g.test(elem.innerHTML)) {
  *
- * 而本插件（西文字母片假名注音）会把读音写成 <rt> 里的**片假名**插在歌词行上。
- * 于是：一首德语 / 拉丁语 / 俄语歌，只要本插件给它注了音，那一行 innerHTML 里
- * 就有了假名 —— JapaneseFonts 判定"这是日文歌"，把用户设的日文字体套上去
- * （用户报的：「不要让这个插件把本插件的片假名当成日文歌」）。
+ * 而本插件（西文字母片假名注音）会把读音写成 <rt> 里的片假名插在歌词行上。于是
+ * 一首德语 / 拉丁语 / 俄语歌，只要本插件给它注了音，那一行 innerHTML 里就有了
+ * 假名 —— JapaneseFonts 判定"这是日文歌"，把用户设的日文字体套上去（用户报的：
+ * 「不要让这个插件把本插件的片假名当成日文歌」）。
  *
- * 补丁
- * ----
- * 把那个判据换成"**剔掉别的插件插的注音之后**再看有没有假名"：
- *   - 认 kt-（片假名终结者）、lt-（本插件改名前的前缀）、wk-（本插件现在的前缀）；
- *   - 它自己的 <ruby>/<rt>（没有类名）照旧算数，所以真的日文歌不受影响。
+ * 补丁把那个判据换成"剔掉别的插件插的注音之后再看有没有假名"：认 kt-（片假名
+ * 终结者）、lt-（本插件改名前的前缀）、wk-（本插件现在的前缀）；它自己的
+ * <ruby>/<rt>（没有类名）照旧算数，所以真的日文歌不受影响。
  *
- * 用法
- * ----
+ * 用法：
  *   node tools/patch-japanese-fonts.js                 # 打补丁（默认目录）
  *   node tools/patch-japanese-fonts.js --dir <目录>
  *   node tools/patch-japanese-fonts.js --check         # 只看状态
  *   node tools/patch-japanese-fonts.js --revert        # 还原
  *
- * 注意：对方插件升级后补丁会丢，重跑一次即可。
+ * 对方插件升级后补丁会丢，重跑一次即可。
  */
 "use strict";
 

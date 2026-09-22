@@ -5,10 +5,9 @@
  *   node tools/build.js --install              复制到 C:\betterncm\plugins
  *   node tools/build.js --install --dir <路径>
  *
- * 自己写 zip 而不是调 Compress-Archive：PowerShell 的 ZipFile::CreateFromDirectory
- * 会把条目名写成反斜杠（不符合 ZIP 规范，解压端可能不建子目录），而且 PS 5.1
- * 读没有 BOM 的 .ps1 会按 ANSI 解，中文注释一乱语法就崩。Node 两个坑都没有，
- * CI 里也不必用 Windows runner。
+ * 自己写 zip 而不是调 Compress-Archive：PowerShell 的 ZipFile::CreateFromDirectory 会把
+ * 条目名写成反斜杠（不符合 ZIP 规范，解压端可能不建子目录），而且 PS 5.1 读没有 BOM 的
+ * .ps1 会按 ANSI 解，中文注释一乱语法就崩。Node 两个坑都没有，CI 里也不必用 Windows runner。
  */
 "use strict";
 
@@ -21,7 +20,7 @@ const SRC = path.join(ROOT, "src");
 const OUT_DIR = path.join(ROOT, "builds");
 
 /*
- * 打进包的文件清单**从 manifest.json 推出来**，不再手写第二份。
+ * 打进包的文件清单从 manifest.json 推出来，不再手写第二份。
  *
  * 之前这里是硬编码的数组，加一个 core/llm.js 就得同时改三处
  * （manifest、这里的 SRC_FILES、ALLOWED_CORE），漏一处就在打包时才炸。

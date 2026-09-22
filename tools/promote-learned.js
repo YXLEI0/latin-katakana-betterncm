@@ -8,20 +8,18 @@
  *   2. `npm run promote:learned`   —— 筛选后写进 `tools/seed-words-learned.js`
  *   3. `npm run build:dict`        —— 合并进 `src/core/dict.js`
  *
- * **筛选规矩**（宁可少收，收错了就是"离线权威"，模型再没机会纠）：
- *   - 值必须是纯片假名、长度 ≤ 14；
- *   - 词必须是小写字母（词典键的规范形式）；
- *   - 同一个词在多个来源/多个语境里读音必须**一致**，且至少见过 `MIN_LINES` 次；
- *   - 已在人工词表（tools/seed-words.js）里的：**一律不动**（人工优先）；
- *   - 已在黑名单（tools/dict-blocklist.js）里的：丢掉；
- *   - 已有大模型词表（tools/seed-words-llm.js）的：读音相同就跳过（没必要重复），
- *     不同则以这次的为准（记一笔"已更新"）—— 因为它来自真机听歌的上下文。
- *   - **某种外语自己的词一律不收**（德语 tag / dich / immer、拉丁语 vacuum / ex…）：
- *     词典不分语言、还排在语言引擎前面，收下就在所有行上生效（英文行的 tag 会变成
- *     ターク、德语行反而不如引擎）。外语行有引擎和 HOMOGRAPH 兜着。
- *   - 两可的短音节（do/re/mi/me/mo/pi…）不收：读音取决于语境，交给大模型每句判。
+ * 筛选规矩是宁可少收：收错了它就成了"离线权威"，模型再没机会纠。值必须是纯片假名、
+ * 不超过 14 个字符，词必须是小写字母（词典键的规范形式）；同一个词在多个来源、多个
+ * 语境里读音必须一致，且至少见过 `MIN_LINES` 次。已在人工词表（tools/seed-words.js）
+ * 里的一律不动，在黑名单（tools/dict-blocklist.js）里的丢掉；大模型词表
+ * （tools/seed-words-llm.js）里读音相同的跳过（没必要重复），不同的以这次的为准并
+ * 记一笔"已更新"—— 它来自真机听歌的上下文，比离线生成的可信。
  *
- * 目标宿主是网易云内置的老 CEF，所以 src/** 只用 ES5；
+ * 不收的还有两类：某种外语自己的词（德语 tag / dich / immer、拉丁语 vacuum / ex…），
+ * 以及读音两可的短音节（do/re/mi/me/mo/pi…）。前者为什么必须挡，下面
+ * `filterPromotions` 的注释里有；后者读音取决于语境，交给大模型每句判。
+ *
+ * 目标宿主是网易云内置的老 CEF，所以 src/ 只用 ES5；
  * 这个脚本是构建期工具，可以用现代语法。
  */
 "use strict";
@@ -125,9 +123,8 @@ function filterPromotions(input, tables) {
       continue;
     }
     /*
-     * 某种外语**自己的词**（德语 tag / dich / immer、拉丁语 vacuum / ex …）：**一律不收**。
-     *
-     * 为什么：词典是**不分语言**的，而且排在语言引擎前面 —— 一旦收下就在所有行上生效。
+     * 某种外语自己的词（德语 tag / dich / immer、拉丁语 vacuum / ex …）一律不收：
+     * 词典是不分语言的，而且排在语言引擎前面 —— 一旦收下就在所有行上生效。
      * 真机素材里这几个就是这么坏的：tag タグ→ターク、vacuum バキューム→ヴァクウム、
      * dich ディッヒ→ディヒ、immer イマー→インマー、Rückkehr リュックケーア→リュックケール ——
      * 英文行跟着错，德语行反而不如引擎（词首 er-、ch、双辅音的规则都是按德语定的）。
@@ -174,10 +171,9 @@ function loadTables() {
   const hand = require(path.join(__dirname, "seed-words.js"));
   const llm = require(path.join(__dirname, "seed-words-llm.js"));
   /*
-   * 两张表的形状**不一样**，两种都要认（这个坑真踩过：seed-words.js 是
-   * `[{en, kana}]`，而 seed-words-llm.js 是 `{words: {词: 读音}, stats}`）——
-   * 只按数组那种写法读，`for (const r of rows)` 会直接 TypeError，
-   * 于是 `npm run promote:learned` 一次都没跑成过（seed-words-learned.js 一直是空的）。
+   * 两张表的形状不一样，两种都要认 —— 这个坑真踩过：只按数组那种写法读，
+   * `for (const r of rows)` 会直接 TypeError，于是 `npm run promote:learned`
+   * 一次都没跑成过（seed-words-learned.js 一直是空的）。
    */
   const toMap = (table) => {
     const out = {};
@@ -220,7 +216,7 @@ function loadTables() {
     }
   };
   /*
-   * 某种外语**自己的词**：词 -> 语种名。取自 src/core/langs.js 的 SIGNALS（每种语言的
+   * 某种外语自己的词：词 -> 语种名。取自 src/core/langs.js 的 SIGNALS（每种语言的
    * 词表）和 HOMOGRAPH（英外同形异音）。这些词"只加不改"，理由见 filterPromotions。
    */
   const foreign = {};

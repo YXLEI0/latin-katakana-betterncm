@@ -1,6 +1,7 @@
 /*
  * 测试用的小工具：把 src/core/*.js 按 manifest 的顺序「注入」进 jsdom 窗口，
- * 模拟 BetterNCM 的 <script> 加载方式（这些文件是 UMD，浏览器分支会挂到 globalThis）。
+ * 模拟 BetterNCM 的 <script> 加载方式。核心模块都是 UMD，浏览器分支挂在
+ * globalThis 上，注入完就能从 window 上取到 WK*。
  */
 "use strict";
 
@@ -33,7 +34,7 @@ function autoClose(window) {
   }
 }
 
-/** 按顺序注入任意 src/ 下的模块（浏览器分支会挂到 globalThis） */
+/** 按顺序注入任意 src/ 下的模块（files 换掉就是另一套清单） */
 function loadScripts(dom, files) {
   for (const f of files) {
     const code = fs.readFileSync(path.join(SRC, f), "utf8");

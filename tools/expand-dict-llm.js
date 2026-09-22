@@ -1,23 +1,22 @@
 /*
  * 用大模型批量扩充离线读音词典：英文词 -> 片假名读音。
  *
- * 为什么要有这个工具：
- *   纯拼写规则（src/core/reading.js 里那一层）永远读不对 hello / question 这种词，
- *   实测大模型给的读音质量是碾压性的。但**运行期**再问一遍要花用户的钱、要联网、
- *   要等，而歌词里高频词其实是有限的一批 —— 那就构建期问一次，写进离线词典。
- *   运行期的词典层是同步的、离线的、零成本，命中率上去之后规则层只当兜底。
+ * 纯拼写规则（src/core/reading.js 里那一层）永远读不对 hello / question 这种词，
+ * 实测大模型给的读音质量是碾压性的。但运行期再问一遍要花用户的钱、要联网、要等，
+ * 而歌词里高频词其实是有限的一批 —— 那就构建期问一次，写进离线词典：运行期的
+ * 词典层是同步的、离线的、零成本，命中率上去之后规则层只当兜底。
  *
- * 数据源：一份公开的英文词频表（google-10000-english）取前 N 个，
- *   加上 tools/seed-words.js 已经有人工核过的词（人工优先，不覆盖）。
- * 产物：tools/seed-words-llm.js（生成物，勿手改），由 tools/build-dict.js 合并进
- *   src/core/dict.js。
+ * 取词是公开的英文词频表（google-10000-english）前 N 个，再补上
+ * tools/seed-words.js 里人工核过的词（人工优先，不覆盖）；产物
+ * tools/seed-words-llm.js 是生成物，勿手改，由 tools/build-dict.js 合并进
+ * src/core/dict.js。
  *
  * 用法：
  *   node tools/expand-dict-llm.js --top 3000              # 取词频前 3000
  *   node tools/expand-dict-llm.js --top 3000 --dry-run    # 只打印要问哪些词
  *   node tools/expand-dict-llm.js --resume                # 接着上次的产物继续问
  *
- * key 从环境变量 DEEPSEEK_API_KEY 读；**绝不**写进仓库里的任何文件。
+ * key 从环境变量 DEEPSEEK_API_KEY 读，绝不写进仓库里的任何文件。
  */
 "use strict";
 
@@ -32,7 +31,7 @@ const SEED = path.join(__dirname, "seed-words.js");
 
 /*
  * 词频表地址，按顺序试。
- * 注意 raw.githubusercontent.com 在本机是 FAIL UNABLE_TO_VERIFY_LEAF_SIGNATURE
+ * raw.githubusercontent.com 在本机是 FAIL UNABLE_TO_VERIFY_LEAF_SIGNATURE
  * （沙箱里的 TLS 中间证书问题），所以默认走 jsDelivr 镜像。
  */
 const FREQ_URLS = [
@@ -98,9 +97,9 @@ function handWords() {
 
 /*
  * `src/core/reading.js` 里的 ENGLISH_EXCEPTIONS / ENGLISH_LEXICON 也是人工核过的，
- * 而且**查表顺序在词典之后**（reader: dict -> romaji -> exceptions -> lexicon -> 规则）。
- * 也就是说：如果这里给同一个词生成了读音，它会盖掉那份人工结果。
- * 所以这些词也要当"人工词"排除掉，不能让生成物把人工判断顶掉。
+ * 而且查表顺序在词典之后（reader: dict -> romaji -> exceptions -> lexicon -> 规则）。
+ * 也就是说，这里给同一个词生成了读音，就会盖掉那份人工结果。所以这些词也要当
+ * "人工词"排除掉，不能让生成物把人工判断顶掉。
  */
 function handWordsFromReadingJs() {
   const src = fs.readFileSync(path.join(ROOT, "src", "core", "reading.js"), "utf8");
@@ -184,7 +183,7 @@ function validate(word, kana) {
   if (!k) return "空";
   if (!RE_KANA.test(k)) return "含非片假名字符：" + k;
   if (k.length > 14) return "太长：" + k;
-  // 单个假名的读音，多半是模型偷懒（"e" -> "エ" 其实可以，但 2 个字母以上的词给单假名通常不对）
+  // 单个假名的读音，多半是模型偷懒（"e" -> "エ" 其实可以，但 4 个字母以上的词给单假名通常不对）
   if (word.length >= 4 && k.length === 1) return "词长与读音长度不匹配：" + k;
   return null;
 }

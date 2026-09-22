@@ -22,8 +22,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  // 注意：不能直接用上面 UMD 壳里的 root —— 仓库里 require 这份文件时
-  // factory 是在模块作用域里跑的，那里没有 root。统一用 globalThis。
+  // 不能直接用上面 UMD 壳里的 root：仓库里 require 这份文件时，factory 是在
+  // 模块作用域里跑的，那里没有 root。统一用 globalThis。
   var G = typeof globalThis !== "undefined" ? globalThis : {};
 
 
@@ -61,7 +61,7 @@
     var log = options.log || function () {};
     /*
      * 答案校验：由上层注入（main.js 传 reading.js 的 looksLikeTransliteration）。
-     * Google 的 en→ja 对 tick 会回「カチカチ」这种**拟声词**，纯片假名，光看字符集
+     * Google 的 en→ja 对 tick 会回「カチカチ」这种拟声词，纯片假名，光看字符集
      * 拦不住 —— 用户报的就是这个。校验不过按 miss 处理。
      */
     var validate = typeof options.validate === "function" ? options.validate : null;
@@ -171,7 +171,7 @@
     /**
      * 这个词是不是"还在等在线结果"（排了队或正在请求）。
      *
-     * 上层靠它决定要不要先用**英文音译规则**的结果顶上：用户要的顺序是
+     * 上层靠它决定要不要先用英文音译规则的结果顶上：用户要的顺序是
      * 「大模型 -> 免费接口 -> 规则」，所以等待期间先不标；接口失败/关掉之后
      * （fail 时会把词记成"查过、没有"并清出队列）这里立刻变 false，让规则兜底 ——
      * 断网也照标。
@@ -220,7 +220,7 @@
           for (var i = 0; i < words.length; i++) {
             var g = glosses[i];
             inflight.delete(words[i]);
-            // 光"纯片假名"不够：还要像这个词的**音译**（tick 不能被回成 カチカチ）
+            // 光"纯片假名"不够：还要像这个词的音译（tick 不能被回成 カチカチ）
             if (typeof g === "string" && g && (!validate || validate(words[i], g))) {
               mem.set(words[i], g);
               dirty = true;
@@ -246,7 +246,7 @@
             onStatus("在线校正：" + got + " 个词");
           }
           /*
-           * **不管有没有命中都要通知上层重扫**：层序是「在线优先、规则垫底」，
+           * 不管有没有命中都要通知上层重扫：层序是「在线优先、规则垫底」，
            * 等待期间那些词是先不标的；一批全被丢掉（回汉字/不是纯片假名）时
            * 如果没人重扫，规则层就没机会接手，那些词会一直空着。
            */
@@ -274,7 +274,7 @@
           // 失败后不再自动重排队，避免接口挂了以后疯狂重试。
           // 用户改设置或手动 rescan 时会重新排队。
           //
-          // 但**必须叫一次 onUpdate**：现在层序是「大模型/免费接口 -> 规则」，
+          // 但必须叫一次 onUpdate：现在层序是「大模型/免费接口 -> 规则」，
           // 在线的结果没回来之前那一轮是"先不标"的 —— 失败了不重扫，
           // 那些词就会一直空着（页面看着像坏了）。重扫之后规则层立刻兜底。
           onUpdate();
@@ -344,7 +344,7 @@
     }
 
     /*
-     * 只要**纯片假名**的结果。
+     * 只要纯片假名的结果。
      *
      * 这是这一层唯一的判据，也是它存在的意义：Google 的 en->ja 对"外来语"通常回
      * 片假名（clover -> クローバー），对普通词回汉字/平假名（love -> 愛）。

@@ -1,22 +1,17 @@
 /*
- * 从 Project Sekai 官方主数据库（tools/vendor/sekai/musics.json）里筛出**西文歌名的
- * 官方读音**，生成 tools/seed-words-sekai.js，再由 build-dict 并进离线词典。
+ * 从 Project Sekai 主数据库（tools/vendor/sekai/musics.json）里筛出西文歌名的官方读音，
+ * 生成 tools/seed-words-sekai.js，再由 build-dict 并进离线词典。
  *
- * 数据来源
- * --------
+ * 数据来源（记的是官方读音，平假名）：
  *   https://pjsekai.moe/#/music/<id>   （用户给的站点，id 可换）
  *   https://sekai-world.github.io/sekai-master-db-diff/musics.json   （站点用的主数据）
- * 记的是官方读音（平假名），例如：
  *   "Forward"      -> ふぉわーど     -> フォワード
  *   "Nostalogic"   -> のすたろじっく -> ノスタロジック
  *
- * 只收**单个西文词**的歌名
- * ------------------------
- * 官方的读音是**整首歌名**的读音，多词歌名没法反推"哪个假名属于哪个词"
- * （`the EmpErroR` 官方读 ジエンペラー —— "the" 那一拍是标题里的梗，当成 the 的
- * 通用读音收进词典就毁了）。所以：
- *   - 全西文、且只有一个词（不含数字、不含点/横线那种记号）-> 收；
- *   - 多词、和日文混排 -> 跳过（数据留在 vendor 里，将来要按歌名做专属读音再说）。
+ * 只收单个西文词的歌名：官方读音是整首歌名的，多词歌名没法反推哪个假名属于哪个词
+ * （`the EmpErroR` 官方读 ジエンペラー，"the" 那一拍是标题里的梗，当成 the 的通用读音
+ * 收进词典就毁了）。全西文且只有一个词（不含数字、不含点/横线那种记号）的收；
+ * 多词、和日文混排的跳过，数据留在 vendor 里，将来要按歌名做专属读音再说。
  *
  * 用法：npm run build:sekai（改过 vendor/sekai/musics.json 后重跑）
  */
@@ -41,7 +36,7 @@ function toKatakana(s) {
 }
 
 /**
- * 生成 seed 文件的内容（不写盘 —— check.js 拿它和提交进去的那份逐字节比）。
+ * 生成 seed 文件的内容，不写盘 —— check.js 拿它和提交进去的那份逐字节比。
  * @returns {{content: string, keys: string[], skip: object, handHits: string[], already: string[]}}
  */
 function generate() {
@@ -51,8 +46,8 @@ function generate() {
   const handSet = {};
   for (const r of hand) handSet[String((r && r.en) || "").toLowerCase()] = String((r && r.kana) || "");
   /*
-   * 上一次生成的这一份要排除掉再和词典比："已经读对"的意思是**别的来源**已经读对，
-   * 不然重跑一次会把上一轮自己写进去的词当成"已经读对"丢掉，seed 越跑越空。
+   * 上一次生成的这一份要排除掉再和词典比：这里"已经读对"指的是别的来源已经读对，
+   * 不然重跑一次会把上一轮自己写进去的词当成已读对丢掉，seed 越跑越空。
    */
   const prevSet = {};
   if (fs.existsSync(OUT)) {
@@ -84,7 +79,7 @@ function generate() {
       skip.multiWord++;
       continue;
     }
-    // 单个西文词：歌名里除了这个词还有别的符号（`p.h.` / `Un-Lock`）就不收 ——
+    // 单个西文词：歌名里除了这个词还有别的符号（`p.h.` / `Un-Lock`）就不收，
     // 那种在分词里是记号，词典这一层根本轮不到
     if (!RE_TITLE_LATIN.test(title)) {
       skip.punctuation++;
@@ -115,9 +110,9 @@ function generate() {
   const keys = Object.keys(out).sort();
   const body = keys.map((k) => '  { en: ' + JSON.stringify(k) + ", kana: " + JSON.stringify(out[k]) + " },").join("\n");
   const content = `/*
- * 官方歌名读音：Project Sekai 主数据库里**单个西文词**的歌名（\u5171 ${keys.length} 条）。
+ * 官方歌名读音：Project Sekai 主数据库里单个西文词的歌名（\u5171 ${keys.length} 条）。
  *
- * **自动生成，勿手改** —— 由 tools/build-sekai.js 从 tools/vendor/sekai/musics.json 生成，
+ * 自动生成，勿手改 —— 由 tools/build-sekai.js 从 tools/vendor/sekai/musics.json 生成，
  * 跑 npm run build:sekai 重新生成（原始数据：sekai-world/sekai-master-db-diff 的 musics.json，
  * 见 https://pjsekai.moe/#/music/<id>）。
  *

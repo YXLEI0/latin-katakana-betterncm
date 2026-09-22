@@ -1,7 +1,7 @@
 /*
  * 大模型校正层（core/llm.js）的单元测试。
  *
- * 这一层的职责是：把**规则拼写音译**读歪的词送到大模型换一个正确读音
+ * 这一层的职责是：把规则拼写音译读歪的词送到大模型换一个正确读音
  * （hello ヘッラオ -> ハロー、question クワエサション -> クエスチョン）。
  *
  * 全部用桩 fetch，不碰真接口。重点盯住几件事：
@@ -96,7 +96,7 @@ test("回答被截断（JSON 不完整）时：能对上的先收下，批次减
   // 抢救出来的先收下（4 条）
   assert.strictEqual(c.client.peek("alpha"), "イチ", "抢救到的答案要收下");
   assert.strictEqual(c.client.peek("delta"), "ヨン");
-  // 没抢到的（后面的词）**不记 miss**：它们还得能重问
+  // 没抢到的（后面的词）不记 miss：它们还得能重问
   assert.strictEqual(c.client.peek("juliet"), null);
   assert.strictEqual(c.client.stats().missesCached, 0, "截断不是模型的错，不许记成永久 miss");
   // 批次自适应减半：下一轮用更小的批，回答才不会被截断
@@ -118,7 +118,7 @@ test("完全解析不出 JSON 时：按失败处理（退避重试），并且�
 });
 
 test("回答被截断时：没抢到的词**立刻回到队列**，下一批马上补问（不等页面重扫）", async () => {
-  // 为什么要立刻放回队列：注音层**只在注音那一刻** lookup 一次。老代码截断时
+  // 为什么要立刻放回队列：注音层只在注音那一刻 lookup 一次。老代码截断时
   // 只写一句"下一轮 lookup 会重新入队"，可页面不重扫就再没有下一轮了 ——
   // 那个词就永远是黄的（用户报的正是这句）。
   const ctx = loadCore();
@@ -252,7 +252,7 @@ test("被拒的答案会落盘：重启之后 rejects() 还看得出原因", asy
 test("退避结束后会自己重试（老版本这里会永远卡住：队列躺着一动不动）", async () => {
   // 用户截图里的样子：队列 184 个词、本分钟额度还是满的、没有请求在飞。
   // 根因是 schedule() 里 `if (!canAsk()) return;` —— 退避期间那次排期什么都不做，
-  // 而退避结束时**没有任何事件**会再来叫我们（页面不动就没有新的 lookup），
+  // 而退避结束时没有任何事件会再来叫我们（页面不动就没有新的 lookup），
   // 于是队列永远躺着。现在会排到退避结束那一刻。
   const ctx = loadCore();
   let fail = true;
@@ -265,7 +265,7 @@ test("退避结束后会自己重试（老版本这里会永远卡住：队列�
   assert.ok(c.client.stats().cooldownMs > 0, "先进入退避");
   const afterFail = c.calls.length;
 
-  // 关键：**不再调用 lookup**，也不手动 flush —— 只等，就应该自己重试
+  // 关键：不再调用 lookup，也不手动 flush —— 只等，就应该自己重试
   fail = false;
   await new Promise((r) => setTimeout(r, 400));
   assert.ok(c.calls.length > afterFail, "退避过后要自己再发一次（" + afterFail + " -> " + c.calls.length + "）");
@@ -319,7 +319,7 @@ test("retryNow：把退避清掉、马上重发（用户看到「全都没矫正
 });
 
 test("超时：批次减半再试，成功之后恢复（用户截图里的 The user aborted a request.）", async () => {
-  // 这条错误是**我们自己的超时**掐的（20s -> 45s，且现在会自适应减半）。
+  // 这条错误是我们自己的超时掐的（20s -> 45s，且现在会自适应减半）。
   // 光退避再原样重发同一大批，很容易一直超时。
   const ctx = loadCore();
   let abort = true;
@@ -778,7 +778,7 @@ test("stats 返回的是快照，改它不影响内部状态", async () => {
 test("请求里带上整句歌词：同一个词在不同句子里分别问、分别记", async () => {
   const ctx = loadCore();
   const { client, calls } = makeClient(ctx, {
-    // 按**下标**回答（提示词要求的形状），模拟"看语境判断"
+    // 按下标回答（提示词要求的形状），模拟"看语境判断"
     reply: (words, items) => {
       const out = {};
       items.forEach((it, idx) => {
@@ -847,7 +847,7 @@ test("语境过长会截断，不会把整本歌词塞进提示词", async () =>
 test("西里尔 / 希腊词也要问模型（缓存键不能把它们削成空串）", async () => {
   // 用户报的「希腊语和俄语一直是黄的」：keyOf 原来用 `replace(/[^a-z]/g, "")` 折键，
   // 西里尔（Мы）和希腊（βίος）整词被削成空串 → lookup 直接返回 null →
-  // 那些词**从来没被问过**，于是永远停在规则层（黄色）。
+  // 那些词从来没被问过，于是永远停在规则层（黄色）。
   const ctx = loadCore();
   const c = makeClient(ctx, { reply: () => ({ "1": "ムイ", "2": "ビオス" }) });
 

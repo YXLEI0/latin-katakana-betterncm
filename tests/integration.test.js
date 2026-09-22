@@ -92,7 +92,7 @@ function bootPlugin(html, options) {
   window.betterncm = betterncm;
   window.plugin = plugin;
 
-  // options.files 给了就按它注入（用来测"某个核心模块没注入"的降级）
+  // options.files 给了就按它注入，没给就注入全部
   loadScripts(dom, options.files ? options.files.concat(["main.js"]) : FILES);
 
   const env = {
@@ -186,7 +186,7 @@ test("RNP 的罗马音层和中文翻译层不标，只标原文层", async () =
 });
 
 // 三个插件同时开着时，一行里会同时有别人的注音节点。
-// 片假名终结者的 <rt class="kt-rt"> 里装的偏偏是**英文原词**（dream、hello…），
+// 片假名终结者的 <rt class="kt-rt"> 里装的偏偏是英文原词（dream、hello…），
 // 正是我们要标的对象 —— 如果不把别人的注音节点整棵跳过，
 // 就会在英文注释上面再注一层片假名，等于给注解做注解。
 const COEXIST_HTML = `<!doctype html><html><head></head><body>
@@ -217,7 +217,7 @@ test("已经带别人注音的行：只标底字，绝不往别人的注音里�
 
 /*
  * 上面的用例走的是「人家用真 <ruby>/<rt>」这条路 —— 那条路上 <rt> 标签本身
- * 就在 SKIP_TAGS 里，所以它证明不了我们认识对方的 **class**。
+ * 就在 SKIP_TAGS 里，所以它证明不了我们认识对方的 class。
  * 内核不支持 ruby 时三家都降级成 <span class="xx-rt">，那时只剩 class 可认；
  * 这里就把那条路单独钉住（片假名终结者的降级节点是 span.kt-ruby / span.kt-rt）。
  */
@@ -243,7 +243,7 @@ test("降级成 <span> 的别人注音，靠 class 也要认出来（不能给 d
 });
 
 /*
- * 三个插件同时开着时最要紧的一条：**反复扫描不能重注、不能进入认输期**。
+ * 三个插件同时开着时最要紧的一条：反复扫描不能重注、不能进入认输期。
  * 上面两条用例只证明"别人的注音我们不碰"；这条证明"待在别人的注音旁边我们也不抖" ——
  * 如果 visibleText() 把别人的注音算进底字，或者把对方的 <rt> 当成"底字变了"，
  * 每一轮都会"还原 → 重注"，真机上就是一直在闪。
@@ -390,11 +390,11 @@ test("用户报的那行：Tell me a story 里的 a 也要注音", async () => {
 });
 
 test("用户截图的四张图：颜文字不标、ATフィールド エーティー、Ω オーム、I'm 要连 `'m` 一起标", async () => {
-  // ① `勝算なくても行っちゃえ！とか(#^ω^)` —— 颜文字里的 ω 被标成 オメガ（不该标）
-  // ② `対バンにはATフィールド` —— `AT` 命中词典的 at アット（该 エーティー）
-  // ③ `I-I-I-I-I-I-I'm mine` —— 记号在 `'` 前就断了，最后只注到 `I`，`'m` 整个丢了
-  // ④ `無限増幅回路（Ω）` —— Ω 是电阻单位（读 オーム），原来整行被判成希腊语、走引擎读 オ
-  // ⑤ `（V, W, A）` 是**单位符号**（ボルト・ワット・アンペア），而 `(A, B)` 仍是字母名
+  // 用户截图里读错的几处：颜文字 `勝算なくても行っちゃえ！とか(#^ω^)` 里的 ω 被标成 オメガ（该留白）；
+  // `対バンにはATフィールド` 的 `AT` 命中词典的 at、读成 アット（该 エーティー）；
+  // `I-I-I-I-I-I-I'm mine` 的记号在 `'` 前就断了，最后只注到 `I`，`'m` 整个丢了；
+  // `無限増幅回路（Ω）` 的 Ω 是电阻单位、该读 オーム，原来整行被判成希腊语、引擎读成 オ；
+  // `（V, W, A）` 是单位符号（ボルト・ワット・アンペア），而 `(A, B)` 仍是字母名。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>勝算なくても行っちゃえ！とか(#^ω^)</p></li>
@@ -415,19 +415,19 @@ test("用户截图的四张图：颜文字不标、ATフィールド エーテ�
       [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
     );
 
-  // ① 颜文字：一个注音都不该有（`^` 之类在 letters.js 里算"装饰符号粘连"）
+  // 颜文字行一个注音都不该有（`^` 之类在 letters.js 里算"装饰符号粘连"）
   assert.strictEqual(rubyCount(ps[0]), 0, "颜文字不该注音：" + ps[0].innerHTML);
   assert.strictEqual(baseText(ps[0]), "勝算なくても行っちゃえ！とか(#^ω^)", "原文一字不改");
-  // ② ATフィールド：紧贴假名的全大写缩写按字母名
+  // `AT` 紧贴假名，全大写缩写按字母名读
   assert.strictEqual(pairsOf(ps[1]).get("AT"), "エーティー", "AT 该读 エーティー：" + ps[1].innerHTML);
-  // ③ 记号 + 缩写尾巴：`'m` 要跟最后一个 I 合成一个词（アイム）
+  // 记号带缩写尾巴：`'m` 要跟最后一个 I 合成一个词（アイム）
   const l2 = pairsOf(ps[2]);
   assert.strictEqual(l2.get("I'm"), "アイム", "I'm 要整体标（含 'm）：" + ps[2].innerHTML);
   assert.strictEqual(l2.get("mine"), "マイン");
   assert.strictEqual([...ps[2].querySelectorAll("ruby.wk-ruby")].filter((r) => r.childNodes[0].nodeValue === "I").length, 6);
-  // ④ 单字母希腊字母：Ω 是电阻单位（大写按单位，小写 ω 才是字母名）
+  // 单个希腊字母：Ω 是大写的电阻单位，小写 ω 才读字母名
   assert.strictEqual(pairsOf(ps[3]).get("Ω"), "オーム", "Ω 该读 オーム：" + ps[3].innerHTML);
-  // ⑤ 单位符号：`（V, W, A）` 整串都是单位 -> 读单位名（用户指名要的）
+  // `（V, W, A）` 整串都是单位，读单位名（用户指名要的）
   const l4 = pairsOf(ps[4]);
   assert.strictEqual(l4.get("V"), "ボルト", "V 该读 ボルト：" + ps[4].innerHTML);
   assert.strictEqual(l4.get("W"), "ワット");
@@ -436,7 +436,7 @@ test("用户截图的四张图：颜文字不标、ATフィールド エーテ�
   const l4b = pairsOf(ps[5]);
   assert.strictEqual(l4b.get("A"), "エー", "`(A, B)` 的 A 是字母名：" + ps[5].innerHTML);
   assert.strictEqual(l4b.get("B"), "ビー");
-  // 反面：全大写的**英文词**照旧按词读（别被缩写表带跑）
+  // 反面：全大写的英文词照旧按词读（别被缩写表带跑）
   const l6 = pairsOf(ps[6]);
   assert.strictEqual(l6.get("GO"), "ゴー", JSON.stringify([...l6]));
   assert.strictEqual(l6.get("NO"), "ノー");
@@ -491,7 +491,7 @@ test("英文词不许被罗马音层抢读：daze デイズ / Shone ショーン
 });
 
 test("全角西文字母也注音（`こんなんじゃ（ＮＯ!）` → ＮＯ ノー）", async () => {
-  // 用户截图：歌词里的 `ＮＯ` 是**全角**的（排版写法），原来一个注音都没有 ——
+  // 用户截图：歌词里的 `ＮＯ` 是全角的（排版写法），原来一个注音都没有 ——
   // matcher 只认半角字母。现在全角折半角再查，底字仍旧是原文（一个字符不改）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
@@ -517,11 +517,9 @@ test("全角西文字母也注音（`こんなんじゃ（ＮＯ!）` → ＮＯ
 });
 
 test("ASCII art / 颜文字行不标；数字后面的单位字母要标；打码旁边的重复字母串留白", async () => {
-  // 用户四张截图：
-  //   ① `~i.!.|| i !!i !!~` —— 图案里的 i 被标成 アイ（该留白）
-  //   ② `( ﾟ∀ﾟ)o彡ﾟ えーりん！` —— 颜文字里的 o 被标成 オ（该留白）
-  //   ③ `VOX AC30W` —— 数字后面的 W 一个注音都没有（该 ワット）
-  //   ④ `とめらんない本能 俺の XXX ****!` —— XXX 旁边就是打码符号（该留白，不读 エックス）
+  // 用户四张截图：图案行 `~i.!.|| i !!i !!~` 和颜文字行 `( ﾟ∀ﾟ)o彡ﾟ えーりん！` 里的字母
+  // 被标了注音（都该留白）；`VOX AC30W` 里数字后面的 W 一个注音都没有（该读 ワット）；
+  // `とめらんない本能 俺の XXX !` 里 XXX 贴着打码符号，也不该读 エックス。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>~i.!.|| i !!i !!~</p></li>
@@ -540,15 +538,15 @@ test("ASCII art / 颜文字行不标；数字后面的单位字母要标；打�
     new Map(
       [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
     );
-  // ①② 图案/颜文字行：整行零注音，底字不动
+  // 图案行、颜文字行：整行零注音，底字不动
   assert.strictEqual(rubyCount(ps[0]), 0, "图案行不该注音：" + ps[0].innerHTML);
   assert.strictEqual(baseText(ps[0]), "~i.!.|| i !!i !!~");
   assert.strictEqual(rubyCount(ps[1]), 0, "颜文字行不该注音：" + ps[1].innerHTML);
   assert.strictEqual(baseText(ps[1]), "( ﾟ∀ﾟ)o彡ﾟ えーりん！えーりん！");
-  // ③ 数字后面的单位字母
+  // 数字后面的单位字母
   const l2 = pairsOf(ps[2]);
   assert.strictEqual(l2.get("W"), "ワット", "30W 的 W 该读 ワット：" + ps[2].innerHTML);
-  // ④ 打码旁边的重复字母串留白（同行的普通词照标）
+  // 打码旁边的重复字母串留白，同行的普通词照标
   const l3 = pairsOf(ps[3]);
   assert.strictEqual(l3.get("XXX"), undefined, "XXX 旁边就是 ****，该留白：" + ps[3].innerHTML);
   assert.strictEqual(l3.get("Say"), "セイ");
@@ -568,9 +566,9 @@ test("ASCII art / 颜文字行不标；数字后面的单位字母要标；打�
 
 test("全大写缩写贴着数字是字母名：AM6:00 -> エーエム（英语单词 am 不许抢）", async () => {
   // 用户截图：`AM6:00 目覚まし時計を起こして` 的 AM 被离线词典里的英语单词 `am`（アム）
-  // 接走了 —— 词典键都是小写，分不清 `am` / `AM`。全大写又**紧贴数字**的是缩写
+  // 接走了 —— 词典键都是小写，分不清 `am` / `AM`。全大写又紧贴数字的是缩写
   // （时刻 / 型号），这一判排在词典前面。
-  // 反面：全大写写的**真词**贴着数字照旧走词典（LOVE2 -> ラブ、HEY3 -> ヘイ）。
+  // 反面：全大写写的真词贴着数字照旧走词典（LOVE2 -> ラブ、HEY3 -> ヘイ）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>AM6:00 目覚まし時計を起こして</p></li>
@@ -603,7 +601,7 @@ test("全大写缩写贴着数字是字母名：AM6:00 -> エーエム（英语�
 });
 
 test("西里尔全大写缩写逐字母读：СССР -> エスエスエスエル（不是 スル）", async () => {
-  // 用户截图：苏联国歌那几行的 `СССР` 被读成 **スル** —— 俄语引擎把它当词，
+  // 用户截图：苏联国歌那几行的 `СССР` 被读成 スル —— 俄语引擎把它当词，
   // 又按正字法把三个 С 并成一个，于是只剩 С+Р。缩写不是词：西里尔全大写、
   // 又没有元音的（СССР / РФ / КГБ）逐字母读，和拉丁的 SOS エスオーエス 同一个口径；
   // 带元音的（`ГИМН` ギムン）照旧当词。同一条截图上的长音/软化问题也在这一轮改了：
@@ -642,7 +640,7 @@ test("西里尔全大写缩写逐字母读：СССР -> エスエスエスエ�
 
 test("ツイッター只在 `Xだけの…` 那一句命中；别的 X 照旧字母名/留白", async () => {
   // 用户点名：`Xだけの"人マニア"` 的 X 要读 ツイッター（官方翻译那行写着 X(Twitter)），
-  // 但**只在这一句歌词命中** —— 别的行里孤立的 X 不许跟着变。
+  // 但只在这一句歌词命中 —— 别的行里孤立的 X 不许跟着变。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>Xだけの"人マニア"</p></li>
@@ -673,7 +671,7 @@ test("ツイッター只在 `Xだけの…` 那一句命中；别的 X 照旧字
 
 test("整首专属读音：`the EmpErroR` 里 the 读 ジ（官方 ジエンペラー）", async () => {
   // 这一档的读音来自官方歌名读音（tools/vendor/sekai/musics.json），按词切开后
-  // **只在这一首里**生效：`the EmpErroR` 官方读 ジエンペラー —— 标题里的 `the` 就是 ジ，
+  // 只在这一首里生效：`the EmpErroR` 官方读 ジエンペラー —— 标题里的 `the` 就是 ジ，
   // 而默认层会给 ザ（词典）。判据两条：歌名命中（播放栏那行），
   // 或者歌名读不到时靠歌词里的识别词（这里用歌名里独特的 `EmpErroR` 写法）。
   const HTML = `<!doctype html><html><head></head><body>
@@ -733,7 +731,7 @@ test("整首专属读音只在那一首里生效：别的歌里 No 照旧读 ノ
 test("连字符标记长音：`MO-SO` / `KYO-SO` / 换行拆开的 `SO-` + `ZO` 都读长音", async () => {
   // 用户点名要的通用规则（不针对某一首歌）：全大写、形如罗马字音节、被短横线串起来的，
   // 每一节都读长音 —— `MO-SO` モーソー、`SO-ZO` ソーゾー、`KYO-SO` キョーソー。
-  // 扫描范围是**整首歌词**：这种词常被换行拆开（上一行结尾 `SO-`、下一行开头 `ZOは海をこえ`），
+  // 扫描范围是整首歌词：这种词常被换行拆开（上一行结尾 `SO-`、下一行开头 `ZOは海をこえ`），
   // 只看一行的话 `ZO` 那行自己什么线索都没有（罗马音层会给 ゾ）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
@@ -769,7 +767,7 @@ test("连字符标记长音：`MO-SO` / `KYO-SO` / 换行拆开的 `SO-` + `ZO` 
 });
 
 test("整首专属读音：歌名里含假名/汉字/符号的也按表读（potato ポテト / bit ビット）", async () => {
-  // 官方读音是**整首歌名**的，遇到"西文 + 假名汉字"混排时，切分靠假名段锚定
+  // 官方读音是整首歌名的，遇到"西文 + 假名汉字"混排时，切分靠假名段锚定
   // （假名的读音就是它自己），汉字/数字/符号当通配段。这两条就是自动切出来的。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">
@@ -793,10 +791,10 @@ test("整首专属读音：歌名里含假名/汉字/符号的也按表读（pot
 });
 
 test("单个大写字母贴日文/在英文句子里要标；数字后面的单位词；`PV:` 算制作信息行", async () => {
-  // 用户三张截图：
-  //   ① `T氏にすべてを捧げましょう` / `T Is My Everything` —— 单字母 T 一个注音都没有（该 ティー）
-  //   ② `半径300mmの体で必死に鳴いてる` —— `mm` 没注音（那首歌罗马音行唱的就是 mi ri）
-  //   ③ `PV: 羽生まゐご`（上一行是 `曲絵: 瀬川あをじ`）—— 两行都是制作信息，PV 不该标
+  // 用户三张截图：`T氏にすべてを捧げましょう` 和 `T Is My Everything` 里的单字母 T
+  // 一个注音都没有（该 ティー）；`半径300mmの体で必死に鳴いてる` 的 `mm` 没注音
+  // （那首歌罗马音行唱的就是 mi ri）；`PV: 羽生まゐご`（上一行是 `曲絵: 瀬川あをじ`）
+  // 两行都是制作信息，PV 不该标。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>T氏にすべてを捧げましょう</p></li>
@@ -817,15 +815,15 @@ test("单个大写字母贴日文/在英文句子里要标；数字后面的单�
     new Map(
       [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
     );
-  // ① 紧贴日文的单字母 + 英文句子里的单字母
+  // 紧贴日文的单字母和英文句子里的单字母
   assert.strictEqual(pairsOf(ps[0]).get("T"), "ティー", "T氏 的 T 该读 ティー：" + ps[0].innerHTML);
   assert.strictEqual(baseText(ps[0]), "T氏にすべてを捧げましょう");
   const l1 = pairsOf(ps[1]);
   assert.strictEqual(l1.get("T"), "ティー", JSON.stringify([...l1]));
   assert.strictEqual(l1.get("Everything"), "エブリシング");
-  // ② 数字后面的单位词
+  // 数字后面的单位词
   assert.strictEqual(pairsOf(ps[2]).get("mm"), "ミリ", "300mm 该读 ミリ：" + ps[2].innerHTML);
-  // ③ 两行制作信息都不标
+  // 两行制作信息都不标
   assert.strictEqual(rubyCount(ps[3]), 0, "`曲絵:` 行不该注音：" + ps[3].innerHTML);
   assert.strictEqual(rubyCount(ps[4]), 0, "`PV:` 行不该注音：" + ps[4].innerHTML);
   // 反面：A / I 仍是冠词 / 代词；单字母贴日文另有 B面 / X線
@@ -846,10 +844,9 @@ test("单个大写字母贴日文/在英文句子里要标；数字后面的单�
 });
 
 test("`AH!!` 读 アー（不是字母名）、`B4` 的 B 读 ビー、`tofu` 读 トウフ", async () => {
-  // 用户三张截图：
-  //   ① `ゆらゆら (AH!!)` —— `AH` 被 spellOutAcronym 逐字母读成 エーエイチ（该 アー）
-  //   ② `B4の紙切れに収まる僕の人生を` —— `B` 一个注音都没有（该 ビー）
-  //   ③ `my tofu mentality` —— `tofu` 被罗马音层读成 トフ（该 トウフ）
+  // 用户三张截图：`ゆらゆら (AH!!)` 的 `AH` 被 spellOutAcronym 逐字母读成 エーエイチ（该 アー）；
+  // `B4の紙切れに収まる僕の人生を` 的 `B` 一个注音都没有（该 ビー）；
+  // `my tofu mentality` 的 `tofu` 被罗马音层读成 トフ（该 トウフ）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>ゆらゆら (AH!!)</p></li>
@@ -866,11 +863,11 @@ test("`AH!!` 读 アー（不是字母名）、`B4` 的 B 读 ビー、`tofu` �
     new Map(
       [...p.querySelectorAll("ruby.wk-ruby")].map((r) => [r.childNodes[0].nodeValue, r.querySelector(".wk-rt").textContent])
     );
-  // ① 感叹词：有元音的 2~3 字母缩写闸门靠"词典里有这个词"挡住（ah / oh / uh）
+  // 感叹词：有元音的 2~3 字母缩写靠"词典里有这个词"挡住（ah / oh / uh）
   assert.strictEqual(pairsOf(ps[0]).get("AH"), "アー", "AH 该读 アー：" + ps[0].innerHTML);
-  // ② 紧挨数字的单字母 = 字母名
+  // 紧挨数字的单字母读字母名
   assert.strictEqual(pairsOf(ps[1]).get("B"), "ビー", "B4 该读 ビー：" + ps[1].innerHTML);
-  // ③ 罗马音层抢读的日式英语词
+  // 罗马音层抢读的日式英语词
   const l2 = pairsOf(ps[2]);
   assert.strictEqual(l2.get("tofu"), "トウフ", JSON.stringify([...l2]));
   assert.strictEqual(l2.get("mentality"), "メンタリティー");
@@ -901,7 +898,7 @@ test("用户报的那行：D/N/A 逐字母读，不能当成英文冠词读成 �
   await sleep(600);
 
   const p = env.document.querySelector("ul.lyric li p");
-  // 记号**一个字母一个 ruby**，读音是字母名；不是把 A 单独读成 ア
+  // 记号一个字母一个 ruby，读音是字母名；不是把 A 单独读成 ア
   assert.deepStrictEqual(PAIRS(p), [
     ["D", "ディー"],
     ["N", "エヌ"],
@@ -1044,7 +1041,7 @@ test("用户报的缩写：Mr. / Dr. 念整个词，LDK 这类缩写逐字母读
 
   const p = env.document.querySelector("ul.lyric li p");
   /*
-   * `Dr. K` 的 `K` 现在也读 **ケー**：单个大写字母只要"同一行还有别的西文词"就按字母名读
+   * `Dr. K` 的 `K` 现在也读 ケー：单个大写字母只要"同一行还有别的西文词"就按字母名读
    * （用户后来的截图：`T Is My Everything` 的 T 要 ティー）—— `Dr. K` = ドクター・ケー，
    * 日语也是这么念的。
    */
@@ -1060,7 +1057,7 @@ test("用户报的缩写：Mr. / Dr. 念整个词，LDK 这类缩写逐字母读
 
 test("层序：在线那层还在问时先用暂定读音顶上（不空着），失败后转为确定值", async () => {
   // 层序：大模型 -> 免费接口 -> 英文音译规则。等待期间不去"先不标"（那样整行会空着、
-  // 而且首词所在节点已有记录、后面也补不回来），而是先用规则读音当**暂定值**，
+  // 而且首词所在节点已有记录、后面也补不回来），而是先用规则读音当暂定值，
   // 标注上会带一个淡一点的标记；接口失败/给不出之后它就是最终值。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">
@@ -1080,7 +1077,7 @@ test("层序：在线那层还在问时先用暂定读音顶上（不空着）�
   assert.ok(p.querySelector("ruby.wk-ruby").classList.contains("wk-pending"), "要标成暂定");
   assert.strictEqual(baseText(p), "きらめく kaleidoscope の夜", "底字不动");
 
-  // 免费接口的攒批窗口 1.2s + 请求失败 -> 之后转为确定（规则读音），但**不能消失**
+  // 免费接口的攒批窗口 1.2s + 请求失败 -> 之后转为确定（规则读音），但不能消失
   await sleep(2600);
   assert.strictEqual(rubyCount(p), 1, "接口失败后注音不许消失：" + p.innerHTML);
   assert.ok(!p.querySelector("ruby.wk-ruby").classList.contains("wk-pending"), "已经有结论了，不再是暂定");
@@ -1158,7 +1155,7 @@ test("层序可调：把大模型提到词典前面，词典命中的词也会�
       requests.push(items.map((it) => it.w));
       const out = {};
       items.forEach((it, i) => {
-        // 必须给**合法片假名**：读音会被 looksLikeTransliteration 校验，
+        // 必须给合法片假名：读音会被 looksLikeTransliteration 校验，
         // 带全角括号这种"不是音译"的答案会被丢掉（那正是那层该干的事）
         out[String(i + 1)] = it.w === "light" ? "レフト" : "カレイドスコープ";
       });
@@ -1217,8 +1214,8 @@ test("层序可调：默认顺序下词典压过大模型（词典命中的词�
 test("层序可调：设置面板的 ↑↓ 按钮能改顺序、落盘，并立刻重扫", async () => {
   const env = bootPlugin(NCM_HTML, { dev: true });
   await env.runLoad();
-  // 注意 [...]: WK.layers() 里的数组是 jsdom 那个 realm 的，
-  // 直接 deepStrictEqual 会因为原型不同而失败（假报错）
+  // `[...]` 是必须的：WK.layers() 里那个数组来自 jsdom 的 realm，
+  // 直接 deepStrictEqual 会因为原型不同而假报错
   assert.deepStrictEqual([...env.api.layers()], ["dict", "romaji", "llm", "google", "rule"], "默认顺序");
 
   const root = env.listeners.config[0]();
@@ -1295,7 +1292,7 @@ test("用户报的 tick：不许是 カチカチ（拟声词）；没在线可�
 </div>
 </body></html>`;
   /*
-   * tick / tock **没有**收进词典（用户选的：让大模型按语境决定）。
+   * tick / tock 没有收进词典（用户选的：让大模型按语境决定）。
    * 所以这里把在线两层都关掉，看规则兜底给什么 —— 必须是 ティック，
    * 不能是 Google 那种拟声词 カチカチ。
    * （配了 key 的机器上不会走到这里：大模型那层会先按语境给答案，
@@ -1327,7 +1324,7 @@ test("用户报的一行：Ave Mujica 不能被展开成 アベニュー", async
 
   const p = env.document.querySelector("ul.lyric li p");
   /*
-   * 关键是**不能被展开成 アベニュー**（那是把 Ave 当成地址缩写）。
+   * 关键是不能被展开成 アベニュー（那是把 Ave 当成地址缩写）。
    * 读音 2025 版按用户口径改成 アベ：乐队 Ave Mujica 的官方读法就是 アベ ムジカ
    * （Ave Maria 写成 アベ・マリア 也通行，所以这一步不亏）。
    */
@@ -1361,12 +1358,11 @@ test("全英文的一行：等待在线结果期间先用暂定读音顶上，�
   /*
    * 用户报的：全英文行"标注后有概率消失"。
    *
-   * 机制有两层：
-   *   1. 层序是在线优先、规则垫底，等待期间原来写的是"先不标" —— 一行里只要有一个词在等，
-   *      这一行就空着；而这个词所在的原文本节点已经有记录了，后面拿到结果也不会再补注
-   *      （一行的**首个词**尤其明显）。
-   *   2. 在线结果回来时走的是 restoreAll + 重注，等于把整行先清空再补回来。
-   * 现在：等待期间用规则读音当**暂定值**（ruby 带 wk-pending，样式淡一点），
+   * 两个原因叠在一起：层序是在线优先、规则垫底，等待期间原来写的是"先不标" ——
+   * 一行里只要有一个词在等，这一行就空着；而这个词所在的原文本节点已经有记录了，
+   * 后面拿到结果也不会再补注（一行的首个词尤其明显）。另一个是在线结果回来时
+   * 走的是 restoreAll + 重注，等于把整行先清空再补回来。
+   * 现在：等待期间用规则读音当暂定值（ruby 带 wk-pending，样式淡一点），
    * 结果回来由 annotate.relabel() 就地改写，DOM 节点一个都不动。
    */
   const HTML = `<!doctype html><html><head></head><body>
@@ -1401,7 +1397,7 @@ test("全英文的一行：等待在线结果期间先用暂定读音顶上，�
   await sleep(300);
 
   const p = env.document.querySelector("ul.lyric li p");
-  // ① 一个词都不许空着：四个词全在，词典外的三个带"暂定"标记
+  // 一个词都不许空着：四个词全在，词典外的三个带"暂定"标记
   assert.deepStrictEqual(
     PAIRS(p).map((x) => x[0]),
     ["kaleidoscope", "zephyr", "serendipity", "light"],
@@ -1413,16 +1409,16 @@ test("全英文的一行：等待在线结果期间先用暂定读音顶上，�
   assert.ok(!lightEl.classList.contains("wk-pending"), "词典命中的词不是暂定");
 
   await sleep(600);
-  // ② 结果回来：读音就地改写、暂定标记去掉、**同一个节点对象**（没有拆了重建）
+  // 结果回来：读音就地改写、暂定标记去掉，ruby 还是原来那个节点对象
   const zephyrAfter = [...p.querySelectorAll("ruby.wk-ruby")].find((r) => r.childNodes[0].nodeValue === "zephyr");
   assert.strictEqual(zephyrAfter, zephyrEl, "不许把注音拆掉重建（那样就是一闪）");
   assert.strictEqual(zephyrAfter.querySelector(".wk-rt").textContent, "ゼファー");
   assert.ok(!zephyrAfter.classList.contains("wk-pending"), "有确定结果了就不是暂定");
-  // ③ 模型给不出的词保持规则读音（不再标暂定），light 一直在
+  // 模型给不出的词保持规则读音（不再标暂定），light 一直在
   const names = PAIRS(p).map((x) => x[0]);
   assert.deepStrictEqual(names, ["kaleidoscope", "zephyr", "serendipity", "light"]);
   assert.ok(PAIRS(p).some((x) => x[0] === "light" && x[1] === "ライト"));
-  // ④ 同一个「词 + 语境」不该被问第二遍
+  // 同一个「词 + 语境」不该被问第二遍
   const flat = asked.flat();
   assert.strictEqual(flat.length, new Set(flat).size, "同一个词被重复问了：" + JSON.stringify(asked));
   assert.strictEqual(baseText(p), "kaleidoscope zephyr serendipity light", "底字一字不改");
@@ -1430,7 +1426,7 @@ test("全英文的一行：等待在线结果期间先用暂定读音顶上，�
 
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {
   // 真机上两个插件都会插注音。共存补丁重建完一行只调一个全局钩子，
-  // 谁后加载谁就得**链上去**，直接覆盖会让另一个插件立刻开始闪。
+  // 谁后加载谁就得链上去，直接覆盖会让另一个插件立刻开始闪。
   const env = bootPlugin();
   const called = [];
   env.window.__ktRepairLine = function () {
@@ -1604,7 +1600,7 @@ test("用量：core/usage.js 没注入时注音照常，只是没有账本", asy
 });
 
 test("暂定标记不会卡住：大模型失败后那一行立刻恢复成确定值", async () => {
-  // 用户报的「这句不透明度怎么这么低」。等待期间是暂定（淡），失败后必须**马上**不再淡 ——
+  // 用户报的「这句不透明度怎么这么低」。等待期间是暂定（淡），失败后必须马上不再淡 ——
   // 老版本失败路径没叫 onUpdate，那行会淡一整个退避周期（60 秒起）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root">
@@ -1823,7 +1819,7 @@ test("罗马音像英文词：用户把「英文规则」提到在线层前面�
 test("换歌且页面不再变动时：被跳过的行会自己补回来（不用等用户操作）", async () => {
   // 用户报的「换歌的时候 KiLLKiSS… 还是没注音」。
   // 换歌那几下文本在动 -> 这一轮按"别追着重注"跳过；如果之后页面不再变动
-  // （**歌是暂停的**，歌词只渲染一次），就没有事件来触发下一轮扫描 ——
+  // （歌是暂停的，歌词只渲染一次），就没有事件来触发下一轮扫描 ——
   // 老版本那行会永远空着。现在 pass() 会报出重试时间，插件自己排下一轮。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
@@ -1850,7 +1846,7 @@ test("换歌且页面不再变动时：被跳过的行会自己补回来（不�
     "要留痕说清为什么跳过：" + JSON.stringify(env.api.stats().lastPass.skips)
   );
 
-  // 关键：接下来**一个 DOM 事件都不发生**，只等 —— 注音必须自己出现
+  // 关键：接下来一个 DOM 事件都不发生，只等 —— 注音必须自己出现
   await sleep(3600);
   assert.deepStrictEqual(
     [...p.querySelectorAll("ruby.wk-ruby")].map((r) => r.childNodes[0].nodeValue),
@@ -2013,7 +2009,7 @@ test("英文行里有 th/ck 这类拼写时，绝不当成罗马字行（`me` �
   // 用户报的截图：`Knock knock! Let me go in and get the ace` 里的 `me` 被标成 メ。
   // 病因是"数短词"这条判据分不开英文行和罗马字行：这行本来只有 4 个打架的短词，
   // 可整首歌里再随便多一个（so/no/you…）就凑够 5 个门槛，于是整行改按罗马音读。
-  // 能分开的是**拼写**：日语罗马字写不出 ck / th / wh / q / x。
+  // 能分开的是拼写：日语罗马字写不出 ck / th / wh / q / x。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>Knock knock! Let me go in and get the ace, so no, do you know</p></li>
@@ -2118,7 +2114,7 @@ test("know 一族：know ノウ 本身是对的，同族那几个错读也一起
     ["You", "ユー"],
     ["know", "ノウ"],
     ["knowing", "ノウイング"],
-    // `know-how` 这种连字符词现在**按段各标一个 ruby**（见 letters.js 的 splitDashes），
+    // `know-how` 这种连字符词现在按段各标一个 ruby（见 letters.js 的 splitDashes），
     // 读音和整词一样是 ノウ + ハウ
     ["how", "ハウ"],
     ["throwing", "スローイング"],
@@ -2129,13 +2125,13 @@ test("know 一族：know ノウ 本身是对的，同族那几个错读也一起
   ]) {
     assert.strictEqual(got.get(w), kana, w + " 该是 " + kana + "：" + JSON.stringify([...got]));
   }
-  // know 是词典给的**确定**答案（所以永远不会去问模型、也不会被别的层改掉）
+  // know 是词典给的确定答案（所以永远不会去问模型、也不会被别的层改掉）
   assert.strictEqual(env.api.read("know").source, "dict");
   assert.strictEqual(env.api.read("know").confident, true);
 });
 
 test("notes 一族：复数/变形形的读音（notes→ノーツ，不是单数 ノート）", async () => {
-  // 用户问「notes 的读音」。`note` ノート 一直是对的，但**复数**被写成了单数读音
+  // 用户问「notes 的读音」。`note` ノート 一直是对的，但复数被写成了单数读音
   // （notes ノート ✗，该 ノーツ），同族的 dates デイツ / rates レーツ 反而是对的。
   // 一起修的还有"词尾哑 e + s/ing"那一类：bites ビテス✗ → バイツ、noting ノティン✗
   // → ノーティング，以及 footnote フォオタノテ✗ → フットノート。
@@ -2175,7 +2171,7 @@ test("notes 一族：复数/变形形的读音（notes→ノーツ，不是单�
 });
 
 test("音乐术语：`(Lento, presto, andante larghetto)` 离线也要读对", async () => {
-  // 用户发的截图。四个读音都对，但当时**离线是两个错的**（presto→プレサト、
+  // 用户发的截图。四个读音都对，但当时离线是两个错的（presto→プレサト、
   // larghetto→ラーーエタト），对大模型临时给的 —— 每听一遍都要花一次请求。
   // 整个音乐术语区在词典里都是空的（只有 tempo/opera/symphony 这种通用词），
   // 而这一区读法唯一，所以整批人工钉进词表（75 个）。
@@ -2269,12 +2265,11 @@ test("`Every night … keeps me awake` 这一行：读音离线也要全对", as
 });
 
 test("缩写 / 喊叫 / 署名行：SOS・QTE・AAAAA 读对，署名行的碎片不注音", async () => {
-  // 用户一口气发了七张截图，这里是其中五类：
-  //   1. `混音&母带处理：宫奇Gon` 的 `Gon` 被注音（同一个署名行拆成两个节点）；
-  //   2. `対バンにはATフィールド` 的 AT 被读成词典里的"at"アット（该 エーティー）；
-  //   3. `空中散歩のSOS` 读成 ソス（该 エスオーエス）；
-  //   4. `邪魔者は成敗いたAAAAAす！` 的 AAAAA 一个音都没有（该 アアアアア）；
-  //   5. `QTE` 读成 クテ（该 キューティーイー）。
+  // 用户一口气发了七张截图，这里是其中五类：署名行 `混音&母带处理：宫奇Gon` 的 `Gon` 被注音
+  // （同一行署名被拆成了两个节点）；`対バンにはATフィールド` 的 AT 被读成词典里的 at アット
+  // （该 エーティー）；`空中散歩のSOS` 读成 ソス（该 エスオーエス）；
+  // `邪魔者は成敗いたAAAAAす！` 的 AAAAA 一个音都没有（该 アアアアア）；
+  // `QTE` 读成 クテ（该 キューティーイー）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>対バンにはATフィールド</p></li>
@@ -2305,11 +2300,10 @@ test("缩写 / 喊叫 / 署名行：SOS・QTE・AAAAA 读对，署名行的碎�
   assert.strictEqual(pairsOf(ps[6]).get("Music"), "ミュージック", "正常歌词行不能被误杀");
 
   /*
-   * 第二遍：配一个假模型。`AT` 现在**离线就有确定答案**了 —— 它紧贴假名，
-   * 而且是日语里通行的那批首字母缩写（main.js 的 GLUED_ACRONYM），读 エーティー，
-   * 所以**根本不用问模型**（letters 层名次最前）。这里守住两件事：
-   * ① 显示的就是 エーティー（不是词典里的 at アット）；
-   * ② `AT` 不进请求（有确定答案），`SOS` / 署名行的名字也不进。
+   * 第二遍：配一个假模型。`AT` 现在离线就有确定答案 —— 它紧贴假名，属于日语里通行的
+   * 那批首字母缩写（main.js 的 GLUED_ACRONYM），读 エーティー，letters 层名次又最前，
+   * 所以根本不用问模型。这里守住两点：页面上显示的是 エーティー（不是词典里的 at アット），
+   * 而且 `AT` 不进请求；`SOS` 和署名行的名字同样不进。
    */
   const asked = [];
   const env2 = bootPlugin(HTML, {
@@ -2341,7 +2335,7 @@ test("缩写 / 喊叫 / 署名行：SOS・QTE・AAAAA 读对，署名行的碎�
 test("`KiLLKiSS judy / jude / juda` 与乐队名 `Ave Mujica`（アベ ムジカ）", async () => {
   // 用户截图：三行 KiLLKiSS 后面跟 judy / jude / juda。原来 judy 被规则读成
   // ジュダイー ✗、jude 被罗马音层读成 ジュデ ✗、KiLLKiSS 被规则读成 キララキス ✗。
-  // 另外用户指出乐队 `Ave Mujica` 的官方读法是 **アベ ムジカ**
+  // 另外用户指出乐队 `Ave Mujica` 的官方读法是 アベ ムジカ
   //（词典里原本定的是拉丁语的 アヴェ）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
@@ -2374,7 +2368,7 @@ test("`KiLLKiSS judy / jude / juda` 与乐队名 `Ave Mujica`（アベ ムジカ
 test("`YY` 标字母名、打码的 `XX` 留白；成串的大写单字母读字母名（`(A, B)`）", async () => {
   // 用户三句话依次是：「YY 要标」「同一行里成串的大写单字母 → 字母名」
   // 「打码的 XX 还是留白更好」。前两条照做；第三条和第一条冲突（XX / YY 拼写一样），
-  // 只能看**用法**：打码词后面必然跟日语词尾/助词（`“XX”してる`、`XXの…`），
+  // 只能看用法：打码词后面必然跟日语词尾/助词（`“XX”してる`、`XXの…`），
   // 缩写是独立写的（`「YY」`、`YY!`）。判据就是"后面紧挨着（可夹收尾引号）的
   // 一个字符是不是平假名"。
   const HTML = `<!doctype html><html><head></head><body>
@@ -2412,7 +2406,7 @@ test("`YY` 标字母名、打码的 `XX` 留白；成串的大写单字母读字
   assert.strictEqual(pairsOf(ps[4]).get("A"), "ア", "冠词 A 不能读成 エー：" + ps[4].innerHTML);
   assert.strictEqual(pairsOf(ps[4]).get("I"), "アイ");
   /*
-   * 孤零零一个大写字母：**紧贴日文**的读字母名（用户后来的截图：
+   * 孤零零一个大写字母：紧贴日文的读字母名（用户后来的截图：
    * `T氏` ティー / `B面` ビー / `X線` エックス —— 日语就是这么念的）。
    * 只有 `A` / `I` 例外（冠词 / 代词），而且夹在英文句子里的 A 也仍是 ア。
    */
@@ -2497,10 +2491,9 @@ test("波浪号拉长音：`この feel~ing go~od` 读 フィーリング / グ�
 });
 
 test("打码的 `****ed`、采样行、以及全大写的 `DIVA`", async () => {
-  // 用户三张截图：
-  //   1. `Oh, I'll be ****ed up…` 里只有打码碎片 `ed` 被注了 エド；
-  //   2. `采样：QUIX - Deep Home` 是采样署名，整行不该注音（QUIX 也别逐字母念）；
-  //   3. `憧れた DIVA なん だ` 的 DIVA 被逐字母念成 ディーアイブイエー（该 ディーヴァ）。
+  // 用户三张截图：`Oh, I'll be ed up…` 里只有打码碎片 `ed` 被注了 エド；
+  // `采样：QUIX - Deep Home` 是采样署名，整行不该注音（QUIX 也别逐字母念）；
+  // `憧れた DIVA なん だ` 的 DIVA 被逐字母念成 ディーアイブイエー（该 ディーヴァ）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>Oh, I'll be ****ed up, if you can't be right here</p></li>
@@ -2642,7 +2635,7 @@ test("RNP 的复制模式（总览视图）整块不注音", async () => {
 });
 
 test("法语借词表只作用于法语行（`rose`：法语行 ロゼ / 英文行 ローズ）", async () => {
-  // 用户给的 sljfaq 借词表是"日语里就这么写"，但它只该在**法语行**上生效：
+  // 用户给的 sljfaq 借词表是"日语里就这么写"，但它只该在法语行上生效：
   // rose 在英语歌里是 ローズ、在法语歌里是 ロゼ；lame 在英语里是 レイム、法语里是 ラメ。
   // 这就是把法语判定放在整行级别的原因。
   const HTML = `<!doctype html><html><head></head><body>
@@ -2689,7 +2682,7 @@ function linePairs(ps, i) {
 
 test("德语歌词（用例 1）：整行走德语拼读，英文行不受影响", async () => {
   // 用户给的第一组用例是德语歌词（Regentropfen sind meine Tränen 那首），
-  // 一首歌里德语段和英文段交替 —— 所以判定必须在**整行**级别。
+  // 一首歌里德语段和英文段交替 —— 所以判定必须在整行级别。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>die Ruinenstadt ist immer noch schön</p></li>
@@ -2757,7 +2750,7 @@ test("德语歌词（用例 1）：整行走德语拼读，英文行不受影响
 });
 
 test("拉丁语歌词（用例 2 / 5 / 7）：古典式拼读 + 短句靠整首投票", async () => {
-  // 用例 7 里有好几个**两三个词的短行**（`Venu` / `Resurgito` / `Illusio`），
+  // 用例 7 里有好几个两三个词的短行（`Venu` / `Resurgito` / `Illusio`），
   // 单看一行判不出来 —— 整首都是拉丁语时按拉丁语读（main.js 的 songLanguage）。
   // `Vindicia … Vanitatum sentio … dolor, ah dolores` 那行要和用户截图里的
   // 参考答案一致（ヴィンディキア / ヴァニタトゥム / センティオ / ドロル / ドロレス）。
@@ -2892,12 +2885,11 @@ test("拉丁语行的段标 `(A:` / `(B:` 不注音，同行的词照常标", as
 });
 
 test("段标不会被「学会的词」带出读音；呼语 O 读 オー", async () => {
-  // 两条都是用户截图上来的：
-  //   1. `Ah senta (A: …` 里的 A 一直带着 アー —— 光加"段标不注音"还不够：
-  //      机器上早就攒了一条 **词级**的 `a → アー`（模型在 `(A:` 那种行里答的、
-  //      答稳了两次被沉淀成离线词条），而"学会的词"排在所有规则前面，把规则绕过去了。
-  //      现在段标判定排在最前面，并且单字母不再沉淀、老词条一次性清掉。
-  //   2. `O Chrysalis` 里的 O 是呼语（"哦 / 啊"），该读 オー —— 用户点名要它标上。
+  // 两条都是用户截图上来的。一是 `Ah senta (A: …` 里的 A 一直带着 アー ——
+  // 光加"段标不注音"还不够：机器上早就攒了一条词级的 `a → アー`（模型在 `(A:` 那种行里
+  // 答的、答稳了两次被沉淀成离线词条），而"学会的词"排在所有规则前面，把规则绕过去了；
+  // 现在段标判定摆到最前面，单字母不再沉淀，老词条也一次性清掉。
+  // 二是 `O Chrysalis` 里的 O 是呼语（"哦 / 啊"），该读 オー —— 用户点名要它标上。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>Ah senta (A: Dolores sentio)</p></li>
@@ -2930,7 +2922,7 @@ test("说话人段标 `M:` 留白，同一行里 `匿名M` 的 M 照读 エム",
   // 用户截图：`M: 匿名Mです。` —— 行首那个 M 是说话人标记（该留白），
   // 而 `匿名M` 里的 M 是名字的一部分，该读 エム。
   // 老判据是"这一行里有没有 `M` 跟着冒号"，于是两个 M 一起被留白（一个字都没有）。
-  // 现在按 token 的**位置**判：单字母后面（可夹空白）紧跟冒号才算段标。
+  // 现在按 token 的位置判：单字母后面（可夹空白）紧跟冒号才算段标。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>M: 匿名Mです。</p></li>
@@ -2962,7 +2954,7 @@ test("说话人段标 `M:` 留白，同一行里 `匿名M` 的 M 照读 エム",
 
 test("外语行不做首音校验：拉丁语 vacuum 的 ワクーム 也会被收下（英文行仍然卡）", async () => {
   // 用户报的「Vacuum 的读音一直是黄的」：黄的 = 规则层（暂定），说明模型答案没被收下。
-  // 根因是首音校验 —— 那套判据按**英语**拼写定的（v → バ行/ヴ），拉丁语的
+  // 根因是首音校验 —— 那套判据按英语拼写定的（v → バ行/ヴ），拉丁语的
   // vacuum 读 ワクーム 就被判成"不是音译"丢掉，而 miss 是永久的（还落盘），
   // 于是那个词永远停在规则层。现在外语行整行跳过这道校验。
   const HTML = `<!doctype html><html><head></head><body>
@@ -3010,9 +3002,9 @@ test("外语行不做首音校验：拉丁语 vacuum 的 ワクーム 也会被�
 });
 
 test("一次性清掉旧的「问过但没收下」记录：被误伤的答案会重新问一遍", async () => {
-  // 用户报的「Vacuum 一直是黄的」在真机上还有第二层原因：那条 miss 是**永久**的、
+  // 用户报的「Vacuum 一直是黄的」在真机上还有第二层原因：那条 miss 是永久的、
   // 还落了盘（当时被首音校验判掉了）。校验放宽之后老记录就成了误伤，所以
-  // core/llm.js 载入缓存时会**一次性**把它们清掉（用一个小标记记住，命中不动）。
+  // core/llm.js 载入缓存时会一次性把它们清掉（用一个小标记记住，命中不动）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>Vacuum, fatuus</p></li>
@@ -3091,7 +3083,7 @@ test("整块署名表：关键词表有长尾，靠「周围一整片都是署�
   // 出品/音频编辑/混音师/母带制作），截图里 `尺八 Shakuhachi：顾剑楠 Jiannan Gu`
   // 那行的 Shakuhachi / Jiannan / Gu 被注了音 —— 关键词表里没有"尺八"，
   // 而这一类长尾（乐器 / 声部 / 工种）永远补不完。
-  // 现在两层保险：① 补了一批长尾关键词、允许标签里带括号；② 周围 ≥3 行像署名、
+  // 现在两层保险：补了一批长尾关键词、允许标签里带括号；周围 ≥3 行像署名、
   // 且占四成以上时，整片都当署名表跳过。
   const CREDITS = [
     "作词 Lyricist：项柳 Hsiang Liu",
@@ -3150,12 +3142,12 @@ ${CREDITS.map((c) => '  <li class="line"><p>' + c + "</p></li>").join("\n")}
 });
 
 test("日语行里的拉丁词走词典：同一个 `Ave` 不许两行两个读音", async () => {
-  // 用户截图：`Ave Musica...仮面の民は誘う(Fortuna)` 里 Ave 被读成 **アヴェ**（拉丁语引擎），
-  // 而同一首歌的 `Ave Musica...安らかな世界へ(Lacrima)` 里是 **アベ**（词典，用户点名
+  // 用户截图：`Ave Musica...仮面の民は誘う(Fortuna)` 里 Ave 被读成 アヴェ（拉丁语引擎），
+  // 而同一首歌的 `Ave Musica...安らかな世界へ(Lacrima)` 里是 アベ（词典，用户点名
   // "Ave Mujica 官方读 アベ"）。根因：前者被判成了拉丁语行（`ave` 在拉丁语词表里），
   // 整行走规则层、把词典盖掉了；后者没判成拉丁语，所以词典生效。
   //
-  // 现在：**有假名的行就是日语行**，不做外语判定 —— 日语歌里的拉丁词照旧"词典优先"。
+  // 现在：有假名的行就是日语行，不做外语判定 —— 日语歌里的拉丁词照旧"词典优先"。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>Ave Musica...仮面の民は誘う(Fortuna)</p></li>
@@ -3177,7 +3169,7 @@ test("日语行里的拉丁词走词典：同一个 `Ave` 不许两行两个读�
 });
 
 test("人工词典优先于「学会的词」：模型沉淀的 `ave アヴェ` 不许盖掉人工的 アベ", async () => {
-  // 用户截图：`ゆこう（Ave Mujica | 世界）へと` 里的 Ave 是 **アヴェ**，而人工词表里
+  // 用户截图：`ゆこう（Ave Mujica | 世界）へと` 里的 Ave 是 アヴェ，而人工词表里
   // 明明写着 `ave アベ`（用户点名过"Ave Mujica 官方读 アベ"）。
   // 从真机的 localStorage 里读出来：学会的词里有一条 `ave => アヴェ` ——
   // 模型在别的行里答过 アヴェ 被沉淀成词条，而"学会的词"当时排在所有层前面，
@@ -3205,16 +3197,16 @@ test("人工词典优先于「学会的词」：模型沉淀的 `ave アヴェ` 
   const got = linePairs(ps, 0);
   assert.strictEqual(got.get("Ave"), "アベ", "人工词典条目要赢：" + JSON.stringify([...got]));
   assert.strictEqual(got.get("Mujica"), "ムジカ", JSON.stringify([...got]));
-  // 词典里**没有**的词，学会的词照旧生效（沉淀的意义就在这）
+  // 词典里没有的词，学会的词照旧生效（沉淀的意义就在这）
   const got2 = linePairs(ps, 1);
   assert.strictEqual(got2.get("Fortuna"), "フォルトゥーナ", "词典外的词照旧用学会的：" + JSON.stringify([...got2]));
 });
 
 test("德语行 `Sieh mit deinen Augen`：`mit` 不许念成 MIT 的字母名", async () => {
-  // 用户截图：`mit` 被读成 **エムアイティー**（词典里的 MIT = 学院缩写）。
-  // 根因两层：① 这行判不出德语（词表里只有 mit 一个词、分数不够）→ 走英文词典；
-  // ② 词典里 `mit` 就是 MIT 的字母名。现在：① 补了一批德语独有词（sieh/deinen/augen…），
-  // 整行判成德语；② 人工词表把 `mit` 钉成 ミット（德语最常用的介词，读法唯一）。
+  // 用户截图：`mit` 被读成 エムアイティー（词典里的 MIT = 学院缩写）。
+  // 根因两层：这行判不出德语（词表里只有 mit 一个词、分数不够），于是走了英文词典，
+  // 而词典里 `mit` 就是 MIT 的字母名。现在补了一批德语独有词（sieh/deinen/augen…），
+  // 整行能判成德语；人工词表又把 `mit` 钉成 ミット（德语最常用的介词，读法唯一）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>Sieh mit deinen Augen</p></li>
@@ -3233,7 +3225,7 @@ test("德语行 `Sieh mit deinen Augen`：`mit` 不许念成 MIT 的字母名", 
 test("连字符串起来的长词：一行里每个词各自一个 ruby（不许压一整条超长注音）", async () => {
   // 用户截图：`A-Z Looser-Krankheit-Was IS das?` 那行，`Looser-Krankheit-` 上面
   // 压着一整条 `ルーザークランクハイトヴァス`，比底字还宽、和每个词都对不上
-  //（"有些单词超长了效果不好"）。原因是整条连字符链被当成**一个词**。
+  //（"有些单词超长了效果不好"）。原因是整条连字符链被当成一个词。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>A-Z Looser-Krankheit-Was IS das?</p></li>
@@ -3261,9 +3253,9 @@ test("连字符串起来的长词：一行里每个词各自一个 ruby（不许
 
 test("德语人名 `Erika`：一行只有一个词也读 エーリカ（不许被罗马音层当日语罗马字）", async () => {
   // 用户截图：德语歌《Erika》里有一行只有 `Erika`（下一行是翻译「艾丽卡」）。
-  // 整行一个词、判不出语种 → 罗马音层把它当日语罗马字切成 **エリカ**，还标成"确定"
+  // 整行一个词、判不出语种 → 罗马音层把它当日语罗马字切成 エリカ，还标成"确定"
   // （蓝色），大模型那一层永远不会被问到；德语引擎也兜不住 —— 词首 `er-` 那条规则
-  // 是给 erinnern / Erzählung 那种**非重读前缀**定的（エア…），套到名字上是 エアイーカ。
+  // 是给 erinnern / Erzählung 那种非重读前缀定的（エア…），套到名字上是 エアイーカ。
   // 德语 Erika 是长音 [ˈeːʁika]，所以人工钉进词典（エーリカ / エーリク）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
@@ -3309,7 +3301,7 @@ test("俄语歌词（用例 6）：西里尔字母也注音（词典和罗马音
 });
 
 test("非日语歌是否注音可以开关（默认注音，关掉只标日语歌）", async () => {
-  // 用户要的「非日语歌可选是否标注」。判据看**整首**：整首歌词里一个假名都没有
+  // 用户要的「非日语歌可选是否标注」。判据看整首：整首歌词里一个假名都没有
   // （纯英文歌 / 法语歌 / 中文歌）才算非日语歌 —— 所以日语歌里的纯英文行不会被误伤。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
@@ -3494,7 +3486,7 @@ test("两可的短音节：大模型按整句语境判（Do→ド / Re→レ）�
 });
 
 test("Shoo / Gimme / Yeah：词典里补上，不再被罗马音层抢走", async () => {
-  // 用户报的：Shoo 读成 ショオ、Gimme 读成 ギッメ（这两个词词典里**根本没有**，
+  // 用户报的：Shoo 读成 ショオ、Gimme 读成 ギッメ（这两个词词典里根本没有，
   // 于是被"能切成音节就收"的罗马音层抢走了）；Yeah 读成 イェア（该是 イェイ）。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
@@ -3516,7 +3508,7 @@ test("Shoo / Gimme / Yeah：词典里补上，不再被罗马音层抢走", asyn
 
 test("学会的词：模型在两个句子里答同一个读音 -> 沉淀成离线词条，重启后不再问", async () => {
   // 用户要的：「让运行期模型给的答案自动沉淀进词典」。
-  // 模型那层是按「词 + 那一句」缓存的，换首歌同一句再来就得**重新花钱问**；
+  // 模型那层是按「词 + 那一句」缓存的，换首歌同一句再来就得重新花钱问；
   // 沉淀之后它就是离线词条（source: learned），以后一个请求都不发。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
@@ -3608,10 +3600,8 @@ test("学会的词：模型在两个句子里答同一个读音 -> 沉淀成离�
 });
 
 test("学会的词：只答过一次不收、两可的短音节不收、模型改口就撤销", async () => {
-  // 收词的边界（收错了就是"错读音被钉成离线权威"）。三种都过一遍：
-  //   1. 只在一个句子里答过 -> 不收；
-  //   2. 两可的短音节（do/re/mi…）-> 不收（读音取决于那句话）；
-  //   3. 后来改成别的读音 -> 把已收的撤销。
+  // 收词的边界（收错了就是"错读音被钉成离线权威"）。三种都过一遍：只在一个句子里答过的不收；
+  // 两可的短音节（do/re/mi…）不收，读音取决于那句话；后来改成别的读音的，把已收的撤销。
   const HTML = `<!doctype html><html><head></head><body>
 <div id="root"><div class="m-lyric"><ul class="lyric">
   <li class="line"><p>serendipity の 夜</p></li>
@@ -3718,10 +3708,10 @@ test("设置面板：默认只有三块（开关 / 大模型 / 预览），其�
 });
 
 test("设置面板的预览：高考听力那句 + 中文翻译行不注音", async () => {
-  // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）之后钉住三件事：
-  //   1. 每个词都从**词典**取读音（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；
-  //   2. 中文翻译行照样显示、但一个字都不注音（真机行为）；
-  //   3. 预览走的是真扫描 + 真读音逻辑，不是手写的字符串。
+  // 预览的示例句换成高考英语听力名句（「衬衫的价格为九磅十五便士」）。这里钉住三点：
+  // 每个词的读音都从词典取（这批数字词原本不在词典里，规则层会读错：fifteen -> フィファテエン）；
+  // 中文翻译行照样显示、但一个字都不注音（真机行为）；预览走的是真扫描 + 真读音逻辑，
+  // 不是手写的字符串。
   const env = bootPlugin(NCM_HTML, { dev: true });
   await env.runLoad();
   const root = env.listeners.config[0]();

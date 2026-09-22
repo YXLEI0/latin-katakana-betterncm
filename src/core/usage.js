@@ -1,16 +1,16 @@
 /*
  * Latin Katakana for BetterNCM —— 在线接口用量统计
  *
- * 为什么单独一份：两层在线接口都会**烧钱或吃配额**（大模型按 token 计费、免费接口
- * 按次数限流），而它们各自的 stats() 只在内存里 —— 重启就归零，也不记 token。
+ * 单独记一份的原因：两层在线接口都会烧钱或吃配额（大模型按 token 计费、免费接口
+ * 按次数限流），而它们各自的 stats() 只在内存里，重启就归零，也不记 token。
  * 这里记三份账：
  *
  *   本次（会话内） / 今天 / 累计
  *
- * 其中「今天」和「累计」落 localStorage（key 见 STORAGE_KEY），重启后还在；
- * 跨天时「今天」自动归零（累计不动）。
+ * 「今天」和「累计」落 localStorage（key 见 STORAGE_KEY），重启后还在；跨天时
+ * 「今天」自动归零，累计不动。
  *
- * 记什么（两层分开记）：
+ * 两层分开记这几个字段：
  *   requests            发出去的请求次数
  *   ok / failures       成功 / 失败次数
  *   words               问过的词数
@@ -28,7 +28,7 @@
   var STORAGE_KEY = "western-katakana.usage";
   var VERSION = 1;
 
-  /** 两层在线接口分别记账（键名也是配置/展示里用的 id） */
+  /** 两层在线接口分开记账，键名就是配置和面板里用的 id */
   var KINDS = ["llm", "google"];
 
   /** 每个桶里记的字段；别的键一律忽略（脏数据进不来） */
@@ -62,7 +62,7 @@
     return (n < 10 ? "0" : "") + n;
   }
 
-  /** 只有有限数字才吃进来：localStorage 里的东西不可信 */
+  /** 只吃有限且不小于 0 的数字：localStorage 里的东西不可信 */
   function num(v) {
     return typeof v === "number" && isFinite(v) && v >= 0 ? v : 0;
   }
@@ -79,9 +79,9 @@
 
   /**
    * @param {Object} [opts]
-   *   opts.storage  localStorage 形状（getItem/setItem）；不给就用全局 localStorage
-   *   opts.now      () => Date，测试跨天用
-   * @returns {Object} { add, reset, snapshot, flush }
+   *   opts.storage  localStorage 的形状（getItem/setItem），不给就用全局的
+   *   opts.now      返回 Date 的函数，测试跨天时替换
+   * @returns {Object} { add, reset, snapshot, cost, flush }
    */
   function createUsage(opts) {
     opts = opts || {};
@@ -133,12 +133,12 @@
         if (obj.today && obj.today[KINDS[i]]) accumulate(today[KINDS[i]], obj.today[KINDS[i]]);
         if (obj.total && obj.total[KINDS[i]]) accumulate(total[KINDS[i]], obj.total[KINDS[i]]);
       }
-      // 存的还是同一天才认「今天」；跨天了就让它从 0 开始（累计照旧）
+      // 日期对得上才算「今天」，对不上就把今天清零；累计上面已经读进来了
       day = typeof obj.day === "string" && obj.day === dayKey() ? obj.day : dayKey();
       if (typeof obj.day === "string" && obj.day !== dayKey()) today = blank();
     }
 
-    /** 跨天就把「今天」清零（累计不动），并补一次落盘 */
+    /** 发现跨天了就清掉「今天」，顺手落一次盘 */
     function rollDay() {
       var d = dayKey();
       if (d === day) return;
@@ -177,14 +177,14 @@
       save();
     }
 
-    /** 当前账本（副本，调用方随便改） */
+    /** 当前账本的副本，调用方随便改 */
     function snapshot() {
       rollDay();
       return { version: VERSION, day: day, session: clone(session), today: clone(today), total: clone(total) };
     }
 
     /**
-     * 估算花费（元）。单价单位是「元 / 百万 token」，0 表示不算。
+     * 估算花费，单位元。单价按「元 / 百万 token」给，传 0 就不算这一项。
      * 免费接口不按 token 计费，所以只有大模型那层参与。
      */
     function cost(bucket, priceIn, priceOut) {

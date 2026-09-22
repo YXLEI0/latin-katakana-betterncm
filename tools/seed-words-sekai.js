@@ -1,7 +1,7 @@
 /*
- * 官方歌名读音：Project Sekai 主数据库里**单个西文词**的歌名（共 34 条）。
+ * 官方歌名读音：Project Sekai 主数据库里单个西文词的歌名（共 34 条）。
  *
- * **自动生成，勿手改** —— 由 tools/build-sekai.js 从 tools/vendor/sekai/musics.json 生成，
+ * 自动生成，勿手改 —— 由 tools/build-sekai.js 从 tools/vendor/sekai/musics.json 生成，
  * 跑 npm run build:sekai 重新生成（原始数据：sekai-world/sekai-master-db-diff 的 musics.json，
  * 见 https://pjsekai.moe/#/music/<id>）。
  *

@@ -1,11 +1,8 @@
 /*
- * 直接给 jp-furigana 的 .plugin 包（zip）打共存补丁。
+ * 给 jp-furigana 的 .plugin 包（zip）打共存补丁。
  *
- * 为什么必须改 .plugin 而不是解包目录
- * ----------------------------------
- * BetterNCM 每次启动都会把 plugins/*.plugin 重新解包到 plugins_runtime/<slug>/，
- * 所以改解包目录里的 main.js 会在下次启动时被覆盖掉（实测踩过）。
- * 要持久，只能改包本身。
+ * 改的是包本身而不是解包目录：BetterNCM 每次启动都会用 plugins/*.plugin 重新解包到
+ * plugins_runtime/<slug>/，改解包目录里的 main.js 下次启动就没了（实测踩过）。
  *
  * 用法：
  *   node tools/patch-jp-furigana-plugin.js                 # 找 plugins 目录里的 jp-furigana*.plugin 并打补丁

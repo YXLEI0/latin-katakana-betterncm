@@ -301,10 +301,10 @@ test("英文：非字符串输入也给一个安全的空读音", () => {
 
 test("英文：confident:false 的判定条件", () => {
   // ① 拼写读不出音的元音块：ow 在 now / snow 里读法不同
-  //    （参照 sljfaq 的 "Conversions based on spelling" 那节）
+  //    （参照 sljfaq 的「Conversions based on spelling」那节）
   assert.strictEqual(WK.englishToKatakana("now").confident, false);
-  // ② th：页面对 θ（-> サ行）和 ð（-> ザ行）都有明确落点，所以**读音**
-  //    照规则给；但「哪个词是 θ、哪个是 ð」拼写分不出来 —— 仍然算不放心。
+  // ② th：页面对 θ（-> サ行）和 ð（-> ザ行）都有明确落点，所以读音照规则给；
+  //    但「哪个词是 θ、哪个是 ð」拼写分不出来 —— 仍然算不放心。
   assert.strictEqual(WK.englishToKatakana("the").confident, false);
   assert.strictEqual(WK.englishToKatakana("think").confident, false);
   // ③ 元音连写不在表里 / 三个元音连写
@@ -361,7 +361,7 @@ test("首音校验：拦住拟声词/意译，不误伤默字组合", () => {
     ["one", "ワン"],
   ];
   for (const [w, k] of accepted) assert.strictEqual(V(w, k), true, w + " / " + k + " 不该拦");
-  // 边界：空值一律放行（不校验），别把异常输入当成"不合法答案"
+  // 边界：空值一律放行（不校验），别把异常输入当成「不合法答案」
   assert.strictEqual(V("", "ライト"), true);
   assert.strictEqual(V("tick", ""), true);
   assert.strictEqual(V(null, null), true);
@@ -372,7 +372,7 @@ test("首音校验：拦住拟声词/意译，不误伤默字组合", () => {
 test("缩写：'s / 're / 'll / 'd / 've / 'm / n't 都要读对", () => {
   // 用户报的：you're / I'll / it's / I'd 注不准。
   // 根因是折掉撇号之后撞上别的词条（I'll -> ill、I'd -> id），
-  // 所以缩写必须排在词典前面。词典里故意塞了 ill / id 当"陷阱"。
+  // 所以缩写必须排在词典前面。词典里故意塞了 ill / id 当「陷阱」。
   const r = WK.createReader({
     dict: {
       ill: "イル",
@@ -427,7 +427,7 @@ test("缩写：'s / 're / 'll / 'd / 've / 'm / n't 都要读对", () => {
     assert.ok(got, word + " 应该读得出来");
     assert.strictEqual(got.kana, want, word);
   }
-  // 关键的"陷阱"：绝不能因为折掉撇号就命中 ill / id
+  // 关键的「陷阱」：绝不能因为折掉撇号就命中 ill / id
   assert.notStrictEqual(r.read("I'll").kana, "イル");
   assert.notStrictEqual(r.read("I'd").kana, "アイディー");
   // 词干走的是哪一层，来源就记哪一层（大模型那层靠 source==="rule" 决定要不要问）
@@ -571,7 +571,7 @@ test("变音符号折叠：长音符 ā ē ī ō ū 折成「元音 + -」（= �
   assert.deepStrictEqual(f("Ō"), { text: "o-", pureMacron: true });
   assert.strictEqual(f("light"), null, "没有变音符号就返回 null（走原路）");
   assert.strictEqual(f(""), null);
-  // 别的变音符号折成基础字母，并且**不算** pureMacron
+  // 别的变音符号折成基础字母，并且不算 pureMacron
   assert.deepStrictEqual(f("Café"), { text: "cafe", pureMacron: false });
   assert.deepStrictEqual(f("déjà"), { text: "deja", pureMacron: false });
   assert.deepStrictEqual(f("José"), { text: "jose", pureMacron: false });
@@ -580,7 +580,7 @@ test("变音符号折叠：长音符 ā ē ī ō ū 折成「元音 + -」（= �
 
 test("日语罗马字的长音符按罗马音读：Tōkyō -> トーキョー", () => {
   const r = WK.createReader({ dict: { tokyo: "トウキョウ" } });
-  // 长音符是"日语罗马字"的标志，按罗马音读更贴近唱出来的音，所以排在词典前面
+  // 长音符是「日语罗马字」的标志，按罗马音读更贴近唱出来的音，所以排在词典前面
   assert.deepStrictEqual(r.read("Tōkyō"), { kana: "トーキョー", source: "romaji", confident: true });
   assert.deepStrictEqual(r.read("kōhī"), { kana: "コーヒー", source: "romaji", confident: true });
   assert.deepStrictEqual(r.read("arigatō"), { kana: "アリガトー", source: "romaji", confident: true });
@@ -593,12 +593,12 @@ test("别的变音符号：词典优先，读不准的标 confident:false 交给
   assert.deepStrictEqual(r.read("Café"), { kana: "カフェ", source: "dict", confident: true });
   assert.deepStrictEqual(r.read("José"), { kana: "ホセ", source: "dict", confident: true });
 
-  // 词典里没有的：走罗马音/规则，但**必须**标不放心（读音取决于语种，José 是 ホセ 不是 ジョセ）
+  // 词典里没有的：走罗马音/规则，但必须标不放心（读音取决于语种，José 是 ホセ 不是 ジョセ）
   const r2 = WK.createReader({ dict: {} });
   const deja = r2.read("déjà");
   assert.strictEqual(deja.kana, "デジャ");
   assert.strictEqual(deja.confident, false, "非长音符的变音符号要交给上层校正");
-  // 关键回归：折叠写法不能再去撞"去掉非字母"那一档键（déjà -> dj -> ディージェイ）
+  // 关键回归：折叠写法不能再去撞「去掉非字母」那一档键（déjà -> dj -> ディージェイ）
   const r3 = WK.createReader({ dict: { dj: "ディージェイ" } });
   assert.strictEqual(r3.read("déjà").kana, "デジャ", "déjà 不能被读成 DJ");
 });
@@ -771,7 +771,7 @@ test("addOnline：查表也能折掉非字母（e-mail -> email）", () => {
   assert.strictEqual(r.read("email").source, "online");
   assert.strictEqual(r.read("email").kana, "イーメール");
   // word 里的连字符在 addOnline 里会被折掉，所以写进去之后
-  // 读 "email" 和读 "e-mail" 都能命中同一个读音
+  // 读 `email` 和读 `e-mail` 都能命中同一个读音
   const r2 = WK.createReader({ dict: {} });
   assert.strictEqual(r2.addOnline("e-mail", "イーメール"), true);
   assert.strictEqual(r2.read("email").source, "online");
@@ -846,7 +846,7 @@ test("边界：数字、符号、空格混排", () => {
 // ============================================================ 首音校验
 
 test("首音校验：th 的两种读法都放行（the ザ / think シンク），拟声词照样拦", () => {
-  // 用户报的「把模型提到最前面，the 还是セ」：真模型对 the 回的就是 **ザ**（实测），
+  // 用户报的「把模型提到最前面，the 还是セ」：真模型对 the 回的就是 ザ（实测），
   // 但校验表里 t 开头只放了サ行（θ 的 think/three），漏了 ð 的 the/this/that/they ——
   // 于是唯一被拒的答案就是 the，回落到规则层的 セ。
   for (const [w, k] of [
@@ -886,7 +886,7 @@ test("首音校验：th 的两种读法都放行（the ザ / think シンク）�
 // ============================================================ -ize / -yze
 
 test("词尾 -ize / -yze：读「辅音 + イズ」，不许被罗马音层抢成 メモリゼ", () => {
-  // 用户截图里的 `memorize` 被标成 メモリゼ —— 那是**罗马音层**抢答的
+  // 用户截图里的 `memorize` 被标成 メモリゼ —— 那是罗马音层抢答的
   // （me-mo-ri-ze 切得干净），而日语罗马字里根本没有 -ize 结尾的动词。
   // 现在罗马音层直接拒绝这种形状，交给规则层的 EN_IZE：辅音并入 a，读成「…イズ」。
   const r = WK.createReader({ dict: {}, enWords: null });
@@ -904,7 +904,7 @@ test("词尾 -ize / -yze：读「辅音 + イズ」，不许被罗马音层抢�
   ]) {
     assert.strictEqual(WK.englishToKatakana(w).kana, kana, w);
   }
-  // 词干是空的（size / prize 这种词根）不走这条，免得把 s 当尾巴读出"サイズ"
+  // 词干是空的（size / prize 这种词根）不走这条，免得把 s 当尾巴读出「サイズ」
   assert.ok(WK.englishToKatakana("size").kana.length > 0);
   assert.notStrictEqual(WK.englishToKatakana("size").kana, "サ\u30A4\u30BA\u30A4\u30BA");
 });
@@ -952,7 +952,7 @@ test("同一个元音重复成串：按那个元音叠出来（AAAAA -> アア�
     assert.strictEqual(got.source, "letters", w + " 是形态层的确定答案，不该去问模型");
   }
   // 辅音串仍然不标（XX 是打码）—— 这条在 matcher 那一层（letters.test.js 里锁着），
-  // 这里的 reader 只负责"有读音就给出"，插不插到页面上由 annotate 层决定。
+  // 这里的 reader 只负责「有读音就给出」，插不插到页面上由 annotate 层决定。
   assert.strictEqual(r.read("XX").kana, "エックスエックス");
 });
 
@@ -1054,7 +1054,7 @@ test("边界：多个 reader 之间互不干扰", () => {
 // ============================================================ 罗马音 vs 英文词
 
 test("罗马音：在英文词表里的（shake/open）标成没把握，好让在线层仲裁", () => {
-  // 罗马音层只判"整串能不能切干净"，于是 shake(sha-ke) -> シャケ、open -> オペン
+  // 罗马音层只判「整串能不能切干净」，于是 shake(sha-ke) -> シャケ、open -> オペン
   // 这种英文词会被当成日语罗马字；而层序里罗马音排在大模型前面，它一答就没人能纠。
   const enWords = { shake: true, open: true };
   const r = WK.createReader({ dict: {}, enWords: enWords });
@@ -1141,7 +1141,7 @@ test("层序：脏配置不会让层变少（去重 + 缺的补在后面）", ()
 });
 
 test("层序：形态层（记号 / 缩写 / 长音符罗马字）不受排序影响", () => {
-  // 这三类决定的不是"读音该信谁"，而是"这个词该怎么断"，永远最先
+  // 这三类决定的不是「读音该信谁」，而是「这个词该怎么断」，永远最先
   const r = WK.createReader({ dict: { dna: "ディーエヌエー" }, order: ["rule", "romaji", "dict"] });
   assert.strictEqual(r.read("D/N/A").source, "letters", "记号永远先判");
   assert.strictEqual(r.read("D/N/A").kana, "ディーエヌエー");

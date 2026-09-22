@@ -1,17 +1,13 @@
 /*
  * 生成词典的数据纪律（core/dict.js）。
  *
- * 词典是**生成物**（tools/build-dict.js 合并 tools/seed-words.js 与
- * tools/seed-words-llm.js），几千条数据靠人眼看是不可能的，所以用测试把几条
- * 硬纪律钉死：
- *   1. 键必须是小写英文、值必须是纯片假名 —— 一旦混进汉字，错的读音会直接
- *      标到歌词上（"love -> 愛" 这种）；
- *   2. 规则层对**词典里每一个词**都必须吐得出纯片假名。这条不是形式主义：
- *      规则层里一旦留下 "##R##" / "@@" 这种占位符没清掉，只有走规则路径的词
- *      才会露馅，而现在的词典命中率很高，漏到线上就很难发现；
- *   3. 生成词表（tools/seed-words-llm.js）和词典必须同步 —— 忘了重新生成
- *      dict.js 时，这里要报出来；
- *   4. 常见歌词词必须在词典里（否则就会掉进规则层，读成 ヘッラオ 那种）。
+ * 词典是生成物，由 tools/build-dict.js 把几份种子表合并而来，几千条数据没法靠人眼
+ * 看，所以用测试把几条硬纪律钉死：键必须是小写英文、值必须是纯片假名（混进汉字的话，
+ * 错的读音会直接标到歌词上，比如 love -> 愛）；规则层对词典里每一个词都要吐得出纯
+ * 片假名 —— 规则层里一旦留下 `##R##` / `@@` 这种占位符没清掉，只有走规则路径的词才
+ * 会露馅，而现在的词典命中率很高，漏到线上很难发现；生成词表 tools/seed-words-llm.js
+ * 和词典必须同步，忘了重新生成 dict.js 时这里要报出来；常见歌词词也得在词典里，
+ * 否则就会掉进规则层，读成 ヘッラオ 那种。
  */
 "use strict";
 
@@ -61,7 +57,7 @@ test("生成词表和词典同步：忘了跑 build:dict 会在这里露馅", ()
   assert.ok(fs.existsSync(seedLlm), "生成词表不存在");
   const mod = require(seedLlm);
   const words = (mod && mod.words) || {};
-  // 黑名单里的词是**故意**不进词典的（大模型把缩写展开成了整词，见 tools/dict-blocklist.js）
+  // 黑名单里的词是故意不进词典的（大模型把缩写展开成了整词，见 tools/dict-blocklist.js）
   const blocked = require(path.join(ROOT, "tools", "dict-blocklist.js"));
   const missing = Object.keys(words).filter((w) => DICT[w] === undefined && blocked[w] === undefined);
   assert.deepStrictEqual(
@@ -108,7 +104,7 @@ test("常见歌词词都能「确定地」读出纯片假名（不许掉进猜�
 test("官方歌名读音（seed-words-sekai.js）都在词典里，且没被别的来源盖掉", () => {
   // tools/seed-words-sekai.js 是 build-sekai 从 vendor/sekai/musics.json 生成的
   // （Project Sekai 官方歌名的官方读音）。它比我们自己的英文规则可信：
-  // 不要求"跟规则不一样"，但要求**生成物真的进了词典**（忘了 build:dict 时要报出来），
+  // 不要求"跟规则不一样"，但要求生成物真的进了词典（忘了 build:dict 时要报出来），
   // 而且人工词表里的词不许被它顶掉（人工 > 官方歌名）。
   const seed = require(path.join(ROOT, "tools", "seed-words-sekai.js"));
   assert.ok(Array.isArray(seed) && seed.length > 20, "官方歌名读音表不该是空的：" + seed.length);
@@ -167,7 +163,7 @@ test("整首专属读音表（core/songs.js）：键值格式、切分与手工�
   assert.strictEqual(potato.words.potato, "ポテト");
 
   /*
-   * 手工条目必须有**官方来源**（vendor/sekai 那份主数据，或别的查得到的官方读法），
+   * 手工条目必须有官方来源（vendor/sekai 那份主数据，或别的查得到的官方读法），
    * 自己按词义猜的不许进表 —— 用户点名 `夢現妄想世界`（夢限大みゅーたいぷ，
    * 不在那份主数据里）不要放进这一档。
    */

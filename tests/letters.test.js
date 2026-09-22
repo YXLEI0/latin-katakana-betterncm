@@ -1,8 +1,8 @@
 /*
  * 拉丁词扫描器（core/letters.js）的单元测试。
  *
- * 这个模块只干一件事：在一片文本里找出"值得标读音"的拉丁词，并给出位置。
- * 位置必须准 —— 注入时靠它把原文本切成 前段/词/后段，错一个字符底字就错了。
+ * 这个模块只干一件事：在一片文本里找出「值得标读音」的拉丁词，并给出位置。
+ * 位置必须准：注入时靠它把原文本切成前段/词/后段，错一个字符底字就错了。
  */
 "use strict";
 
@@ -29,7 +29,7 @@ test("scan：切出每个词和它的位置", () => {
     toks.map((t) => t.text),
     ["light", "clover"]
   );
-  // 顺手核一次下标本身（数错了注入时底字就会错位）
+  // 再核一次下标本身（数错了注入时底字就会错位）
   assert.strictEqual(toks[0].start, src.indexOf("light"));
   assert.strictEqual(toks[1].start, src.indexOf("clover"));
 });
@@ -63,8 +63,8 @@ test("scan：连字符在词尾时不算进词里（light- 应切成 light）", 
 
 test("连字符串起来的长词要拆开：Looser-Krankheit-Was 是三个词（别再压一条超长注音）", () => {
   // 用户截图：`Looser-Krankheit-` 上面压着一整条 `ルーザークランクハイトヴァス`，
-  // 比底字还宽、和每个词都对不上（"有些单词超长了效果不好"）；大模型那层也把
-  // `looserkrankheitwas` 当成**一个词**去问（真机缓存里就有这条键）。
+  // 比底字还宽、和每个词都对不上（用户说「有些单词超长了效果不好」）；大模型那层
+  // 也把 `looserkrankheitwas` 当成一个词去问（真机缓存里就有这条键）。
   // 判据：每一段都 >= 2 个字母才拆。
   const toks = letters.scan("A-Z Looser-Krankheit-Was IS das?");
   assert.deepStrictEqual(
@@ -92,7 +92,7 @@ test("连字符串起来的长词要拆开：Looser-Krankheit-Was 是三个词�
   }
   assert.strictEqual(letters.scan("A\u2013Z")[0].notation, true, "en dash 的 A–Z 也是记号");
 
-  // 有单字母段的不拆：那是**词内**的连字符（e-mail / x-ray / T-ara），拆开只会更差
+  // 有单字母段的不拆：那是词内的连字符（e-mail / x-ray / T-ara），拆开只会更差
   for (const s of ["e-mail", "x-ray", "T-ara", "U-turn"]) {
     assert.deepStrictEqual(
       letters.scan(s).map((t) => t.text),
@@ -143,9 +143,9 @@ test("looksReadable：单字母默认不标，但 a / I / o 是真词要标", ()
   assert.strictEqual(by["you"], true);
 
   /*
-   * 拉丁语 / 意大利语里的小 o（连词 "或"、呼语）：用户截图点名它漏标了 ——
-   * `tragedia o splendidae` / `fatalita o infaustae`。同一首歌里呼语用大写 `O`
-   * （读 オー，见 main.js），小写这个按引擎读 オ。
+   * 拉丁语 / 意大利语里的小 o（连词「或」、呼语）：用户截图点名它漏标了，
+   * `tragedia o splendidae` / `fatalita o infaustae` 两处都是。同一首歌里呼语用
+   * 大写 `O`（读 オー，见 main.js），小写这个按引擎读 オ。
    */
   const lower = letters.scan("tragedia o splendidae");
   const lo = {};
@@ -156,9 +156,9 @@ test("looksReadable：单字母默认不标，但 a / I / o 是真词要标", ()
 
 test("记号拆成一个字母一个词：D/N/A / N/A / A.B.C / R&B / X-Y / M・I・D・I", () => {
   // 用户先报：`だって D/N/Aじゃ 騙れない` 里的 A 被读成 ア（该读字母名）。
-  // 后来又报：`M·I·D·I` 上面压着一整条 `エムアイディーアイ`，
-  // "能不能分别注在每个字母上" —— 于是记号**拆成一个字母一个词**，
-  // 每个字母各标一个 ruby（读音由 main.js 的 lineLetterRun 判成字母名）。
+  // 后来又报：`M·I·D·I` 上面压着一整条 `エムアイディーアイ`，问「能不能分别注在
+  // 每个字母上」—— 于是记号拆成一个字母一个词，每个字母各标一个 ruby
+  // （读音由 main.js 的 lineLetterRun 判成字母名）。
   const cases = [
     ["D/N/A", ["D", "N", "A"]],
     ["N/A", ["N", "A"]],
@@ -198,7 +198,7 @@ test("记号拆成一个字母一个词：D/N/A / N/A / A.B.C / R&B / X-Y / M・
 test("颜文字/装饰符号夹着的字母不标（`(#^ω^)` 里的 ω）", () => {
   // 用户截图：`勝算なくても行っちゃえ！とか(#^ω^)` 里的 ω 被标成 オメガ ——
   // 那是画脸用的，不是词。`^` `` ` `` `´` `＾` `｀` `ﾟ` `゛` `゜` 这些在日文里
-  // 只出现在颜文字/装饰里，所以它们和别的分隔符一样算"粘住"。
+  // 只出现在颜文字/装饰里，所以它们和别的分隔符一样算「粘住」。
   for (const raw of ["(#^\u03C9^)", "(\uFF9F\u0414\uFF9F)", "(\u00B4\u25BD\uFF40)", "(\uFF3E\u03C9\uFF3E)"]) {
     for (const tk of letters.scan(raw)) {
       assert.strictEqual(letters.looksReadable(tk), false, JSON.stringify(raw) + " 里的 " + tk.text + " 不该标");
@@ -277,9 +277,8 @@ test("带变音符号的拉丁字母要能扫到，不能把词切成两半", ()
 });
 
 test("记号里的单字母照标（读字母名）；孤零零粘着分隔符的单字母仍然不标", () => {
-  // 用户报过：`だって D/N/Aじゃ 騙れない` 里那个 A 被读成 ア（冠词读法）。
-  // 现在记号拆成一个字母一个词，每个字母都标 —— 但标的是**字母名**（エー），
-  // 由 main.js 的 lineLetterRun 按整行判（见 integration 用例）。
+  // 记号里的单字母也标，标的是字母名（エー），由 main.js 的 lineLetterRun 按整行判
+  // （见 integration 用例）；孤零零粘着分隔符的单字母仍然不标。
   for (const line of ["だって D/N/Aじゃ 騙れない", "N/A", "A.B.C", "X-Y", "M\u30FBI\u30FBD\u30FBI"]) {
     for (const tk of letters.scan(line)) {
       if (tk.text.length === 1) {
@@ -311,11 +310,10 @@ test("记号里的单字母照标（读字母名）；孤零零粘着分隔符�
 });
 
 test("重复字母：全大写 2~3 个当缩写标，小写/长串留白", () => {
-  // 来龙去脉：先是用户报 `“XX”` 被读成 エックスエックス（打码不该念），
-  // 于是这类一律留白；后来用户又报 `合言葉は「YY」` —— 那个 YY 是缩写，要标。
-  // 两者拼写一模一样，本地分不出来，用户选择"标"，于是：
-  //   全大写 2~3 个 -> 标（YY ワイワイ、XX エックスエックス）
-  //   小写 / 4 个以上 -> 留白（xx 打码、XXXX 噪声）
+  // 来龙去脉：先是用户报 `“XX”` 被读成 エックスエックス（打码不该念），这类一度
+  // 一律留白；后来用户又报 `合言葉は「YY」`，那个 YY 是缩写，要标。两者拼写一模一样，
+  // 本地分不出来，用户选择「标」，于是定成：全大写 2~3 个标（YY ワイワイ、
+  // XX エックスエックス），小写或 4 个以上留白（xx 打码、XXXX 噪声）。
   for (const raw of ["YY", "XX", "XXX"]) {
     assert.strictEqual(letters.looksReadable(letters.scan(raw)[0]), true, raw + " 要标（按字母名）");
   }
@@ -327,7 +325,7 @@ test("重复字母：全大写 2~3 个当缩写标，小写/长串留白", () =>
     const tk = letters.scan(raw)[0];
     assert.strictEqual(letters.looksReadable(tk), true, raw + " 是喊叫/长音，要标");
   }
-  // 反例：不同字母的缩写照旧逐字母读 —— 边界要正好落在"重复"上
+  // 反例：不同字母的缩写照旧逐字母读 —— 边界要正好落在「重复」上
   for (const raw of ["LDK", "TV", "MC", "DJ"]) {
     const tk = letters.scan(raw)[0];
     assert.strictEqual(letters.looksReadable(tk), true, raw + " 是真实缩写，要标");

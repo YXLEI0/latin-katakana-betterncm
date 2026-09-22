@@ -1,15 +1,13 @@
 /*
  * 从网易云 Local Storage 的 leveldb 里读插件轨迹。
  *
- * 为什么需要 Snappy 和 SST 遍历
- * ---------------------------
- * 三条路都试过：
+ * 三条路都试过，最后只能自己按 leveldb 的 SST 格式走一遍：
  *   1. 直接读 .log  —— 客户端在写，复制时会让进程 STATUS_HEAP_CORRUPTION 崩掉；
  *   2. 只读 .ldb    —— 块是 Snappy 压缩的，只能搜到键、读出来的值是乱码
  *      （这正是之前"轨迹只有 1 行 / 全是乱码"的原因）；
  *   3. 只读 4KB 窗口 —— 值有 100KB+（250 行 × UTF-16），窗口根本不够。
- * 所以这里老老实实按 leveldb 的 SST 格式走：footer → index block → data block，
- * 块按 compression type 解压（0 无压缩 / 1 Snappy），key 里含目标键就收下值。
+ * 于是老老实实走 footer → index block → data block，块按 compression type 解压
+ * （0 无压缩 / 1 Snappy），key 里含目标键就收下值。
  *
  * 值本身是 Chrome LocalStorage 的编码：第一个字节是编码标记（0=UTF-16LE），
  * 后面才是正文。所以拿到原始字节后按 UTF-16LE 解码。
@@ -219,9 +217,8 @@ const files = fs
   .sort((a, b) => b.mt - a.mt);
 
 /*
- * 每个文件里都可能有一个"当时的完整轨迹"。注意**不能取最长的那个** ——
- * leveldb 会把旧值留在别的 .ldb 里，最长的那份往往是上一轮的。
- * 判据用「最后一行的时间戳」：谁最新用谁。
+ * 每个文件里都可能有一份"当时的完整轨迹"。不能取最长的那个 —— leveldb 会把旧值
+ * 留在别的 .ldb 里，最长的那份往往是上一轮的。判据用「最后一行的时间戳」：谁最新用谁。
  */
 function lastStamp(text) {
   const m = [...String(text).matchAll(/(\d{2}:\d{2}:\d{2}) \[/g)];
@@ -231,7 +228,7 @@ function lastStamp(text) {
 let best = { text: "", where: "", stamp: "" };
 /*
  * 不是轨迹数组的键（比如大模型缓存 `*.llm.v1`、学会的词 `*.learned.v1`）里
- * **没有时间戳行**，上面那套"谁的最后一行最新用谁"就选不出东西来（`"" > ""` 恒假），
+ * 没有时间戳行，上面那套"谁的最后一行最新用谁"就选不出东西来（`"" > ""` 恒假），
  * 于是明明读到了值却报"没找到键"。所以另留一份"最长的那个值"兜底。
  */
 let bestRaw = { text: "", where: "" };

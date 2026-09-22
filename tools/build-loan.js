@@ -1,13 +1,11 @@
 /*
- * 把 tools/vendor/loan/*.txt 里的 sljfaq 借词表编译成 src/core/loan.js。
+ * 把 tools/vendor/loan/*.txt 里的 sljfaq 借词表编译成 src/core/loan.js（勿手改）。
  *
  *   node tools/build-loan.js
  *
- * 为什么要过一道编译、而不是手工把表抄进 JS：
- *   - 借词表是**别人整理好的数据**（sci.lang.japan FAQ 的 "Which Japanese words come
- *     from X?"），抄进源码时最容易抄错/抄漏，而且没法核对是不是最新；
- *   - txt 是纯文本，diff 起来一眼能看出加了哪个词；
- *   - core/loan.js 是生成的（和 core/dict.js 一样"勿手改"），运行时只做一次解析。
+ * 借词表是别人整理好的数据（sci.lang.japan FAQ 的 "Which Japanese words come
+ * from X?"），过一道编译而不是手工抄进 JS：抄最容易抄错抄漏，也没法核对是不是
+ * 最新；txt 是纯文本，diff 起来一眼能看出加了哪个词；core/loan.js 本身只做一次解析。
  *
  * 输入格式（每个文件）：
  *   # 注释行（来源 URL、抓取日期、条目数）
@@ -23,7 +21,7 @@ const ROOT = path.join(__dirname, "..");
 const IN_DIR = path.join(__dirname, "vendor", "loan");
 const OUT = path.join(ROOT, "src", "core", "loan.js");
 
-/** 文件名 -> 语言 id（core/langs.js 里的 id）；法语那张原来写死在 reading.js 里，现在也走这条流水线 */
+/** 文件名 -> 语言 id（core/langs.js 里的 id）。法语那张原来写死在 reading.js 里，现在也走这条流水线 */
 const LANGS = { fr: "fr", de: "de", nl: "nl", pt: "pt", ru: "ru", el: "el", la: "la" };
 
 /** 只允许片假名 + 长音符 */
@@ -43,7 +41,7 @@ function readTable(file) {
     if (!word) throw new Error(`${path.basename(file)}: 空的词：${t}`);
     if (!RE_KANA.test(kana)) throw new Error(`${path.basename(file)}: 读音不是纯片假名：${t}`);
     if (seen[word]) {
-      // 重复键直接报错：宁可让人去 txt 里合并，也不要"后面那条悄悄赢"
+      // 重复键直接报错，宁可让人去 txt 里合并，也不要后面那条悄悄赢
       throw new Error(`${path.basename(file)}: 重复的词 ${word}`);
     }
     seen[word] = true;

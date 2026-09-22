@@ -1,19 +1,19 @@
 /*
- * **整首专属读音**：这首歌里的这些词就这么读（**自动生成 + 手工条目，勿手改**）。
+ * 整首专属读音：这首歌里的这些词就这么读（自动生成 + 手工条目，勿手改）。
  *
  * 由 tools/build-song-readings.js 生成（跑 npm run build:songs）：
  *   1. tools/vendor/sekai/musics.json 的歌名官方读音，按词切开（只在那一首里生效）——
  *      纯西文、西文 + 假名汉字、带符号的都收（假名汉字符号那部分当"通配段"对齐）；
  *   2. tools/song-readings-hand.js 的手工条目，同一条以手工为准。
- *      手工条目**不限于** Project Sekai：例如 BanG Dream! 的「夢現妄想世界」
- *      （夢限大みゅーたいぷ）就不在那份主数据里，是用户点名按整首钉的。
+ *      自动切分过不了的那些（我们自己的候选读音错太多，没法自证）在这里手工切开；
+ *      前提是有官方读音可查，自己按词义猜的不进表。
  *
  * 结构：{ title, marker, words }
  *   title  歌名正则（播放栏那行，命中即这一首）
  *   marker 备用判据：整首歌词里出现这个词就认（歌名读不到 / 标题写法不同时用）
  *   words  小写词 -> 片假名读音
  *
- * 命中之后：这些读音排在**所有层前面**（来源 `song`，层序 -1，大模型也不会被咨询）。
+ * 命中之后：这些读音排在所有层前面（来源 `song`，层序 -1，大模型也不会被咨询）。
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
