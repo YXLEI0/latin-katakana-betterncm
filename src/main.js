@@ -808,7 +808,7 @@
     wa: "\u30A6\u30A7", // ウェ
     ar: "\u30A2", // ア
     ni: "\u30CD", // ネ
-    hy: "\u30A8", // エ（`as thy- hy - hy -` 里那几个 hy-）
+    hy: "\u30A2\u30A4", // アイ（`as thy- hy - hy -` 里那几个 hy-）
   };
 
   /*
@@ -877,6 +877,15 @@
     if (!/^[\u0410-\u042F\u0401]{2,6}$/.test(w)) return false;
     return !/[\u0410\u0415\u0401\u0418\u041E\u0423\u042B\u042D\u042E\u042F]/.test(w);
   }
+
+  /*
+   * 有固定读法的**记号**（点号写的词）：`p.h.` = 化学的 pH，日语读 ペーハー
+   * （用户截图 `p.h.って、胃酸を`，官方翻译那行写着"靠着 p.h."）。
+   * 标记见 letters.js 的 notationWord。
+   */
+  var NOTATION_WORD_KANA = {
+    ph: "\u30DA\u30FC\u30CF\u30FC", // ペーハー
+  };
 
   /*
    * 两个字母的**英文/缩写**常用词：它们在词典里有确定读音（`no` ノー、`me` ミー…），
@@ -1465,6 +1474,14 @@
       if (asRomaji) return { kana: asRomaji, source: "romaji" };
     }
     /*
+     * 有固定读法的记号（`p.h.` = pH → ペーハー，见 letters.js 的 notationWord）
+     */
+    if (token && token.notationWord === true) {
+      var nwKey = String(word == null ? "" : word).toLowerCase().replace(/[^a-z]/g, "");
+      var nw = NOTATION_WORD_KANA[nwKey];
+      if (nw) return { kana: nw, source: "dict", confident: true };
+    }
+    /*
      * 英文行里全大写、2~4 个字母、不在英文常用词表里的词（`KRO` / `NE`）：
      * 它可能是缩写，也可能是**日语罗马字** —— 用户截图 `Don't I second bet in the KRO NE`
      * 就是 クロネ（官方翻译那行写着「我不在那"KRO NE"里再次押注」）。本地分不出来，
@@ -1475,7 +1492,7 @@
      */
     if ((!line || !RE_KANA_ANY.test(String(line))) && !(line && lineLooksRomaji(line))) {
       var capsWord = String(word == null ? "" : word);
-      if (/^[A-Z]{2,4}$/.test(capsWord) && !EN_TWO_LETTER[capsWord.toLowerCase()]) {
+      if (/^[A-Z]{2,4}$/.test(capsWord) && /[AEIOU]/.test(capsWord) && !EN_TWO_LETTER[capsWord.toLowerCase()]) {
         var capsLow = capsWord.toLowerCase();
         var enTable = typeof WKEnWords !== "undefined" ? WKEnWords.words : null;
         if (!(enTable && enTable[capsLow])) {
@@ -1488,8 +1505,20 @@
               guessRomaji = null;
             }
           }
-          var guessKana = guessRomaji || letterNames(capsWord);
-          if (guessKana) return { kana: guessKana, source: guessRomaji ? "romaji" : "rule", confident: false };
+          var guessKana = guessRomaji;
+          if (guessKana) return { kana: guessKana, source: "romaji", confident: false };
+          /*
+           * 罗马音也读不出来（`KRO`）：**先不显字**（用户要求：别先按字母名 ケーアールオー
+           * 显示），只把这个词记进大模型的待问队列 —— 模型答了什么再补上注音。
+           */
+          if (state.llm && state.llm.want) {
+            try {
+              state.llm.want(capsWord, line);
+            } catch (e) {
+              /* 记不上不影响注音 */
+            }
+          }
+          return null;
         }
       }
     }

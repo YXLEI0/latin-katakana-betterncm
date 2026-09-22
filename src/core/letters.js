@@ -239,6 +239,27 @@
          * 短的（`M・I・D・I` / `D/N/A` / `A.B.C`）照旧逐字母读字母名。
          */
         var flat = raw.replace(/[^A-Za-z]/g, "");
+        /*
+         * 有**固定读法**的记号：`p.h.`（`pH`，化学的酸碱度）日语读 ペーハー，
+         * 不是逐字母的 ピーエイチ（用户截图 `p.h.って、胃酸を`，官方翻译写着"靠着 p.h."）。
+         * 整串发一个词，读音交给 main.js 的 NOTATION_WORD_KANA。
+         */
+        if (flat.toLowerCase() === "ph") {
+          out.push({
+            text: raw,
+            start: start,
+            end: end,
+            norm: normalize(raw),
+            glued: false,
+            emoticon: false,
+            notation: false,
+            notationWord: true,
+            script: scriptOf(raw),
+            diacritic: false,
+          });
+          i = end;
+          continue;
+        }
         if (flat.length >= 5 && typeof WKReading !== "undefined" && WKReading.romajiToKatakana) {
           var asRomaji = null;
           try {

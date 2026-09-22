@@ -884,6 +884,7 @@ test("连字符串：被切断的重复音（wa- ウェ / ar- ア / ni- ネ）�
   <li class="line"><p>Up, up, ar-ar-ar-ar</p></li>
   <li class="line"><p>"go", why night? Ni-ni-ni-ni-ni-</p></li>
   <li class="line"><p>Ex-Otogibanashi</p></li>
+  <li class="line"><p>I do my beat as thy- hy - hy - hy -)</p></li>
   <li class="line"><p>Looser-Krankheit-Was</p></li>
 </ul></div></div>
 </body></html>`;
@@ -913,11 +914,17 @@ test("连字符串：被切断的重复音（wa- ウェ / ar- ア / ni- ネ）�
     [["Ex", "イーエックス"], ["Otogibanashi", "オトギバナシ"]],
     "Ex 逐字母、后半走罗马音：" + ps[3].innerHTML
   );
+  // `hy -`（空格 + 连字符的写法）读 アイ
+  assert.deepStrictEqual(
+    rubies(ps[4]).slice(-3),
+    [["hy", "アイ"], ["hy", "アイ"], ["hy", "アイ"]],
+    "hy- 读 アイ：" + ps[4].innerHTML
+  );
   // 反面：整行是德语时，连字符串归德语引擎管（别被罗马音/字母名那条抢走）
-  const de = rubies(ps[4]).map((r) => r[1]);
+  const de = rubies(ps[5]).map((r) => r[1]);
   assert.ok(
     de.indexOf("ワス") < 0 && de.indexOf("ダブリューエーエス") < 0,
-    "德语行照旧走德语引擎：" + ps[4].innerHTML
+    "德语行照旧走德语引擎：" + ps[5].innerHTML
   );
 });
 
