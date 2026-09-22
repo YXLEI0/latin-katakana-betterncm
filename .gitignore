@@ -15,3 +15,5 @@ data/
 Thumbs.db
 desktop.ini
 *.log
+commit-msg-*.txt
+commit-msg.txt

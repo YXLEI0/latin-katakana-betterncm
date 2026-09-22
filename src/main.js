@@ -917,6 +917,15 @@
   var SMALL_KANA = /[\u3083\u3085\u3087\u3041\u3043\u3045\u3047\u3049\u30E3\u30E5\u30E7\u30A1\u30A3\u30A5\u30A7\u30A9]/;
 
   /*
+   * 字母和小写假名**之间有空格**时（`ラR ァ`）：字母自己算一拍，读它的默认音 ——
+   * 用户点名 `R` 读 **ラ**（`Cゃ` / `Kゃ` 那种贴着的才读辅音那一拍 チ / キ）。
+   */
+  var SPACED_LETTER_KANA = {
+    r: "\u30E9", // ラ
+    l: "\u30E9", // ラ
+  };
+
+  /*
    * 有固定读法的**记号**（点号写的词）：`p.h.` = 化学的 pH，日语读 ペーハー
    * （用户截图 `p.h.って、胃酸を`，官方翻译那行写着"靠着 p.h."）。
    * 标记见 letters.js 的 notationWord。
@@ -1332,10 +1341,11 @@
      */
     if (/^[A-Za-z]$/.test(String(word == null ? "" : word)) && token && line && typeof token.end === "number") {
       var tailAfter = String(line).slice(token.end);
-      var sm = /^\s*([\s\S])/.exec(tailAfter);
-      if (sm && SMALL_KANA.test(sm[1])) {
-        var consKana = LETTER_CONSONANT_KANA[String(word).toLowerCase()];
-        if (consKana) return { kana: consKana, source: "letters", confident: true };
+      var sm = /^(\s*)([\s\S])/.exec(tailAfter);
+      if (sm && SMALL_KANA.test(sm[2])) {
+        var lowLetter = String(word).toLowerCase();
+        var kanaForLetter = sm[1].length > 0 ? SPACED_LETTER_KANA[lowLetter] : LETTER_CONSONANT_KANA[lowLetter];
+        if (kanaForLetter) return { kana: kanaForLetter, source: "letters", confident: true };
       }
     }
     /*
