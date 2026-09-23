@@ -1647,6 +1647,89 @@ test("全英文的一行：等待在线结果期间先用暂定读音顶上，�
   assert.strictEqual(baseText(p), "kaleidoscope zephyr serendipity light", "底字一字不改");
 });
 
+test("在线答案回来改写（relabel）时，连字符片段 / 打码词 / 回声片段的读音不许被换掉", async () => {
+  /*
+   * 真机轨迹（00:16:45 那一轮）：`Up, up, ar-ar-ar-ar` 注音那一刻写的是 `arア-arア-ar`，
+   * 在线答案回来触发 relabel 之后变成了 アール —— 用户看到的"问题有反复"就是这个。
+   *
+   * relabel 手头只有 DOM，它就地拼的 token 原来只有 text + label，没有"这个词左右挨着
+   * 什么"（连字符、假名、空格），于是：
+   *   `ar-` 掉回词典里的 アール（本该 ア）、`wa-` 掉回 ワ（本该 ウェ）、
+   *   `ny`（deny 的尾音）掉回词典里的 NY = ニューヨーク（本该 ナイ）。
+   * 现在 tokenAt 会把邻字和连字符信息一起还原，relabel 与注音那一刻同解。
+   */
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Up, up, ar-ar-ar-ar</p></li>
+  <li class="line"><p>the process (wa-wa-wait)</p></li>
+  <li class="line"><p>You can't deny, ny ny ny</p></li>
+  <li class="line"><p>Oh, I'll be ****ed up</p></li>
+  <li class="line"><p>kaleidoscope light</p></li>
+</ul></div></div>
+</body></html>`;
+  let asked = 0;
+  const env = bootPlugin(HTML, {
+    config: { llmEnabled: true, llmKey: "sk-test", llmEndpoint: "https://api.example.com/v1/chat/completions" },
+    fetch: function (url, init) {
+      if (!init || !init.body) return Promise.reject(new Error("offline (test)"));
+      asked++;
+      // 只给最后一行一个答案：够触发 relabel（整篇的 ruby 都会被重读一遍）就行
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify({ 1: "カレイドスコープ" }) } }] }),
+      });
+    },
+  });
+  await env.runLoad();
+  await sleep(1200);
+  assert.ok(asked > 0, "大模型应该被问过（否则测不到 relabel）");
+
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  const readings = (p, word) => {
+    const el = [...p.querySelectorAll("ruby.wk-ruby")].find((r) => r.childNodes[0].nodeValue === word);
+    return el ? el.querySelector(".wk-rt").textContent : null;
+  };
+  assert.deepStrictEqual(
+    PAIRS(ps[0]).map((x) => x[1]),
+    ["アップ", "アップ", "ア", "ア", "ア", "ア"],
+    "relabel 之后 `ar-` 还是 ア：" + ps[0].innerHTML
+  );
+  assert.deepStrictEqual(
+    PAIRS(ps[1]).map((x) => x[1]).slice(-3),
+    ["ウェ", "ウェ", "ウェイト"],
+    "relabel 之后 `wa-` 还是 ウェ：" + ps[1].innerHTML
+  );
+  assert.strictEqual(readings(ps[2], "ny"), "ナイ", "relabel 之后 `ny`（deny 的尾音）还是 ナイ：" + ps[2].innerHTML);
+  assert.strictEqual(readings(ps[3], "****ed"), "ファックド", "打码词按被隐去的原词读：" + ps[3].innerHTML);
+});
+
+test("制作信息行：长尾写法（`Strings Arranged & Conducted by` / `Recorded at` / `OP:` / `ISRC`）也整行不注音", async () => {
+  // 用户九张截图里的三张：出版方与版权编号那几行原来整行都被注了音
+  // （`OP:` / `SP:` / `ISRC` 都不在关键词表里，`Strings Arranged & Conducted by`
+  // 这种"关键词 + 一堆修饰词 + by"也贴不到原来那条判据）。
+  const HTML = `<!doctype html><html><head></head><body>
+<div id="root"><div class="m-lyric"><ul class="lyric">
+  <li class="line"><p>Strings Arranged &amp; Conducted by 陈珀</p></li>
+  <li class="line"><p>Recorded at aroom studio &amp; seewisehk,</p></li>
+  <li class="line"><p>OP: Forward Music Publishing Co Ltd / Universal Music Publishing Ltd</p></li>
+  <li class="line"><p>SP: Fujipacific Music (S.E. Asia) Ltd</p></li>
+  <li class="line"><p>ISRC TW-A 53-11-07002</p></li>
+  <li class="line"><p>Recorded in the rain</p></li>
+</ul></div></div>
+</body></html>`;
+  const env = bootPlugin(HTML, { config: { online: false, llmEnabled: false } });
+  await env.runLoad();
+  await sleep(600);
+  const ps = env.document.querySelectorAll("ul.lyric li p");
+  for (let i = 0; i < 5; i++) {
+    assert.strictEqual(ps[i].querySelectorAll("ruby.wk-ruby").length, 0, "署名 / 编号行不该注音：" + ps[i].textContent);
+  }
+  // 反面：同样的词，后面不是 `by` / `at` / 冒号的就还是歌词，照旧注音
+  assert.ok(ps[5].querySelectorAll("ruby.wk-ruby").length > 0, "不像署名的那行不该被误杀：" + ps[5].innerHTML);
+  assert.strictEqual(baseText(ps[5]), "Recorded in the rain", "底字不动");
+});
+
 test("修复钩子：既挂上自己的，也不把别人（片假名终结者）的顶掉", async () => {
   // 真机上两个插件都会插注音。共存补丁重建完一行只调一个全局钩子，
   // 谁后加载谁就得链上去，直接覆盖会让另一个插件立刻开始闪。

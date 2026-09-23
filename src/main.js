@@ -797,8 +797,8 @@
    * ツイッター）；找不出或不止一个就退回普通读法。
    */
   var maskCache = {};
-  /** 被涂掉的那个字的符号（`T○itter` / `UN◯` / `UN〇`）：几种圆圈都认 */
-  var MASK_CHAR = /[\u25CB\u25CF\u25EF\u3007\u2B55]/;
+  /** 被涂掉的那个字的符号（`T○itter` / `UN◯` / `UN〇` / 打码星号 `****ed`）：几种都认 */
+  var MASK_CHAR = /[\u25CB\u25CF\u25EF\u3007\u2B55*\uFF0A]/;
   /*
    * 人工核过的**掩码词**（`?` 代表被涂掉的那个字母）：通配查词有时会同时命中好几个
    * 词条（`un?` 能对上 uno / una / une…），这时以这张表为准。
@@ -806,6 +806,26 @@
    */
   var MASKED_WORD_KANA = {
     "un?": "\u30A6\u30CE", // ウノ
+  };
+  /*
+   * **打码词**（星号盖住的脏话）：按被隐去的原词读，用户点名要还原 ——
+   * `Oh, I'll be ****ed up` 的 `****ed` 读 ファックド（词典里 fucked 就是这么读的）。
+   *
+   * 为什么不能像 `T○itter` 那样交给通配查词：一个星号顶一个字母，`????ed` 在词典里
+   * 有 60 多个候选（agreed / buried / fucked / locked…），谁也不敢猜。所以这张表按
+   * 打码的**原样**（星号个数 + 露出来的词尾）钉死；表里没有的照旧留白。
+   */
+  var CENSORED_WORD_KANA = {
+    "****ed": "\u30D5\u30A1\u30C3\u30AF\u30C9", // ファックド
+    "****ing": "\u30D5\u30A1\u30C3\u30AD\u30F3\u30B0", // ファッキング
+    "****er": "\u30D5\u30A1\u30C3\u30AB\u30FC", // ファッカー
+    "****": "\u30D5\u30A1\u30C3\u30AF", // ファック
+    "f***": "\u30D5\u30A1\u30C3\u30AF", // ファック
+    "f**k": "\u30D5\u30A1\u30C3\u30AF", // ファック
+    "s***": "\u30B7\u30C3\u30C8", // シット
+    "s**t": "\u30B7\u30C3\u30C8", // シット
+    "b***h": "\u30D3\u30C3\u30C1", // ビッチ
+    "b**ch": "\u30D3\u30C3\u30C1", // ビッチ
   };
   function maskedReading(word) {
     var raw = String(word == null ? "" : word);
@@ -868,6 +888,35 @@
     ni: "\u30CD", // ネ
     hy: "\u30A2\u30A4", // アイ（`as thy- hy - hy -` 里那几个 hy-）
   };
+  /*
+   * 切断片段右边那种"横线"：ASCII 短横线、各种破折号，还有全角减号 `－` 和
+   * 片假名长音符 `ー` —— 歌词里这几种混着用（用户截图里那几条 `wa—wait`、
+   * `ar—ar—ar—` 的横线都不是 ASCII 那一版）。
+   */
+  var DASH_CUT = /^[-\u2010-\u2011\u2013\u2014\u2212\uFF0D\u30FC]$/;
+
+  /*
+   * 回声片段（把前一个词的尾音重复一遍的那几个小片段）：
+   * `You can't deny, ny ny ny` 里的 `ny` 是 deny 的尾音 → ナイ（用户逐条点名）。
+   */
+  var ECHO_FRAGMENT_KANA = {
+    ny: "\u30CA\u30A4", // ナイ
+  };
+
+  /**
+   * 这个词是不是"回声片段"：小写、出现在表里、行里另有一个词以同样的字母结尾，
+   * 而且它自己在行里重复了两次以上（`ny ny ny`）。
+   */
+  function echoFragment(word, line) {
+    var w = String(word == null ? "" : word);
+    if (!ECHO_FRAGMENT_KANA[w]) return false;
+    if (!/^[a-z]{2,3}$/.test(w)) return false; // 大写的是缩写（NY），不走这条
+    var s = String(line == null ? "" : line);
+    if (!s) return false;
+    var times = s.match(new RegExp(w + "(?![A-Za-z])", "g"));
+    if (!times || times.length < 2) return false;
+    return new RegExp("[A-Za-z]" + w + "(?![A-Za-z])", "i").test(s);
+  }
 
   /*
    * 孤零零一个希腊字母（不在希腊语行上时）：读日语里通行的字母名 / 单位读法。
@@ -1523,8 +1572,8 @@
      */
     var acronymWord = ACRONYM_WORD[String(word == null ? "" : word).toLowerCase()];
     if (acronymWord) return { kana: acronymWord, source: "dict", confident: true };
-    // 掩码词（`T○itter`）：按通配去词典里找一个确定答案
-    var maskedKana = maskedReading(word);
+    // 打码词（`****ed` → ファックド，按被隐去的原词读）与掩码词（`T○itter` → ツイッター）
+    var maskedKana = CENSORED_WORD_KANA[String(word == null ? "" : word).toLowerCase()] || maskedReading(word);
     if (maskedKana) return { kana: maskedKana, source: "dict", confident: true };
     /*
      * 西里尔全大写缩写逐字母读（`СССР` エスエスエスエル）—— 见 CYRILLIC_LETTER_KANA。
@@ -1546,17 +1595,36 @@
       if (cyr) return { kana: cyr, source: "letters", confident: true };
     }
     /*
-     * 被连字符**切断**的片段（`wa-` ウェ / `ar-` ア / `ni-` ネ / `hy-` エ）：
+     * 被连字符**切断**的片段（`wa-` ウェ / `ar-` ア / `ni-` ネ / `hy-` アイ）：
      * 用户逐条点名的读法。判据是"这个短片段后面（可以夹空格）紧跟着连字符"，
      * 也就是它没写完 —— `hy - hy - hy -` 那种带空格的写法也认。
+     *
+     * 邻字优先取注音层从 DOM 上现取的（token.after）—— 逐字歌词 / 别的插件拆行时，
+     * "整行文本 + 偏移量"对不上（relabel 时更是只有 DOM），那样片段规则会整个落空，
+     * 于是 `ar-` 掉回字母名 アール、`wa-` 掉回 ワ、`ni-` 掉回 ニ —— 用户截图里
+     * 那一批就是"注音那一刻是对的，在线答案一回来就变回去"。
      */
-    if (token && line && typeof token.end === "number" && /^[A-Za-z]{1,3}$/.test(String(word == null ? "" : word))) {
-      var afterFrag = String(line).slice(token.end);
-      var cutOff = /^\s*[-\u2010-\u2015]/.test(afterFrag) || token.chain === true;
+    if (token && /^[A-Za-z]{1,3}$/.test(String(word == null ? "" : word))) {
+      var afterCh = typeof token.after === "string" ? token.after : "";
+      if (!afterCh && line && typeof token.end === "number") {
+        afterCh = (String(line).slice(token.end).match(/^\s*([\s\S])/) || ["", ""])[1];
+      }
+      var cutOff = token.chain === true || DASH_CUT.test(afterCh);
       if (cutOff) {
         var fragKana = DASH_FRAGMENT_KANA[String(word).toLowerCase()];
         if (fragKana) return { kana: fragKana, source: "dict", confident: true };
       }
+    }
+    /*
+     * 回声片段（`You can't deny, ny ny ny`）：小写片段把**前一个词的尾巴**重复一遍。
+     * 用户点名 `ny` 读 ナイ（不是词典里的 NY = ニューヨーク）—— 那三个 ny 是 deny 的
+     * 尾音重复，官方中文那行写的就是"你不能抗拒 抗拒"。
+     *
+     * 判据三条：这个词在表里、行里有个词以同样的字母结尾（deny）、而且它在行里出现了
+     * 两次以上（重复片段）。表外的碎片一律不动，免得把正常的短词读歪。
+     */
+    if (ECHO_FRAGMENT_KANA[String(word == null ? "" : word)]) {
+      if (echoFragment(word, line)) return { kana: ECHO_FRAGMENT_KANA[String(word)], source: "dict", confident: true };
     }
     /*
      * 连字符串里的一段（`Ex-Otogibanashi`、`Looser-Krankheit-Was`）：
@@ -1933,6 +2001,21 @@
         regions = state.annotator.findRegions("lyrics");
       }
       state.lastResult = state.annotator.pass(regions);
+      /*
+       * "扫到了歌词区域，却一个注音都没加上"是用户最常报的那种故障（"这首歌整页都没
+       * 注音"）。原因（图案行 / 署名行 / 无译文 / 认输期）只写在控制台的 skips 里，
+       * 用户看不到 —— 顺手写进轨迹，下次直接读轨迹就知道是哪一条吃掉的。
+       * 只在"确实扫到了区域但一个都没改"时记，平时不占轨迹。
+       */
+      if (state.lastResult && state.lastResult.scanned > 0 && state.lastResult.changed === 0) {
+        trace(
+          "blank",
+          "regions=" +
+            state.lastResult.scanned +
+            " " +
+            ((state.lastResult.skips && state.lastResult.skips.join(" | ")) || "（没有跳过记录）")
+        );
+      }
       /*
        * 这一轮有节点因为「文本在动」（换歌/滚动把手抖的那几轮）或「认输期」被跳过时，
        * 注音层会告诉我们过多久可以重试。必须自己排下一次扫描：

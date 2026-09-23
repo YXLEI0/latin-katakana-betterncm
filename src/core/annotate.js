@@ -127,8 +127,37 @@
    * 有些行光看开头就能判定是版权 / 署名，后面不一定要冒号：`Copyright MGMT :Fann`
    * （用户截图）就是这种，冒号在名字后面，上面那条判据够不着，于是 MGMT 被念成
    * エムジーエムティー、Fann 被念成 ファン。歌词不会以这些词开头，放宽是安全的。
+   *
+   * 用户后来又贴了一批署名 / 编号行（`OP: Forward Music Publishing Co Ltd`、
+   * `SP: Fujipacific Music (S.E. Asia) Ltd`、`ISRC TW-A 53-11-07002`）——
+   * OP / SP 是出版方标签，ISRC / JASRAC / UPC 是版权编号，都不会是歌词开头。
    */
-  var RE_CREDIT_HARD = /^\s*(?:copyright\b|copyrighted\b|©|\(c\)|℗|\(p\)|all rights reserved\b|presented by\b|published by\b|licensed by\b)/i;
+  var RE_CREDIT_HARD = /^\s*(?:copyright\b|copyrighted\b|©|\(c\)|℗|\(p\)|all rights reserved\b|presented by\b|published by\b|licensed by\b|(?:OP|SP)\s*[:：]|ISRC\b|JASRAC\b|UPC\b|EAN\b)/i;
+
+  /*
+   * 英文署名行的"长尾"写法（用户截图）：
+   *   `Strings Arranged & Conducted by 陈珀`
+   *   `Recorded at aroom studio & seewisehk,`
+   * 这类行以工种词开头（前面最多一两个大写修饰词），后面隔着几个词才出现
+   * `by` / `at` / 冒号，上面那条"关键词 + 短填充 + by"贴不到，于是整行署名都被注了音。
+   *
+   * 词表刻意只收**工种词**（Recorded / Arranged / Conducted…）：`Music` / `Art`
+   * 这些英文歌词也常用来开头（`Music by the lake`、`Art of love`，有测试守着），
+   * 不能进这一支。
+   */
+  var CREDIT_LONG_EN = new RegExp(
+    "^\\s*(?:[A-Z][A-Za-z]*\\s+){0,2}" +
+      "(?:Recorded|Mixed|Mastered|Produced|Arranged|Conducted|Orchestrated|Composed|Written|Performed|Engineered|Strings|Additional)\\b" +
+      "[^\\n]{0,80}?(?:\\sby\\b|\\sat\\b|[:：])",
+    "i"
+  );
+
+  /** 这一行是不是制作信息 / 署名 / 版权编号（三种写法都认） */
+  function isCreditText(t) {
+    var s = String(t == null ? "" : t);
+    if (!s) return false;
+    return RE_CREDIT.test(s) || RE_CREDIT_HARD.test(s) || CREDIT_LONG_EN.test(s);
+  }
 
   // ---------------------------------------------------------------- 注入
 
@@ -756,7 +785,7 @@
       if (!sib) return false;
       try {
         var t = visibleText(sib);
-        return !!(t && (RE_CREDIT.test(t) || RE_CREDIT_HARD.test(t)));
+        return isCreditText(t);
       } catch (e) {
         return false;
       }
@@ -862,6 +891,9 @@
       return str ? str.charAt(str.length - 1) : "";
     }
 
+    /** 被连字符切断的判据要认的那几种横线（含全角减号那种排版写法） */
+    var DASH_CHAR = /[-\u2010-\u2011\u2013\u2014\u2212\uFF0D\u30FC]/;
+
     function annotateNode(node, region) {
       var text = node.nodeValue;
       // 长度 1 的文本节点也要看：逐字歌词/别的插件拆行时，单个字母就是它自己的节点
@@ -906,15 +938,16 @@
           }
         }
         /*
-         * 单字母左右两边的字，连同"中间有没有空格"一起带给读音层（token.after /
-         * token.afterSpaced / token.before / token.beforeSpaced）。
+         * 短的词（单字母 / 连字符切断的两三字母片段）左右两边的字，连同"中间有没有
+         * 空格"一起带给读音层（token.after / token.afterSpaced / token.before /
+         * token.beforeSpaced）。
          *
-         * 为什么要在注音层算：`ズ干Cャ` = ズ干チャ、`ラR ア` = ララ 这类
-         * "拿字母当假名用"的写法，判据就是字母紧挨着什么字。而逐字歌词把每个字
-         * 拆进各自的 `<span>`，读音层拿到的 `line`（整行文本）+ 偏移量根本对不上，
-         * 只能由这里跨节点现取（用户截图：逐字歌词那几行一个注音都没有）。
+         * 为什么要在注音层算：`ズ干Cャ` = ズ干チャ、`ラR ア` = ララ、`wa-wa-wait`
+         * 的 `wa-` ウェ 这类判据就是"这个词紧挨着什么"。而逐字歌词把一个字拆进各自的
+         * `<span>`，读音层拿到的 `line`（整行文本）+ 偏移量根本对不上，只能由这里
+         * 跨节点现取（用户截图：逐字歌词那几行一个注音都没有）。
          */
-        if (tokens[i].text.length === 1) {
+        if (tokens[i].text.length <= 3) {
           var afterRaw = rawAfterText(node, tokens[i].end);
           var beforeRaw = rawBeforeText(node, tokens[i].start);
           tokens[i].after = firstVisible(afterRaw);
@@ -1382,13 +1415,32 @@
      * DOM，于是照同一个判据就地拼一个：底字后面紧跟的是不是冒号。
      * `M: 匿名Mです。` 里行首那个 `M` 的 ruby 后面是 `:`（留白那个压根没有 ruby），
      * 而 `匿名M` 的 M 后面是 `で` —— 位置信息就是这么保住的。
+     *
+     * `after` / `before` / `chain` 也必须一起还原：读音层有好几条判据要看"这个词
+     * 左右挨着什么"（连字符切断的片段 `ar-` ア / `wa-` ウェ / `ni-` ネ、字母当假名
+     * `ラR ア` 的 R 读 ラ）。原来这里只给 text + label，relabel 时那些判据全落空，
+     * 于是一有在线层的答案回来，注音就从 ア 变回 アール、从 ウェ 变回 ワ ——
+     * 用户看到的"问题有反复"就是这么来的（本机轨迹：注音那一刻写的是 `arア-arア-ar`，
+     * 下一轮 relabel 之后变成了 アール）。
      */
     function tokenAt(el, word) {
-      var after = "";
-      var n = el ? el.nextSibling : null;
-      if (n && n.nodeType === 3) after = n.nodeValue || "";
       var w = String(word == null ? "" : word);
-      return { text: w, label: w.length === 1 && /^\s*[:：]/.test(after) };
+      var prev = el ? el.previousSibling : null;
+      var afterRaw = rawAfterText(el ? el.nextSibling : null, 0);
+      var beforeRaw = rawBeforeText(prev, prev && prev.nodeType === 3 ? String(prev.nodeValue || "").length : 0);
+      var tok = {
+        text: w,
+        label: w.length === 1 && /^\s*[:：]/.test(afterRaw),
+        after: firstVisible(afterRaw),
+        afterSpaced: /^\s/.test(afterRaw),
+        before: lastVisible(beforeRaw),
+        beforeSpaced: /\s$/.test(beforeRaw),
+        start: 0,
+        end: w.length,
+      };
+      // 连字符链的一段（`ar-ar-ar-`）：前后紧挨着连字符就算，交给读音层的片段规则
+      if (DASH_CHAR.test(tok.after) || DASH_CHAR.test(tok.before)) tok.chain = true;
+      return tok;
     }
 
     function relabel() {
@@ -1955,14 +2007,14 @@
         // 只把"连一个可读词都没有"的短节点挡掉
         if (!text) continue;
         if (text.length < 2 && !matcher.hasReadable(text)) continue;
-        if (RE_CREDIT.test(text) || RE_CREDIT_HARD.test(text)) continue; // 制作信息行跳过
+        if (isCreditText(text)) continue; // 制作信息行跳过
         /*
          * 制作信息行被拆成好几个节点时（RNP 常见），碎片本身不像制作信息 ——
          * 往上拿整行的文字再判一次，否则 `混音&母带处理：宫奇` 旁边的 `Gon`
          * 会被注上音（用户截图）。判到了就记一笔跳过原因，方便排障。
          */
         var lineForCredit = enclosingLineText(hostEl);
-        if (lineForCredit && lineForCredit !== text && (RE_CREDIT.test(lineForCredit) || RE_CREDIT_HARD.test(lineForCredit))) {
+        if (lineForCredit && lineForCredit !== text && isCreditText(lineForCredit)) {
           noteSkip("制作信息行（同行的另一个片段）", text, region);
           continue;
         }

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * 西文字母识别：在一片文本里挑出值得标片假名读音的西文词（core/letters.js）。
  *
  * 和 katakana-terminator 的 matcher.js 正好相反：那个找片假名，这个找字母。
@@ -71,11 +71,33 @@
    * 而 `Looser-Krankheit` 却是一条，同一个排版两种切法，全看运气。
    * 串成一条之后还会再判要不要拆，见 splitDashes。
    */
-  var WORD_JOIN = "['\\u2019~\uFF5E\u301C\\-\\u2010\\u2011\\u2013\\u2014\u25CB\u25CF\u25EF\u3007\u2B55]";
+  var WORD_JOIN = "['\\u2019~\uFF5E\u301C\\-\\u2010\\u2011\\u2013\\u2014\\u2212\\uFF0D\\u30FC\u25CB\u25CF\u25EF\u3007\u2B55]";
+
+  /*
+   * 打码星号（`****ed`、`f**k`）：`*` 是**被隐去的几个字母**的占位符，整串仍是一个词。
+   *
+   * 用户要求 `****ed` 按被隐去的原词还原读音（"****ed 应该被还原"）—— 判据得先让
+   * 分词把星号跟后面的字母算成一个词（星号在前，普通词的 RE_PLAIN 抓不到它，循环走到
+   * 星号那一步就跳过去了）。开头的星号要求 ≥2 个：`*emphasis*` 那种排版装饰只有一个
+   * 星号，照旧只取 `emphasis`；词内（`f**k`）一个星号就够。
+   */
+  var MASK_STAR = "[*\\uFF0A]";
 
   /** 普通词（含撇号/连字符/波浪号/结尾的掩码符号）；西里尔/希腊字母同样算词 */
   var RE_PLAIN = new RegExp(
-    WEST + "(?:" + WEST + "|" + WORD_JOIN + "(?=" + WEST + ")|[\u25CB\u25CF\u25EF\u3007\u2B55])*",
+    "(?:" + MASK_STAR + "{2,}(?=" + WEST + "))?" +
+      WEST +
+      "(?:" +
+      WEST +
+      "|" +
+      WORD_JOIN +
+      "(?=" +
+      WEST +
+      ")|" +
+      MASK_STAR +
+      "{1,}(?=" +
+      WEST +
+      ")|[\u25CB\u25CF\u25EF\u3007\u2B55])*",
     "g"
   );
 
@@ -92,7 +114,7 @@
    * 那是词内的连字符，拆开只会更差，保持整词；`A-Z` 那种记号在扫描时就被
    * 记号规则接走了，到不了这里。
    */
-  var RE_DASH = /[\-\u2010\u2011\u2013\u2014]/;
+  var RE_DASH = /[\-\u2010\u2011\u2013\u2014\u2212\uFF0D\u30FC]/;
 
   /** 把一条连字符链切成 [{ text, offset }]；不该拆就返回 null */
   function splitDashes(raw) {
@@ -201,6 +223,26 @@
       // 剩下 `kami` 被当成一个词，用户报的 `Ō` 不注音就是这么来的；
       // 西里尔、希腊同理（俄语、希腊语歌词要整词走语言引擎）
       if (!RE_WEST_ONE.test(ch)) {
+        /*
+         * 打码词从星号开始（`****ed`）：星号本身不是字母，得在这里先试一把
+         * `RE_PLAIN` 的开头那截（≥2 个星号 + 字母），整串当一个词收下。
+         */
+        var maskedRaw = matchAt(RE_PLAIN, text, i);
+        if (maskedRaw && /^[*\uFF0A]{2,}/.test(maskedRaw)) {
+          out.push({
+            text: maskedRaw,
+            start: i,
+            end: i + maskedRaw.length,
+            norm: normalize(maskedRaw),
+            glued: false,
+            emoticon: false,
+            notation: false,
+            script: scriptOf(maskedRaw),
+            diacritic: false,
+          });
+          i += maskedRaw.length;
+          continue;
+        }
         i++;
         continue;
       }
